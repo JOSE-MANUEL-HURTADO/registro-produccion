@@ -1,0 +1,20 @@
+// Registro de producción — service worker
+// Solo guarda la "cáscara" de la app. Los datos (Supabase) siempre van por internet.
+const CACHE = 'registro-v1.1';
+const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-180.png',
+  './lib/supabase.js'];
+self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(()=>{})); self.skipWaiting(); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
+self.addEventListener('fetch', e => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.hostname.endsWith('supabase.co')) return;           // datos: nunca de caché
+  if (u.origin === location.origin && (u.pathname.endsWith('/') || u.pathname.endsWith('.html'))) {
+    e.respondWith(fetch(e.request).then(r => { const c = r.clone(); caches.open(CACHE).then(x => x.put(e.request, c)); return r; })
+      .catch(() => caches.match(e.request)));                                                 // app: primero internet
+    return;
+  }
+  e.respondWith(caches.match(e.request).then(c => c || fetch(e.request).then(r => {
+    if (r && r.status === 200) { const cl = r.clone(); caches.open(CACHE).then(x => x.put(e.request, cl)); }
+    return r;
+  })));
+});
