@@ -43,6 +43,7 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:1px solid var(--border2);font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
 .btn:hover{border-color:var(--text2);}
 .btn:active{transform:scale(.98);}
+a.btn{color:var(--text);}
 .btn.primary{background:var(--text);color:#181818;border-color:var(--text);}
 .btn.primary:hover{background:#fff;}
 .btn.primary:disabled{background:var(--surface3);color:var(--dim);border-color:var(--border);cursor:default;}
@@ -258,6 +259,16 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 @media(max-width:640px){.ov{align-items:flex-end;padding:0;}.sheet{max-width:none;max-height:92vh;border-left:0;border-right:0;border-bottom:0;}}
 
 
+/* ── Cobros (gerente) ── */
+.cobs{display:flex;gap:4px;}
+.cobm{font-size:10px;font-family:var(--sans);letter-spacing:.06em;padding:1px 5px;border:1px solid var(--border);}
+.cobm.ok{border-color:var(--inst);color:var(--inst);}
+.cobm.pend{border-color:var(--cola);color:var(--cola);}
+.chip-cob{border-style:dashed;}
+.cob-ic{font-family:var(--mono);color:var(--cola);}
+.chip.on .cob-ic{color:#181818;}
+.btn-cob{border-color:var(--cola)!important;color:var(--cola);}
+.sec-cob{border-top:1px dashed var(--cola);}
 /* ── Carga de OPs ── */
 .carga-steps{display:flex;flex-direction:column;gap:10px;max-width:760px;}
 .cstep{display:flex;gap:16px;background:var(--surface);border:1px solid var(--border);padding:18px;}
@@ -307,7 +318,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -411,6 +422,23 @@ const API = {
     return out;
   },
   exportar(){ return this.all(o => this.sb.from('base_exportable').select('*',o)); },
+  // ── Precios y cobros (solo gerente) ──
+  async comercial(ids){
+    let out = [];
+    for(let i=0; i<ids.length; i+=200){
+      const {data,error} = await this.sb.from('items_comercial').select('*').in('item_id', ids.slice(i,i+200));
+      if(error) throw error; out = out.concat(data);
+    }
+    return out;
+  },
+  async upsertComercial(rows){
+    let out = [];
+    for(let i=0; i<rows.length; i+=500){
+      const {data,error} = await this.sb.from('items_comercial').upsert(rows.slice(i,i+500), {onConflict:'item_id'}).select('*');
+      if(error) throw error; out = out.concat(data||[]);
+    }
+    return out;
+  },
   // ── Carga de OPs (solo gerente) ──
   async existentes(ops){
     const out = new Set();
@@ -460,7 +488,7 @@ const S = {
   activos:[], obrasAll:null, ensambladores:[],
   q:'', homeTab:'activas', anual:null, anio:null, obra:null, items:[], loadingObra:false,
   f:{estado:'PEND', piso:'', op:'', anio:'', q:''}, limit:300,
-  sel:new Set(), detailId:null, draft:null, live:false
+  sel:new Set(), detailId:null, draft:null, live:false, com:new Map()
 };
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
 
@@ -715,7 +743,7 @@ async function openObra(name, fromPop, anio){
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
   window.scrollTo(0,0);
-  try{ S.items = await API.obra(name); }
+  try{ S.items = await API.obra(name); await loadComercial(); }
   catch(e){ toast('Error al cargar la obra: '+e.message, true); return; }
   if(S.view !== 'obra' || S.obra !== name) return;
   S.items.sort((a,b) => nat(a.op_instalacion,b.op_instalacion) || nat(a.item,b.item) || a.id-b.id);
@@ -738,6 +766,16 @@ function onPop(ev){
   else { S.view='home'; S.obra=null; S.sel.clear(); S.detailId=null; S.draft=null; document.body.style.overflow=''; closeSheet(); renderHome(); }
 }
 
+async function loadComercial(){
+  S.com = new Map();
+  if(!isGerente() || !S.items.length) return;
+  try{ for(const c of await API.comercial(S.items.map(i => i.id))) S.com.set(c.item_id, c); }
+  catch(e){ toast('No se pudieron leer precios y cobros: '+errMsg(e), true); }
+}
+const com = it => S.com.get(it.id) || {};
+const porCobrarD = it => it.despachado && !com(it).cobrado_despacho;
+const porCobrarI = it => it.instalado && !com(it).cobrado_instalacion;
+
 const isPend = it => !(it.despachado && it.instalado);
 const FILTROS = [
   ['PEND','Pendientes', it => isPend(it)],
@@ -746,7 +784,9 @@ const FILTROS = [
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
   ['DESPACHADO','Por instalar', it => it.despachado && !it.instalado],
   ['INSTALADO','Instalados', it => it.instalado],
-  ['TODOS','Todos', () => true]
+  ['TODOS','Todos', () => true],
+  ['COB_D','Por cobrar despacho', porCobrarD, true],
+  ['COB_I','Por cobrar instalación', porCobrarI, true]
 ];
 
 // Filtros de piso, OP, año y texto (sin el de estado)
@@ -799,10 +839,10 @@ function renderObra(){
 
 function renderChips(){
   const base = S.items.filter(baseMatch);
-  $('#chips').innerHTML = FILTROS.map(([k,t,fn]) => {
+  $('#chips').innerHTML = FILTROS.filter(f => !f[3] || isGerente()).map(([k,t,fn,g]) => {
     const n = base.filter(fn).length;
     const col = STAGES[k] ? `<i style="background:${STAGES[k].c}"></i>` : '';
-    return `<button class="chip ${S.f.estado===k?'on':''}" onclick="setEstado('${k}')">${col}${t} <b>${fmtN(n)}</b></button>`;
+    return `<button class="chip ${S.f.estado===k?'on':''} ${g?'chip-cob':''}" onclick="setEstado('${k}')">${g?'<span class="cob-ic">$</span>':''}${col}${t} <b>${fmtN(n)}</b></button>`;
   }).join('');
 }
 function setEstado(k){ S.f.estado = k; S.limit = 300; renderChips(); renderList(); }
@@ -812,8 +852,13 @@ function procPills(it){
 }
 function rowHTML(it){
   const st = stageOf(it);
-  const sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}</span>`
+  let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}</span>`
             : it.despachado ? `<span class="subtag">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}</span>` : '';
+  if(isGerente() && it.despachado){
+    const c = com(it);
+    const m = (ok, l, n) => `<span class="cobm ${ok?'ok':'pend'}" title="${ok?'Cobrado':'Por cobrar'} ${l}${ok&&n?' · corte '+esc(n):''}">$${l}${ok?' ✓':''}</span>`;
+    sub += `<span class="cobs">${m(c.cobrado_despacho,'D',c.num_corte_despacho)}${it.instalado ? m(c.cobrado_instalacion,'I',c.num_corte_instalacion) : ''}</span>`;
+  }
   return `<div class="row ${S.sel.has(it.id)?'sel':''} ${S.detailId===it.id?'open':''}" data-id="${it.id}">
     <button class="ck" data-ck="${it.id}" aria-label="Seleccionar"><span>${ICON.check}</span></button>
     <div class="c-item"><b>${esc(it.item||'—')}</b><div>${esc(it.ubicacion||'')}</div></div>
@@ -872,6 +917,8 @@ function renderSelbar(){
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
       <button class="btn sm" onclick="sheetDespacho()">Despacho</button>
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>
+      ${isGerente() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
+      <button class="btn sm btn-cob" onclick="sheetCobro('i')">$ Cobro instalación</button>` : ''}
     </div>
     <button class="icon-btn" onclick="clearSel()" title="Quitar selección">${ICON.close}</button>
   </div>`;
@@ -880,7 +927,7 @@ function renderSelbar(){
 async function recargarObra(){
   if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar en el ítem abierto. ¿Descartarlos?')) return;
   const keepSel = new Set(S.sel), keepDet = S.detailId;
-  try{ S.items = await API.obra(S.obra); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
+  try{ S.items = await API.obra(S.obra); await loadComercial(); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
   catch(e){ return toast('Error: '+e.message, true); }
   S.sel = new Set([...keepSel].filter(id => S.items.some(i=>i.id===id)));
   S.detailId = S.items.some(i=>i.id===keepDet) ? keepDet : null;
@@ -892,7 +939,8 @@ async function recargarObra(){
 //  DETALLE DE ÍTEM
 // ════════════════════════════════════════════════════════════════
 const byId = id => S.items.find(i => i.id === id);
-function draftOf(it){ const d = {_dirty:false}; for(const k of EDITABLE) d[k] = it[k] ?? null; if(d.hora_inicio) d.hora_inicio = fmtT(d.hora_inicio); if(d.hora_final) d.hora_final = fmtT(d.hora_final); return d; }
+const COM_KEYS = ['precio','cobrado_despacho','fecha_corte_despacho','num_corte_despacho','cobrado_instalacion','fecha_corte_instalacion','num_corte_instalacion'];
+function draftOf(it){ const d = {_dirty:false}; if(isGerente()){ const c = com(it); d.c = {}; for(const k of COM_KEYS) d.c[k] = c[k] ?? null; } for(const k of EDITABLE) d[k] = it[k] ?? null; if(d.hora_inicio) d.hora_inicio = fmtT(d.hora_inicio); if(d.hora_final) d.hora_final = fmtT(d.hora_final); return d; }
 
 function openDetail(id){
   if(S.detailId === id) return;
@@ -973,6 +1021,15 @@ function renderDetail(){
         </div>` : ''}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
+      ${isGerente() && d.c ? `<div class="d-sec sec-cob"><div class="lbl">Precio y cobros <span style="letter-spacing:.1em">solo gerente</span></div>
+        <div class="field" style="margin-bottom:14px"><span class="lbl">Precio unitario</span><input inputmode="numeric" value="${d.c.precio!=null?fmtN(d.c.precio):''}" onchange="cSet('precio', cNum(this.value).v)"></div>
+        ${[['despacho','Despacho', d.despachado],['instalacion','Instalación', d.instalado]].map(([k,t,hecho]) => `
+          <div class="switch"><span>Cobrado ${t.toLowerCase()}${!hecho ? ' <span style="color:var(--dim)">(aún no '+(k==='despacho'?'despachado':'instalado')+')</span>' : ''}</span><button class="tgl ${d.c['cobrado_'+k]?'on':''}" onclick="cToggle('${k}')"></button></div>
+          ${d.c['cobrado_'+k] ? `<div class="fgrid" style="margin-bottom:10px">
+            <div class="field"><span class="lbl">Fecha corte</span><input type="date" value="${esc(d.c['fecha_corte_'+k]||'')}" onchange="cSet('fecha_corte_${k}',this.value||null)"></div>
+            <div class="field"><span class="lbl"># Corte</span><input value="${esc(d.c['num_corte_'+k]||'')}" onchange="cSet('num_corte_${k}',this.value.trim()||null)"></div>
+          </div>` : ''}`).join('')}
+      </div>` : ''}
     </div>
     <div class="d-foot">
       <button class="btn" onclick="dDiscard()" ${d._dirty?'':'disabled style="opacity:.4"'}>Descartar</button>
@@ -983,6 +1040,13 @@ function renderDetail(){
 }
 
 function dSet(k, v){ S.draft[k] = v; S.draft._dirty = true; renderDetail(); }
+function cSet(k, v){ S.draft.c[k] = v; S.draft._dirty = true; renderDetail(); }
+function cToggle(k){
+  const c = S.draft.c;
+  if(c['cobrado_'+k]){ c['cobrado_'+k] = false; c['fecha_corte_'+k] = null; c['num_corte_'+k] = null; }
+  else { c['cobrado_'+k] = true; c['fecha_corte_'+k] = c['fecha_corte_'+k] || today(); }
+  S.draft._dirty = true; renderDetail();
+}
 function dNow(which){
   if(which==='inicio'){ if(!S.draft.ensamblador) return toast('Primero elige el ensamblador', true); S.draft.dia_inicio = today(); S.draft.hora_inicio = nowTime(); }
   else { S.draft.dia_final = today(); S.draft.hora_final = nowTime(); }
@@ -1016,10 +1080,22 @@ async function dSave(){
   }
   const ns = deriveStatus({...it, ...patch});
   if(ns !== it.status) patch.status = ns;
-  if(!Object.keys(patch).length){ d._dirty=false; return renderDetail(); }
+  let cpatch = null;
+  if(d.c){
+    for(const k of ['despacho','instalacion']) if(d.c['cobrado_'+k] && !d.c['fecha_corte_'+k]) return toast('Falta la fecha de corte del cobro de '+(k==='despacho'?'despacho':'instalación'), true);
+    const c0 = com(it);
+    for(const k of COM_KEYS) if((d.c[k] ?? null) !== (c0[k] ?? null)){ cpatch = cpatch || {}; cpatch[k] = d.c[k]; }
+  }
+  if(!Object.keys(patch).length && !cpatch){ d._dirty=false; return renderDetail(); }
   try{
-    const rows = await API.update([it.id], patch);
-    mergeRows(rows.length ? rows : [{...it, ...patch}]);
+    if(Object.keys(patch).length){
+      const rows = await API.update([it.id], patch);
+      mergeRows(rows.length ? rows : [{...it, ...patch}]);
+    }
+    if(cpatch){
+      const rc = await API.upsertComercial([{item_id: it.id, ...cpatch}]);
+      rc.forEach(r => S.com.set(r.item_id, r));
+    }
     S.draft = draftOf(byId(it.id));
     toast('✓ Ítem guardado');
     refreshAfterChange();
@@ -1648,6 +1724,49 @@ async function migEjecutar(){
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; });
   M.estado = 'listo'; M.confirmTxt = ''; M.backup = false;
   renderCarga();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  COBROS EN GRUPO (solo gerente)
+// ════════════════════════════════════════════════════════════════
+function sheetCobro(tipo){
+  if(!isGerente()) return;
+  const k = tipo === 'd' ? 'despacho' : 'instalacion';
+  const T = tipo === 'd' ? 'despacho' : 'instalación';
+  const items = selItems();
+  const aptos = items.filter(i => tipo === 'd' ? i.despachado : i.instalado);
+  const noAptos = items.length - aptos.length;
+  const ya = aptos.filter(i => com(i)['cobrado_'+k]).length;
+  const valor = aptos.reduce((a,i) => a + (Number(com(i).precio)||0), 0);
+  const sinPrecio = aptos.filter(i => com(i).precio == null).length;
+  const body = `
+    <div class="seg wide" id="cobModo"><button class="on" data-v="reg">Registrar cobro</button><button data-v="quitar">Quitar cobro</button></div>
+    <div id="cobCampos" class="fgrid"><div class="field"><span class="lbl">Fecha corte</span><input type="date" id="gFecha" value="${today()}"></div>
+      <div class="field"><span class="lbl"># Corte</span><input id="gCorte" placeholder="Ej. 5"></div></div>
+    ${warn(noAptos, tipo==='d' ? 'no están despachados y se omitirán.' : 'no están instalados y se omitirán.')}
+    ${warn(ya, 'ya tenían cobro de '+T+'; se reemplazará la fecha y el corte.')}
+    <div class="summary">${fmtN(aptos.length)} ítems · valor total <b>$${fmtN(valor)}</b>${sinPrecio ? ` · ${fmtN(sinPrecio)} sin precio` : ''}</div>`;
+  openSheet('Cobro de '+T, subSel(items.length), body, `Aplicar a ${fmtN(aptos.length)}`, async () => {
+    if(!aptos.length){ toast('Ningún ítem seleccionado está '+(tipo==='d'?'despachado':'instalado'), true); return false; }
+    const quitar = document.querySelector('#cobModo .on').dataset.v === 'quitar';
+    let patch;
+    if(quitar) patch = {['cobrado_'+k]:false, ['fecha_corte_'+k]:null, ['num_corte_'+k]:null};
+    else {
+      const f = $('#gFecha').value, n = $('#gCorte').value.trim();
+      if(!f){ toast('Falta la fecha de corte', true); return false; }
+      if(!n){ toast('Falta el número de corte', true); return false; }
+      patch = {['cobrado_'+k]:true, ['fecha_corte_'+k]:f, ['num_corte_'+k]:n};
+    }
+    const rows = await API.upsertComercial(aptos.map(i => ({item_id:i.id, ...patch})));
+    rows.forEach(r => S.com.set(r.item_id, r));
+    S.sel.clear(); refreshAfterChange();
+    toast(`✓ ${quitar ? 'Cobro quitado' : 'Cobro registrado'} en ${fmtN(rows.length)} ítems`);
+  });
+  document.querySelectorAll('#cobModo button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#cobModo button').forEach(x => x.classList.remove('on')); b.classList.add('on');
+    $('#cobCampos').style.display = b.dataset.v === 'quitar' ? 'none' : '';
+    $('#shOk').textContent = (b.dataset.v === 'quitar' ? 'Quitar en ' : 'Aplicar a ') + fmtN(aptos.length);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
