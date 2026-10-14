@@ -353,7 +353,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -549,8 +549,10 @@ const S = {
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
 const rolEs = (...r) => !!S.perfil && r.includes(S.perfil.rol);
 const puedeRegistrar = () => rolEs('gerente','asistente');   // procesos, ensamble, despacho, instalación
-const veCobros = () => rolEs('gerente','cobros');            // marcas de cobro (cobros no ve precios)
-const veDash = () => rolEs('gerente','consulta');            // dashboard
+const veCobros = () => rolEs('gerente','cobros','consulta');  // ve las marcas de cobro
+const registraCobros = () => rolEs('gerente','cobros');      // marca / quita cobros (cobros no ve precios)
+const vePrecio = () => rolEs('gerente','consulta');          // precios y exportar
+const veDash = vePrecio;                                     // dashboard
 const puedeSeleccionar = () => puedeRegistrar() || rolEs('cobros');
 
 // ════════════════════════════════════════════════════════════════
@@ -624,8 +626,8 @@ function shell(inner){
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(S.perfil.rol)}</span></div>
       ${veDash() ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
       ${isGerente() ? `
-        <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>
-        <button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
+        <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
+      ${vePrecio() ? `<button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
       <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button>
     </div>
   </header>
@@ -1009,7 +1011,7 @@ function onPop(ev){
 async function loadComercial(){
   S.com = new Map();
   if(!veCobros() || !S.items.length) return;
-  try{ for(const c of await (isGerente() ? API.comercial : API.cobros).call(API, S.items.map(i => i.id))) S.com.set(c.item_id, c); }
+  try{ for(const c of await (vePrecio() ? API.comercial : API.cobros).call(API, S.items.map(i => i.id))) S.com.set(c.item_id, c); }
   catch(e){ toast('No se pudieron leer precios y cobros: '+errMsg(e), true); }
 }
 const com = it => S.com.get(it.id) || {};
@@ -1160,7 +1162,7 @@ function renderSelbar(){
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
       <button class="btn sm" onclick="sheetDespacho()">Despacho</button>
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
-      ${veCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
+      ${registraCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
       <button class="btn sm btn-cob" onclick="sheetCobro('i')">$ Cobro instalación</button>` : ''}
     </div>
     <button class="icon-btn" onclick="clearSel()" title="Quitar selección">${ICON.close}</button>
@@ -1266,17 +1268,17 @@ function renderDetail(){
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
       </fieldset>
-      ${veCobros() && d.c ? `<div class="d-sec sec-cob"><div class="lbl">${isGerente() ? 'Precio y cobros <span style="letter-spacing:.1em">solo gerente</span>' : 'Cobros'}</div>
-        ${isGerente() ? `<div class="field" style="margin-bottom:14px"><span class="lbl">Precio unitario</span><input inputmode="numeric" value="${d.c.precio!=null?fmtN(d.c.precio):''}" onchange="cSet('precio', cNum(this.value).v)"></div>` : ''}
+      ${veCobros() && d.c ? `<fieldset class="d-fs" ${registraCobros() ? '' : 'disabled'}><div class="d-sec sec-cob"><div class="lbl">${vePrecio() ? 'Precio y cobros' : 'Cobros'}</div>
+        ${vePrecio() ? `<div class="field" style="margin-bottom:14px"><span class="lbl">Precio unitario</span><input inputmode="numeric" value="${d.c.precio!=null?fmtN(d.c.precio):''}" onchange="cSet('precio', cNum(this.value).v)"></div>` : ''}
         ${[['despacho','Despacho', d.despachado],['instalacion','Instalación', d.instalado]].map(([k,t,hecho]) => `
           <div class="switch"><span>Cobrado ${t.toLowerCase()}${!hecho ? ' <span style="color:var(--dim)">(aún no '+(k==='despacho'?'despachado':'instalado')+')</span>' : ''}</span><button class="tgl ${d.c['cobrado_'+k]?'on':''}" onclick="cToggle('${k}')"></button></div>
           ${d.c['cobrado_'+k] ? `<div class="fgrid" style="margin-bottom:10px">
             <div class="field"><span class="lbl">Fecha corte</span><input type="date" value="${esc(d.c['fecha_corte_'+k]||'')}" onchange="cSet('fecha_corte_${k}',this.value||null)"></div>
             <div class="field"><span class="lbl"># Corte</span><input value="${esc(d.c['num_corte_'+k]||'')}" onchange="cSet('num_corte_${k}',this.value.trim()||null)"></div>
           </div>` : ''}`).join('')}
-      </div>` : ''}
+      </div></fieldset>` : ''}
     </div>
-    <div class="d-foot" ${puedeRegistrar() || veCobros() ? '' : 'style="display:none"'}>
+    <div class="d-foot" ${puedeRegistrar() || registraCobros() ? '' : 'style="display:none"'}>
       <button class="btn" onclick="dDiscard()" ${d._dirty?'':'disabled style="opacity:.4"'}>Descartar</button>
       <button class="btn primary" onclick="dSave()" ${d._dirty?'':'disabled'}>Guardar</button>
     </div>
@@ -1985,7 +1987,7 @@ async function migEjecutar(){
 //  COBROS EN GRUPO (solo gerente)
 // ════════════════════════════════════════════════════════════════
 function sheetCobro(tipo){
-  if(!veCobros()) return;
+  if(!registraCobros()) return;
   const k = tipo === 'd' ? 'despacho' : 'instalacion';
   const T = tipo === 'd' ? 'despacho' : 'instalación';
   const items = selItems();
@@ -2000,7 +2002,7 @@ function sheetCobro(tipo){
       <div class="field"><span class="lbl"># Corte</span><input id="gCorte" placeholder="Ej. 5"></div></div>
     ${warn(noAptos, tipo==='d' ? 'no están despachados y se omitirán.' : 'no están instalados y se omitirán.')}
     ${warn(ya, 'ya tenían cobro de '+T+'; se reemplazará la fecha y el corte.')}
-    <div class="summary">${fmtN(aptos.length)} ítems${isGerente() ? ` · valor total <b>$${fmtN(valor)}</b>${sinPrecio ? ` · ${fmtN(sinPrecio)} sin precio` : ''}` : ''}</div>`;
+    <div class="summary">${fmtN(aptos.length)} ítems${vePrecio() ? ` · valor total <b>$${fmtN(valor)}</b>${sinPrecio ? ` · ${fmtN(sinPrecio)} sin precio` : ''}` : ''}</div>`;
   openSheet('Cobro de '+T, subSel(items.length), body, `Aplicar a ${fmtN(aptos.length)}`, async () => {
     if(!aptos.length){ toast('Ningún ítem seleccionado está '+(tipo==='d'?'despachado':'instalado'), true); return false; }
     const quitar = document.querySelector('#cobModo .on').dataset.v === 'quitar';
@@ -2084,7 +2086,7 @@ function onRemoteChange(p){
 // ════════════════════════════════════════════════════════════════
 function loadScript(src){ return new Promise((ok,ko) => { const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error('No se pudo cargar '+src)); document.head.appendChild(s); }); }
 async function exportar(prefijo){
-  if(!isGerente()) return false;
+  if(!vePrecio()) return false;
   if(typeof prefijo !== 'string') prefijo = 'BASE';
   toast('Preparando el Excel… puede tardar unos segundos');
   try{
