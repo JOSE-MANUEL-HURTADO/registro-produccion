@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Producción">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0c10">
+<title>Dashboard Producción</title>
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="lib/supabase.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#181818;--surface:#222222;--surface2:#2c2c2c;--border:#3a3a3a;
+  --accent:#ffffff;--accent2:#c0c0c0;--accent3:#888888;--accent4:#aaaaaa;
+  --cola:#c8a84b;--text:#f0f0f0;--muted:#686868;
+  --safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{overscroll-behavior:none;}
+body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;
+  padding:calc(var(--safe-top)+16px) 16px calc(var(--safe-bottom)+16px);
+  background-image:
+    linear-gradient(135deg,rgba(255,255,255,0.015) 0%,transparent 60%),
+    repeating-linear-gradient(0deg,transparent,transparent 60px,rgba(255,255,255,0.015) 60px,rgba(255,255,255,0.015) 61px);}
+
+/* ── ELÍPTICA BRAND LOGO ── */
+.brand-logo{display:flex;align-items:center;gap:12px;margin-bottom:4px;}
+.brand-symbol{width:40px;height:35px;flex-shrink:0;}
+.brand-text{display:flex;flex-direction:column;gap:1px;}
+.brand-name{font-family:'Jost',sans-serif;font-size:32px;font-weight:300;letter-spacing:0.3em;color:#ffffff;line-height:1;text-transform:uppercase;}
+.brand-reg{font-size:12px;vertical-align:super;letter-spacing:0;opacity:0.6;margin-left:1px;}
+.brand-descriptor{font-family:'Jost',sans-serif;font-size:11px;letter-spacing:0.3em;color:var(--muted);text-transform:uppercase;margin-top:4px;}
+.header-sub-label{color:var(--muted);font-size:10px;margin-top:6px;letter-spacing:0.18em;text-transform:uppercase;padding-left:48px;}
+
+header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;}
+.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.filter-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.filter-group label{color:var(--muted);font-size:11px;letter-spacing:0.15em;text-transform:uppercase;}
+select{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:0px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:22px;cursor:pointer;outline:none;-webkit-appearance:none;}
+.btn-update{display:flex;align-items:center;gap:6px;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:0px;padding:8px 16px;font-family:'Jost',sans-serif;font-size:12px;font-weight:500;cursor:pointer;letter-spacing:0.15em;text-transform:uppercase;transition:all 0.2s;white-space:nowrap;}
+.btn-update:hover{background:var(--accent);color:#181818;border-color:var(--accent);}
+.btn-update:active{transform:scale(0.97);}
+.btn-update svg{width:13px;height:13px;flex-shrink:0;}
+
+/* YEAR CHIPS */
+.year-chips-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:0px;}
+.year-chips-label{font-size:10px;color:var(--muted);letter-spacing:0.2em;text-transform:uppercase;white-space:nowrap;margin-right:4px;font-family:'Jost',sans-serif;}
+.year-chip{padding:4px 12px;border-radius:0px;font-family:'Jost',sans-serif;font-size:12px;letter-spacing:0.1em;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:none;transition:all 0.18s;user-select:none;-webkit-user-select:none;}
+.year-chip:hover{border-color:var(--accent2);color:var(--text);}
+.year-chip.active{background:var(--accent);color:#181818;border-color:var(--accent);font-weight:600;}
+.year-chip.all-chip.active{background:var(--surface2);color:var(--text);border-color:var(--border);}
+.year-chip:active{transform:scale(0.95);}
+.year-filter-info{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap;}
+
+/* DATA BAR */
+.data-bar{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;font-size:12px;flex-wrap:wrap;}
+.data-bar-info{color:var(--muted);display:flex;align-items:center;gap:8px;}
+.data-bar-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(1.3);}}
+.data-bar-name{color:var(--text);font-weight:600;}
+
+/* KPI GRID — 4 cols top row */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+@media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:0px;padding:14px 12px;position:relative;overflow:hidden;transition:border-color 0.2s,transform 0.15s;cursor:pointer;user-select:none;-webkit-user-select:none;}
+.kpi:active{transform:scale(0.97);}
+.kpi:hover{border-color:rgba(255,255,255,0.3);}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--kpi-color,var(--accent));opacity:0.7;}
+.kpi-label{font-size:11px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;font-family:'Jost',sans-serif;}
+.kpi-value{font-family:'Jost',sans-serif;font-size:26px;font-weight:300;line-height:1;letter-spacing:0.02em;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;letter-spacing:0.05em;}
+.kpi-icon{position:absolute;top:10px;right:10px;font-size:20px;opacity:1;}
+.kpi-hint{position:absolute;bottom:4px;right:6px;font-size:9px;color:var(--muted);opacity:0;transition:opacity 0.2s;letter-spacing:0.1em;}
+.kpi:hover .kpi-hint{opacity:0.6;}
+
+/* EN COLA KPI — muted amber alert */
+.kpi-cola{background:var(--surface);border:1px solid rgba(200,168,75,0.25);border-radius:0px;padding:14px 12px;position:relative;overflow:hidden;transition:border-color 0.2s,transform 0.15s;cursor:pointer;user-select:none;-webkit-user-select:none;}
+.kpi-cola::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--cola);opacity:0.6;}
+.kpi-cola:hover{border-color:rgba(200,168,75,0.5);}
+.kpi-cola:active{transform:scale(0.97);}
+.kpi-cola .kpi-value{color:var(--cola);}
+.kpi-cola-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(200,168,75,0.08);border:1px solid rgba(200,168,75,0.2);border-radius:0px;padding:1px 6px;font-size:9px;color:var(--cola);letter-spacing:0.15em;margin-bottom:5px;font-family:'Jost',sans-serif;text-transform:uppercase;}
+.kpi-cola-badge::before{content:'—';font-size:9px;}
+
+/* Second KPI row */
+.kpi-grid-2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+@media(max-width:700px){.kpi-grid-2{grid-template-columns:repeat(2,1fr);}}
+
+/* EN COLA alert banner */
+.cola-banner{background:rgba(200,168,75,0.05);border:1px solid rgba(200,168,75,0.2);border-radius:0px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.cola-banner-left{display:flex;align-items:center;gap:10px;}
+.cola-banner-icon{font-size:22px;}
+.cola-banner-title{font-family:'Jost',sans-serif;font-size:22px;font-weight:800;color:var(--cola);}
+.cola-banner-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.cola-banner-right{display:flex;gap:16px;flex-wrap:wrap;}
+.cola-stat{text-align:right;}
+.cola-stat-val{font-family:'Jost',sans-serif;font-size:22px;font-weight:800;color:var(--cola);}
+.cola-stat-label{font-size:11px;color:var(--muted);letter-spacing:0.08em;}
+
+/* CHARTS */
+.charts-row{display:grid;gap:12px;margin-bottom:12px;}
+.row-2{grid-template-columns:1fr 1fr;}
+.row-3{grid-template-columns:2fr 1fr 1fr;}
+.row-4{grid-template-columns:2fr 1fr 1fr 1fr;}
+.row-2-1{grid-template-columns:2fr 1fr;}
+@media(max-width:700px){.row-2,.row-3,.row-4,.row-2-1{grid-template-columns:1fr;}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:0px;padding:16px;overflow:hidden;}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;}
+.card-title{font-family:'Jost',sans-serif;font-size:12px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent2);}
+.card-badge{background:transparent;border:1px solid var(--border);border-radius:0px;font-size:10px;color:var(--muted);padding:2px 8px;white-space:nowrap;letter-spacing:0.1em;}
+canvas{width:100%!important;}
+.table-wrap{overflow-x:auto;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.table-wrap::-webkit-scrollbar{width:3px;}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:0px;}
+table{width:100%;border-collapse:collapse;font-size:11px;}
+th{background:var(--surface2);color:var(--muted);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;padding:7px 8px;text-align:left;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--border);cursor:pointer;}
+td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);}
+tr:hover td{background:rgba(255,255,255,0.03);}
+.bar-cell{display:flex;align-items:center;gap:6px;}
+.mini-bar{height:2px;border-radius:0px;background:var(--accent);opacity:0.5;}
+.pct-good{color:var(--accent);} .pct-mid{color:#c8a84b;} .pct-bad{color:var(--accent3);}
+.search-input{background:var(--surface2);border:1px solid var(--border);border-radius:0px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;padding:5px 9px;outline:none;width:150px;}
+.search-input:focus{border-color:var(--accent);}
+.tab-bar{display:flex;gap:4px;}
+.tab{padding:3px 12px;border-radius:0px;font-size:11px;letter-spacing:0.1em;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:none;transition:all 0.2s;font-family:'Jost',sans-serif;text-transform:uppercase;}
+.tab.active{background:var(--accent);color:#181818;border-color:var(--accent);font-weight:600;}
+.donut-wrap{position:relative;}
+.donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;}
+.donut-center .big{font-family:'Jost',sans-serif;font-size:22px;font-weight:300;color:var(--accent);letter-spacing:0.05em;}
+.donut-center .small{font-size:10px;color:var(--muted);letter-spacing:0.1em;margin-top:1px;}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:12px;color:var(--muted);}
+.legend-item{display:flex;align-items:center;gap:4px;}
+.legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.clickable-row{cursor:pointer;}
+.clickable-row:hover td{background:rgba(255,255,255,0.03)!important;}
+.clickable-row td:first-child{color:var(--accent2);}
+.cola-cell{color:var(--cola);font-weight:600;}
+.st-desp{color:var(--accent2);} .st-ensam{color:var(--accent3);} .st-cola{color:var(--cola);}
+footer{text-align:center;color:var(--muted);font-size:10px;letter-spacing:0.15em;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-transform:uppercase;}
+
+/* MODALS */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;backdrop-filter:blur(4px);align-items:flex-start;justify-content:center;padding:calc(var(--safe-top)+10px) 10px calc(var(--safe-bottom)+10px);overflow-y:auto;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:0px;width:100%;max-width:940px;padding:20px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.7);margin:auto;}
+.modal-close{position:absolute;top:14px;right:14px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:0px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;z-index:2;transition:all 0.2s;}
+.modal-close:hover{background:var(--accent);color:#181818;border-color:var(--accent);}
+.modal-title{font-family:'Jost',sans-serif;font-size:22px;font-weight:400;margin-bottom:3px;padding-right:36px;letter-spacing:0.15em;text-transform:uppercase;}
+.modal-subtitle{font-size:11px;color:var(--muted);letter-spacing:0.15em;margin-bottom:12px;text-transform:uppercase;}
+.modal-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;}
+@media(max-width:600px){.modal-kpis{grid-template-columns:repeat(3,1fr);}}
+.modal-kpi{background:var(--surface2);border:1px solid var(--border);border-radius:0px;padding:10px 12px;}
+.modal-kpi-label{font-size:11px;color:var(--muted);letter-spacing:0.2em;text-transform:uppercase;margin-bottom:4px;font-family:'Jost',sans-serif;}
+.modal-kpi-val{font-family:'Jost',sans-serif;font-size:16px;font-weight:300;}
+.modal-kpi-cola{background:rgba(200,168,75,0.06);border:1px solid rgba(200,168,75,0.25);border-radius:0px;padding:10px 12px;}
+.modal-card{background:var(--surface2);border:1px solid var(--border);border-radius:0px;padding:14px;}
+.modal-card-title{font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.modal-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+@media(max-width:600px){.modal-grid-2{grid-template-columns:1fr;}}
+.modal-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;}
+@media(max-width:600px){.modal-grid-3{grid-template-columns:1fr;}}
+.modal-cola-bar{background:rgba(200,168,75,0.06);border:1px solid rgba(200,168,75,0.2);border-radius:0px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.modal-cola-bar-val{font-family:'Jost',sans-serif;font-size:22px;font-weight:300;color:var(--cola);}
+.modal-cola-bar-text{font-size:12px;color:var(--muted);line-height:1.5;}
+
+/* KPI DRILL MODAL */
+.kpi-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:2000;backdrop-filter:blur(4px);align-items:flex-start;justify-content:center;padding:calc(var(--safe-top)+10px) 10px calc(var(--safe-bottom)+10px);overflow-y:auto;}
+.kpi-modal-overlay.open{display:flex;}
+.kpi-modal{background:var(--surface);border:1px solid var(--border);border-radius:0px;width:100%;max-width:1000px;padding:22px;position:relative;box-shadow:0 28px 70px rgba(0,0,0,0.8);margin:auto;}
+.kpi-modal-close{position:absolute;top:14px;right:14px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:0px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;transition:all 0.2s;z-index:2;}
+.kpi-modal-close:hover{background:var(--accent);color:#181818;border-color:var(--accent);}
+.kpi-modal-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-right:36px;}
+.kpi-modal-icon{width:36px;height:36px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+.kpi-modal-title{font-family:'Jost',sans-serif;font-size:22px;font-weight:400;letter-spacing:0.15em;text-transform:uppercase;}
+.kpi-modal-subtitle{font-size:11px;color:var(--muted);letter-spacing:0.12em;margin-top:2px;text-transform:uppercase;}
+.kpi-nav{display:flex;gap:0px;margin-bottom:14px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;}
+.kpi-nav::-webkit-scrollbar{display:none;}
+.kpi-nav-tab{padding:7px 16px;font-family:'Jost',sans-serif;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border:none;border-right:1px solid var(--border);background:none;color:var(--muted);border-bottom:1px solid transparent;transition:all 0.2s;margin-bottom:-1px;white-space:nowrap;}
+.kpi-nav-tab:hover{color:var(--text);}
+.kpi-nav-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(255,255,255,0.03);}
+.kpi-summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:14px;}
+.kpi-summary-card{background:var(--surface2);border:1px solid var(--border);border-radius:0px;padding:12px 14px;}
+.kpi-summary-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.2em;margin-bottom:4px;font-family:'Jost',sans-serif;}
+.kpi-summary-val{font-family:'Jost',sans-serif;font-size:22px;font-weight:300;color:var(--accent);}
+.drill-search{background:var(--surface2);border:1px solid var(--border);border-radius:0px;color:var(--text);font-family:'DM Mono',monospace;font-size:22px;padding:6px 12px;outline:none;width:100%;max-width:280px;margin-bottom:10px;}
+.drill-search:focus{border-color:rgba(255,255,255,0.4);}
+.drill-table-wrap{overflow-x:auto;max-height:340px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.drill-table-wrap::-webkit-scrollbar{width:3px;}
+.drill-table-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:0px;}
+.drill-table{width:100%;border-collapse:collapse;font-size:11px;}
+.drill-table th{background:var(--surface2);color:var(--muted);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;padding:7px 9px;text-align:left;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--border);font-family:'Jost',sans-serif;}
+.drill-table td{padding:6px 9px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.drill-table tr:hover td{background:rgba(255,255,255,0.02);}
+.drill-chart-wrap{background:var(--surface2);border:1px solid var(--border);border-radius:0px;padding:14px;margin-bottom:14px;}
+.prog-wrap{display:flex;align-items:center;gap:7px;}
+.prog-bar-bg{flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:0px;min-width:50px;}
+.prog-bar-fill{height:100%;border-radius:0px;}
+
+/* UPLOAD */
+.upload-overlay{display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.92);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px;}
+.upload-overlay.open{display:flex;}
+.upload-box{background:var(--surface);border:1px solid var(--border);border-radius:0px;padding:32px 24px;max-width:440px;width:100%;text-align:center;position:relative;}
+.upload-box-close{position:absolute;top:14px;right:14px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:0px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;transition:all 0.2s;}
+.upload-box-close:hover{background:var(--accent);color:#181818;border-color:var(--accent);}
+.upload-icon{font-size:36px;margin-bottom:12px;display:block;opacity:0.6;}
+.upload-title{font-family:'Jost',sans-serif;font-size:22px;font-weight:400;margin-bottom:6px;letter-spacing:0.2em;text-transform:uppercase;}
+.upload-sub{font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.7;letter-spacing:0.05em;}
+.upload-drop{border:1px solid var(--border);border-radius:0px;padding:22px;margin-bottom:12px;cursor:pointer;transition:all 0.2s;}
+.upload-drop.dragover{border-color:var(--accent);background:rgba(255,255,255,0.03);}
+.upload-drop p{font-size:12px;color:var(--muted);margin-top:6px;letter-spacing:0.05em;}
+.upload-drop strong{color:var(--accent2);}
+.btn-choose{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#181818;border:none;border-radius:0px;padding:10px 20px;font-family:'Jost',sans-serif;font-size:22px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;width:100%;justify-content:center;transition:all 0.2s;}
+.btn-choose:hover{background:var(--accent2);}
+#fileInput{display:none;}
+.upload-progress{display:none;margin-top:14px;}
+.upload-progress.show{display:block;}
+.progress-bar{height:1px;background:var(--border);border-radius:0px;overflow:hidden;margin:6px 0;}
+.progress-fill{height:100%;background:var(--accent);border-radius:0px;transition:width 0.3s;width:0%;}
+.progress-label{font-size:11px;color:var(--muted);letter-spacing:0.1em;}
+.upload-error{display:none;margin-top:10px;padding:9px 12px;background:rgba(130,50,50,0.15);border:1px solid rgba(130,50,50,0.4);border-radius:0px;font-size:12px;color:#cc8888;}
+.upload-error.show{display:block;}
+.upload-success{display:none;margin-top:10px;padding:9px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:0px;font-size:12px;color:var(--accent2);}
+.upload-success.show{display:block;}
+.live-spin{width:14px;height:14px;border:1px solid #3a3a3a;border-top-color:#fff;border-radius:50%;display:inline-block;animation:livesp .8s linear infinite}@keyframes livesp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-area">
+    <!-- Elíptica logo: símbolo geométrico + wordmark, según manual de identidad -->
+    <div class="brand-logo">
+      <div class="brand-text">
+        <div class="brand-name">EL&Iacute;PTICA<span class="brand-reg">&reg;</span></div>
+        <div class="brand-descriptor">CERRAMIENTOS TRANSLÚCIDOS</div>
+      </div>
+    </div>
+    <p id="headerSub" class="header-sub-label">ÁRTICA · DASHBOARD DE PRODUCCIÓN · EN VIVO</p>
+  </div>
+  <div class="header-actions">
+    <div class="filter-group">
+      <label>M&Eacute;TRICA</label>
+      <select id="metricFilter" onchange="applyFilters()">
+        <option value="items">Unidades</option>
+        <option value="m2">M&sup2;</option>
+      </select>
+    </div>
+    <a class="btn-update" href="./" style="text-decoration:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      REGISTRO
+    </a>
+    <button class="btn-update" id="btnLive" onclick="liveLoad(true)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10"/></svg>
+      ACTUALIZAR
+    </button>
+  </div>
+</header>
+
+<div class="year-chips-bar">
+  <span class="year-chips-label">A&Ntilde;O</span>
+  <button class="year-chip all-chip active" onclick="toggleAllYears(this)">TODOS</button>
+  <div id="yearChipsContainer" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+  <span class="year-filter-info" id="yearFilterInfo"></span>
+</div>
+
+<div class="data-bar">
+  <div class="data-bar-info">
+    <div class="data-bar-dot"></div>
+    <span>Fuente: <span class="data-bar-name" id="dbFileName">Base de datos en vivo</span></span>
+    <span style="color:var(--muted)" id="dbLoadTime"></span>
+  </div>
+  <span style="font-size:10px;color:var(--muted)">Doble clic en KPI &middot; Clic en obra para detalle</span>
+</div>
+
+<!-- KPI ROW 1 — 4 cols -->
+<div class="kpi-grid">
+  <div class="kpi" style="--kpi-color:var(--accent)" onclick="openKpiModal('items')">
+    <div class="kpi-icon">&#128230;</div><div class="kpi-label">Total Unidades</div>
+    <div class="kpi-value" id="kpi-items">-</div><div class="kpi-sub" id="kpi-items-sub">fabricadas</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+  <div class="kpi" style="--kpi-color:var(--accent2)" onclick="openKpiModal('m2')">
+    <div class="kpi-icon">&#128208;</div><div class="kpi-label">M&sup2; Total</div>
+    <div class="kpi-value" id="kpi-m2">-</div><div class="kpi-sub">metros cuadrados</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+  <div class="kpi" style="--kpi-color:var(--accent3)" onclick="openKpiModal('precio')">
+    <div class="kpi-icon">&#128176;</div><div class="kpi-label">Valor Total</div>
+    <div class="kpi-value" id="kpi-precio">-</div><div class="kpi-sub">pesos colombianos</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+  <div class="kpi" style="--kpi-color:#f0b429" onclick="openKpiModal('obras')">
+    <div class="kpi-icon">&#127959;</div><div class="kpi-label">Obras</div>
+    <div class="kpi-value" id="kpi-obras">-</div><div class="kpi-sub">proyectos activos</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+</div>
+
+<div class="kpi-grid-2">
+  <div class="kpi-cola" onclick="openKpiModal('cola')">
+    <div class="kpi-icon" style="opacity:0.35">&#9203;</div>
+    <div class="kpi-cola-badge">PENDIENTE FABRICAR</div>
+    <div class="kpi-label" style="color:rgba(240,180,41,0.7)">En Cola</div>
+    <div class="kpi-value" id="kpi-cola">-</div>
+    <div class="kpi-sub" id="kpi-cola-sub">unidades sin fabricar</div>
+    <span class="kpi-hint" style="color:var(--cola)">doble clic</span>
+  </div>
+  <div class="kpi" style="--kpi-color:var(--accent2)" onclick="openKpiModal('produccion')">
+    <div class="kpi-icon">&#9881;</div>
+    <div class="kpi-label">En Producci&oacute;n</div>
+    <div class="kpi-value" id="kpi-produccion">-</div>
+    <div class="kpi-sub" id="kpi-produccion-sub">unidades ensamblando</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+  <div class="kpi" style="--kpi-color:var(--accent4)" onclick="openKpiModal('inst')">
+    <div class="kpi-icon">&#9989;</div><div class="kpi-label">Instalados</div>
+    <div class="kpi-value" id="kpi-inst">-</div><div class="kpi-sub">unidades instaladas</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+  <div class="kpi" style="--kpi-color:var(--accent)" onclick="openKpiModal('pct')">
+    <div class="kpi-icon">&#128202;</div><div class="kpi-label">% Instalaci&oacute;n</div>
+    <div class="kpi-value" id="kpi-pct">-</div><div class="kpi-sub">tasa instalaci&oacute;n</div>
+    <span class="kpi-hint">doble clic</span>
+  </div>
+</div>
+
+<!-- EN COLA BANNER (visible when there are units in cola) -->
+<div class="cola-banner" id="colaBanner" style="display:none">
+  <div class="cola-banner-left">
+    <div class="cola-banner-icon">&#9203;</div>
+    <div>
+      <div class="cola-banner-title">UNIDADES EN COLA</div>
+      <div class="cola-banner-sub" id="colaBannerSub">obras con unidades pendientes de fabricar</div>
+    </div>
+  </div>
+  <div class="cola-banner-right">
+    <div class="cola-stat"><div class="cola-stat-val" id="colaBannerTotal">-</div><div class="cola-stat-label">TOTAL EN COLA</div></div>
+    <div class="cola-stat"><div class="cola-stat-val" id="colaBannerObras">-</div><div class="cola-stat-label">OBRAS AFECTADAS</div></div>
+    <div class="cola-stat"><div class="cola-stat-val" id="colaBannerPct">-</div><div class="cola-stat-label">% DEL TOTAL</div></div>
+  </div>
+</div>
+
+<div class="charts-row row-4">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Producci&oacute;n Anual</span>
+      <div class="tab-bar">
+        <button class="tab active" onclick="switchAnualTab('items',this)">Unid.</button>
+        <button class="tab" onclick="switchAnualTab('m2',this)">M&sup2;</button>
+        <button class="tab" onclick="switchAnualTab('precio',this)">Valor</button>
+      </div>
+    </div>
+    <canvas id="anualChart" height="200"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Status Planta</span><span class="card-badge" id="statusYearBadge">TODOS</span></div>
+    <div class="donut-wrap" style="position:relative;height:150px;">
+      <canvas id="statusChart" height="150" style="cursor:pointer"></canvas>
+      <div class="donut-center"><div class="big" id="statusPct">-</div><div class="small">DESPACHADO</div></div>
+    </div>
+    <div class="legend" id="statusLegend"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Instalaci&oacute;n</span><span class="card-badge" id="instYearBadge">TODOS</span></div>
+    <div class="donut-wrap" style="position:relative;height:150px;">
+      <canvas id="instChart" height="150"></canvas>
+      <div class="donut-center"><div class="big" id="instPct">-</div><div class="small">INSTALADO</div></div>
+    </div>
+    <div class="legend" id="instLegend"></div>
+  </div>
+  <div class="card" style="border-color:rgba(240,180,41,0.3)">
+    <div class="card-header"><span class="card-title" style="color:var(--cola)">&#9203; En Cola por Obra</span><span class="card-badge">TOP 10</span></div>
+    <canvas id="colaChart" height="195"></canvas>
+  </div>
+</div>
+
+<div class="charts-row row-2">
+  <div class="card" style="cursor:pointer;" onclick="openMesDrill()" title="Doble clic para ver por obra">
+    <div class="card-header">
+      <span class="card-title">Producci&oacute;n Mensual</span>
+      <span class="card-badge" id="mesYearBadge">TODOS</span>
+    </div>
+    <canvas id="mesChart" height="200"></canvas>
+    <div style="text-align:right;font-size:8px;color:var(--muted);margin-top:4px;letter-spacing:0.05em;">DOBLE CLIC — VER POR OBRA</div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Top Ensambladores</span>
+      <div class="tab-bar" id="ensamTabs">
+        <button class="tab active" onclick="switchEnsamTab('items',this)">Unid.</button>
+        <button class="tab" onclick="switchEnsamTab('m2',this)">M&sup2;</button>
+      </div>
+    </div>
+    <canvas id="ensamChart" height="200"></canvas>
+  </div>
+</div>
+
+<div class="charts-row row-2-1">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Detalle por Obra</span>
+      <input class="search-input" id="searchObra" placeholder="&#128269; buscar..." oninput="filterTable()">
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr>
+        <th onclick="sortTable(0)">OBRA <span id="sort0">&#8597;</span></th>
+        <th onclick="sortTable(1)">UNID <span id="sort1">&#8597;</span></th>
+        <th onclick="sortTable(2)" style="color:var(--cola)">EN COLA <span id="sort2">&#8597;</span></th>
+        <th onclick="sortTable(3)">M&sup2; <span id="sort3">&#8597;</span></th>
+        <th onclick="sortTable(4)">%INST <span id="sort4">&#8597;</span></th>
+      </tr></thead>
+      <tbody id="obraTableBody"></tbody></table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Top Dise&ntilde;os</span></div>
+    <canvas id="disenoChart" height="260"></canvas>
+  </div>
+</div>
+
+<!-- STATUS POR OBRA -->
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header">
+    <span class="card-title">Status Planta por Obra</span>
+    <input class="search-input" id="searchStatus" placeholder="&#128269; buscar..." oninput="filterStatusTable()">
+  </div>
+  <div class="table-wrap">
+    <table><thead><tr>
+      <th onclick="sortStatusTable(0)">OBRA <span id="ss0">&#8597;</span></th>
+      <th onclick="sortStatusTable(1)">TOTAL <span id="ss1">&#8597;</span></th>
+      <th onclick="sortStatusTable(2)">DESPACHADO <span id="ss2">&#8597;</span></th>
+      <th onclick="sortStatusTable(3)">ENSAMBLADO <span id="ss3">&#8597;</span></th>
+      <th onclick="sortStatusTable(4)" style="color:var(--cola)">EN COLA <span id="ss4">&#8597;</span></th>
+      <th onclick="sortStatusTable(5)">%DESP <span id="ss5">&#8597;</span></th>
+    </tr></thead>
+    <tbody id="statusTableBody"></tbody></table>
+  </div>
+</div>
+
+<footer>DASHBOARD PWA &middot; MULTI-A&Ntilde;O &middot; EN COLA VISIBLE &middot; ACTUALIZABLE SIN INTERNET</footer>
+
+<!-- OBRA MODAL -->
+<div class="modal-overlay" id="obraModal" onclick="closeModal(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModalBtn()">&#10005;</button>
+    <div class="modal-title">OBRA <span id="modalTitleName" style="color:var(--accent)"></span></div>
+    <div class="modal-subtitle" id="modalSubtitle"></div>
+    <div class="modal-kpis">
+      <div class="modal-kpi"><div class="modal-kpi-label">Unidades</div><div class="modal-kpi-val" id="mk-items" style="color:var(--accent)">-</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-label">M&sup2;</div><div class="modal-kpi-val" id="mk-m2" style="color:var(--accent2)">-</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-label">Valor</div><div class="modal-kpi-val" id="mk-precio" style="color:var(--accent3)">-</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-label">Instalados</div><div class="modal-kpi-val" id="mk-inst" style="color:var(--accent4)">-</div></div>
+      <div class="modal-kpi"><div class="modal-kpi-label">% Inst.</div><div class="modal-kpi-val" id="mk-pct" style="color:var(--accent)">-</div></div>
+    </div>
+    <!-- EN COLA alert for this obra -->
+    <div class="modal-cola-bar" id="modalColaBar" style="display:none">
+      <span style="font-size:24px">&#9203;</span>
+      <div>
+        <div class="modal-cola-bar-val" id="modalColaVal">-</div>
+        <div class="modal-cola-bar-text">unidades <strong style="color:var(--cola)">EN COLA</strong> &mdash; pendientes de fabricar en esta obra</div>
+      </div>
+    </div>
+    <div class="modal-grid-2" style="margin-bottom:12px;">
+      <div class="modal-card">
+        <div class="modal-card-title">&#128202; Status de Unidades (Fabricadas)</div>
+        <div style="position:relative;height:140px;">
+          <canvas id="modalStatusChart" height="140"></canvas>
+        </div>
+        <div class="legend" id="modalStatusLegend" style="margin-top:8px;"></div>
+      </div>
+      <div class="modal-card">
+        <div class="modal-card-title">&#9989; Instalaci&oacute;n</div>
+        <div style="position:relative;height:140px;">
+          <canvas id="modalInstChart" height="140"></canvas>
+          <div class="donut-center"><div class="big" id="modalInstPct" style="font-size:18px">-</div><div class="small">INST.</div></div>
+        </div>
+        <div class="legend" id="modalInstLegend" style="margin-top:8px;"></div>
+      </div>
+    </div>
+      <div class="modal-card" style="margin-bottom:12px;">
+      <div class="modal-card-title">Producci&oacute;n por Mes (unidades fabricadas)</div>
+      <div style="position:relative;height:120px;width:100%;overflow:hidden;">
+        <canvas id="modalMesChart"></canvas>
+      </div>
+    </div>
+    <div class="modal-grid-2">
+      <div class="modal-card"><div class="modal-card-title">Top Ensambladores</div><div style="position:relative;height:180px;width:100%;overflow:hidden;"><canvas id="modalEnsamChart"></canvas></div></div>
+      <div class="modal-card"><div class="modal-card-title">Top Dise&ntilde;os</div><div style="position:relative;height:180px;width:100%;overflow:hidden;"><canvas id="modalDisenoChart"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MES DRILL MODAL -->
+<div class="kpi-modal-overlay" id="mesDrillModal" onclick="closeMesDrill(event)">
+  <div class="kpi-modal">
+    <button class="kpi-modal-close" onclick="closeMesDrillBtn()">&#10005;</button>
+    <div class="kpi-modal-header">
+      <div class="kpi-modal-icon" id="mesDrillIcon" style="background:rgba(0,229,160,0.15);font-size:20px;">&#128197;</div>
+      <div>
+        <div class="kpi-modal-title" id="mesDrillTitle">Producción Mensual</div>
+        <div class="kpi-modal-subtitle" id="mesDrillSubtitle">Obras y cantidades por mes</div>
+      </div>
+    </div>
+    <div class="kpi-nav" id="mesDrillNav"></div>
+    <div id="mesDrillContent"></div>
+  </div>
+</div>
+
+<!-- KPI DRILL MODAL -->
+<div class="kpi-modal-overlay" id="kpiDrillModal" onclick="closeKpiModalOverlay(event)">
+  <div class="kpi-modal">
+    <button class="kpi-modal-close" onclick="closeKpiModal()">&#10005;</button>
+    <div class="kpi-modal-header">
+      <div class="kpi-modal-icon" id="kpiDrillIcon"></div>
+      <div><div class="kpi-modal-title" id="kpiDrillTitle">-</div><div class="kpi-modal-subtitle" id="kpiDrillSubtitle">-</div></div>
+    </div>
+    <div class="kpi-nav" id="kpiDrillNav"></div>
+    <div id="kpiDrillContent"></div>
+  </div>
+</div>
+
+<!-- UPLOAD OVERLAY -->
+<div class="upload-overlay" id="uploadOverlay" onclick="closeUploadOverlay(event)">
+  <div class="upload-box">
+    <button class="upload-box-close" onclick="closeUpload()">&#10005;</button>
+    <span class="upload-icon">&#128196;</span>
+    <div class="upload-title">Actualizar Base de Datos</div>
+    <div class="upload-sub">Sube tu .xlsx directamente. Procesado en tu dispositivo.</div>
+    <div class="upload-drop" id="uploadDrop" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size:28px">&#128228;</div>
+      <p>Arrastra aqu&iacute; o <strong>toca para seleccionar</strong></p>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFileSelect(event)">
+    <button class="btn-choose" onclick="document.getElementById('fileInput').click()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      SELECCIONAR ARCHIVO EXCEL
+    </button>
+    <div class="upload-progress" id="uploadProgress">
+      <div class="progress-label" id="progressLabel">Procesando...</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+    <div class="upload-error" id="uploadError"></div>
+    <div class="upload-success" id="uploadSuccess"></div>
+  </div>
+</div>
+
+<script>
+/* ── DEFAULT DATA ── */
+
+
+
+
+const COLORS=['#ffffff','#c0c0c0','#909090','#c8a84b','#707070','#e0e0e0','#505050','#b0b0b0','#d0d0d0','#808080'];
+const MES_ORDEN=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+Chart.defaults.color='#686868';
+Chart.defaults.borderColor='#3a3a3a';
+Chart.defaults.font.family="'Jost',sans-serif";
+Chart.defaults.font.size=10;
+
+let DATA={},YEAR_OBRA={},OBRA_DETAIL={},MES_OBRA={},COLA_CTMV={},PROD_DETAIL={},STATUS_BY_OBRA={};
+let charts={},anualMetric='items',ensamMetric='items',mCharts={},kpiCharts={};
+let tableData=[],statusTableData=[],sortCol=1,sortDir=-1,stSortCol=1,stSortDir=-1;
+let selectedYears=new Set();
+
+/* ══ INIT ══ */
+function initApp(){
+  const cached = tryLoadFromStorage();
+  if(cached){ buildYearChips(); applyFilters(); updateDataBar(); }
+  liveLoad(false, !cached);
+}
+function tryLoadFromStorage(){
+  try{
+    const c = JSON.parse(localStorage.getItem('dash_cache_v1') || 'null');
+    if(!c || !c.DATA || !c.DATA.kpis) return false;
+    DATA=c.DATA; YEAR_OBRA=c.YEAR_OBRA||{}; OBRA_DETAIL=c.OBRA_DETAIL||{}; MES_OBRA=c.MES_OBRA||{};
+    STATUS_BY_OBRA=c.STATUS_BY_OBRA||{}; COLA_CTMV=c.COLA_CTMV||{}; PROD_DETAIL=c.PROD_DETAIL||{};
+    return true;
+  }catch(e){ return false; }
+}
+function loadDefaultData(){DATA=window._DEFAULT_DATA||{};YEAR_OBRA=window._DEFAULT_YEAR_OBRA||{};OBRA_DETAIL=window._DEFAULT_OBRA_DETAIL||{};MES_OBRA=window._DEFAULT_MES_OBRA||{};STATUS_BY_OBRA=window._DEFAULT_STATUS_BY_OBRA||{};COLA_CTMV=window._DEFAULT_COLA_CTMV||{};PROD_DETAIL=window._DEFAULT_PROD_DETAIL||{};}
+function saveToStorage(){
+  try{ localStorage.setItem('dash_cache_v1', JSON.stringify({DATA,YEAR_OBRA,OBRA_DETAIL,MES_OBRA,STATUS_BY_OBRA,COLA_CTMV,PROD_DETAIL})); }
+  catch(e){ try{ localStorage.removeItem('dash_cache_v1'); }catch(_){} }
+}
+function updateDataBar(){
+  try{
+    const m = JSON.parse(localStorage.getItem('dash_meta')||'{}');
+    if(m.time){ const d=new Date(m.time); document.getElementById('dbLoadTime').textContent='· '+(m.rows?m.rows.toLocaleString('es-CO')+' registros · ':'')+'actualizado '+d.toLocaleDateString('es-CO')+' '+d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); }
+  }catch(e){}
+}
+
+/* ══ YEAR CHIPS ══ */
+function buildYearChips(){
+  const years=Object.keys(YEAR_OBRA).sort();
+  const con=document.getElementById('yearChipsContainer');
+  con.innerHTML=years.map(y=>`<button class="year-chip" onclick="toggleYear('${y}',this)">${y}</button>`).join('');
+}
+function toggleYear(yr,el){
+  if(selectedYears.has(yr)){selectedYears.delete(yr);el.classList.remove('active');}
+  else{selectedYears.add(yr);el.classList.add('active');}
+  document.querySelector('.all-chip').classList.toggle('active',selectedYears.size===0);
+  applyFilters();
+}
+function toggleAllYears(el){
+  selectedYears.clear();
+  document.querySelectorAll('.year-chip:not(.all-chip)').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+
+/* ══ FILTER HELPERS ══ */
+function getActiveYears(){const all=Object.keys(YEAR_OBRA).sort();return selectedYears.size===0?all:[...selectedYears].sort();}
+function getFilteredByAño(){const ay=new Set(getActiveYears().map(Number));return(DATA.by_año||[]).filter(d=>ay.has(d['AÑO PRODUCCION']));}
+function getFilteredByMes(){const ay=new Set(getActiveYears().map(Number));return(DATA.by_mes||[]).filter(d=>ay.has(d['AÑO PRODUCCION']));}
+function getFilteredYearObraEntries(){return getActiveYears().flatMap(yr=>YEAR_OBRA[yr]||[]);}
+
+/* ══ COLA HELPERS ══ */
+function getColaCountForObra(obraName){
+  const od=OBRA_DETAIL[obraName]||OBRA_DETAIL[(obraName||'').trim()];
+  if(!od||!od.status)return 0;
+  return od.status['EN COLA']||0;
+}
+function getTotalCola(){
+  return Object.values(OBRA_DETAIL).reduce((s,od)=>s+(od.status?od.status['EN COLA']||0:0),0);
+}
+function getTotalColaM2(){
+  return Object.values(OBRA_DETAIL).reduce((s,od)=>s+(od.status?od.status['EN COLA_M2']||0:0),0);
+}
+function getFilteredCola(){
+  const obraSet=new Set(getFilteredYearObraEntries().map(o=>o.obra));
+  let total=0;
+  obraSet.forEach(ob=>{total+=getColaCountForObra(ob);});
+  return total;
+}
+function getColaByObra(){
+  return(DATA.by_obra||[]).map(r=>({
+    OBRA:r.OBRA,
+    cola:getColaCountForObra(r.OBRA),
+    colaM2:(OBRA_DETAIL[r.OBRA]||OBRA_DETAIL[(r.OBRA||'').trim()]||{}).status?.['EN COLA_M2']||0,
+    colaPrecio:(OBRA_DETAIL[r.OBRA]||OBRA_DETAIL[(r.OBRA||'').trim()]||{}).status?.['EN COLA_PRECIO']||0,
+    items:r.items
+  })).filter(r=>r.cola>0).sort((a,b)=>b.cola-a.cola);
+}
+
+/* ══ APPLY FILTERS ══ */
+function applyFilters(){
+  const activeYears=getActiveYears();
+  const allYears=Object.keys(YEAR_OBRA).sort();
+  const isAll=selectedYears.size===0;
+  const yearLabel=isAll?'TODOS':activeYears.length===1?activeYears[0]:activeYears.length+' AÑOS';
+  ['statusYearBadge','instYearBadge','mesYearBadge'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=yearLabel;});
+  document.getElementById('yearFilterInfo').textContent=isAll?'':`${activeYears.length} de ${allYears.length} años`;
+
+  const filtByAño=getFilteredByAño();
+  const ftotal_items=filtByAño.reduce((s,r)=>s+r.items,0);
+  const ftotal_m2=filtByAño.reduce((s,r)=>s+(r.m2||0),0);
+  const ftotal_precio=filtByAño.reduce((s,r)=>s+(r.precio||0),0);
+  const yearObraEntries=getFilteredYearObraEntries();
+  const obraSet=new Set(yearObraEntries.map(o=>o.obra));
+  const ftotal_obras=obraSet.size;
+  let finst,fpct;
+  if(isAll){finst=DATA.kpis?.total_instalados||0;fpct=DATA.kpis?.pct_instalados||0;}
+  else{const instSum=yearObraEntries.reduce((s,o)=>s+(o.inst||0),0),itemsSum=yearObraEntries.reduce((s,o)=>s+o.items,0);finst=instSum;fpct=itemsSum>0?Math.round(instSum/itemsSum*1000)/10:0;}
+
+  // EN COLA — always global (pendiente de fabricar, sin importar año)
+  const totalCola=getTotalCola();
+  const colaObras=getColaByObra().length;
+  const colaPct=ftotal_items>0?((totalCola/(ftotal_items+totalCola))*100).toFixed(1):0;
+
+  document.getElementById('kpi-items').textContent=ftotal_items.toLocaleString('es-CO');
+  document.getElementById('kpi-m2').textContent=ftotal_m2.toLocaleString('es-CO',{maximumFractionDigits:0});
+  document.getElementById('kpi-precio').textContent=fmtPrecio(ftotal_precio);
+  document.getElementById('kpi-obras').textContent=ftotal_obras;
+  document.getElementById('kpi-inst').textContent=finst.toLocaleString('es-CO');
+  document.getElementById('kpi-pct').textContent=fpct+'%';
+  document.getElementById('kpi-cola').textContent=totalCola.toLocaleString('es-CO');
+  const totalColaM2=getTotalColaM2();
+  document.getElementById('kpi-cola-sub').textContent=totalColaM2>0
+    ? totalColaM2.toLocaleString('es-CO',{maximumFractionDigits:1})+' m² · '+colaObras+' obras'
+    : colaObras>0?colaObras+' obras afectadas':'sin unidades en cola';
+  document.getElementById('kpi-items-sub').textContent=isAll?'todos los años':activeYears.join(', ');
+
+  // EN PRODUCCIÓN (STATUS = 'PRODUCCIÓN')
+  const prodData=getProduccionData();
+  document.getElementById('kpi-produccion').textContent=prodData.total.toLocaleString('es-CO');
+  document.getElementById('kpi-produccion-sub').textContent=prodData.obras>0?prodData.obras+' obras activas':'sin unidades en producción';
+
+  document.getElementById('headerSub').textContent=ftotal_items.toLocaleString('es-CO')+' REGISTROS · '+ftotal_obras+' OBRAS · '+totalCola.toLocaleString('es-CO')+' EN COLA';
+
+  // Banner
+  const banner=document.getElementById('colaBanner');
+  if(totalCola>0){
+    banner.style.display='flex';
+    document.getElementById('colaBannerTotal').textContent=totalCola.toLocaleString('es-CO');
+    document.getElementById('colaBannerObras').textContent=colaObras;
+    document.getElementById('colaBannerPct').textContent=colaPct+'%';
+    document.getElementById('colaBannerSub').textContent=colaObras+' obras con unidades pendientes de fabricar';
+  } else {
+    banner.style.display='none';
+  }
+
+  buildAnualChart();
+  buildStatusDonut();
+  buildInstDonut();
+  buildColaChart();
+  buildMesChart();
+  buildEnsamChart();
+  buildDisenoChart();
+  buildObraTable();
+  buildStatusObraTable();
+}
+
+/* ══ FORMAT ══ */
+function fmtPrecio(n){
+  if(n>=1e9)return'$'+(n/1e9).toFixed(2)+'B';
+  if(n>=1e6)return'$'+(n/1e6).toFixed(0)+'M';
+  return'$'+n.toLocaleString('es-CO');
+}
+
+/* ══ EN PRODUCCIÓN HELPERS ══ */
+function getProduccionData(){
+  // Units with STATUS PLANTA = 'PRODUCCIÓN' — currently being manufactured
+  const rows=Object.entries(OBRA_DETAIL).map(([obra,od])=>({
+    OBRA:obra,
+    prod:(od.status||{})['PRODUCCIÓN']||0,
+    ensam:(od.status||{}).ENSAMBLADO||0,
+    items:od.items||0,
+    m2:od.m2||0
+  })).filter(r=>r.prod>0).sort((a,b)=>b.prod-a.prod);
+  return{total:rows.reduce((s,r)=>s+r.prod,0),obras:rows.length,rows};
+}
+// Keep alias for backward compat
+function getEnsamData(){ return getProduccionData(); }
+
+function renderProduccionV(c,tab){
+  const ed=getProduccionData();
+  const rows=ed.rows;
+  const total=ed.total;
+  if(tab===0){
+    c.innerHTML=sumCards([
+      {l:'Total en producción',v:total.toLocaleString('es-CO'),vc:'#3d7fff'},
+      {l:'Obras activas',v:rows.length+''},
+      {l:'Prom. por obra',v:rows.length?Math.round(total/rows.length).toLocaleString('es-CO'):'-'},
+      {l:'Mayor obra',v:rows[0]?.OBRA.trim()||'—'}
+    ])+
+    '<input class="drill-search" id="dsProdOb" placeholder="🔍 buscar obra..." oninput="dsProdF()">'+
+    chartBox('kcprod')+
+    (window._kpiProdRows=rows,'')+ 
+    drillTbl(['OBRA','EN PRODUCCIÓN','TOTAL OBRA','M² OBRA'],
+      rows.map((r,_i)=>['<span onclick="openProdDetail(window._kpiProdRows['+_i+'].OBRA)" style="cursor:pointer;color:var(--accent2);text-decoration:underline dotted">'+r.OBRA.trim()+'</span>',
+        `<span style="color:#a0a0a0;font-weight:700">⚙️ ${r.prod.toLocaleString('es-CO')}</span>`,
+        r.items.toLocaleString('es-CO'),
+        r.m2.toLocaleString('es-CO',{maximumFractionDigits:1})+' m²']),
+      'dsProdTb');
+    setTimeout(()=>{
+      const ct=document.getElementById('kcprod');if(!ct)return;
+      const top12=rows.slice(0,12);
+      kpiCharts.prod=new Chart(ct.getContext('2d'),{type:'bar',
+        data:{labels:top12.map(r=>r.OBRA.trim().length>14?r.OBRA.trim().slice(0,14)+'…':r.OBRA.trim()),
+          datasets:[{label:'En producción',data:top12.map(r=>r.prod),
+            backgroundColor:'rgba(61,127,255,0.65)',borderColor:'#888888',borderWidth:1,borderRadius:4}]},
+        options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},
+          tooltip:{callbacks:{title:ctx=>top12[ctx[0].dataIndex].OBRA.trim(),label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} en producción`}}},
+          scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});
+    },50);
+  }
+  if(tab===1){
+    c.innerHTML=sumCards([
+      {l:'Total en producción',v:total.toLocaleString('es-CO'),vc:'#3d7fff'},
+      {l:'Obras activas',v:rows.length+''},
+      {l:'Prom. por obra',v:rows.length?Math.round(total/rows.length).toLocaleString('es-CO'):'-'},
+      {l:'También ensamblando',v:Object.values(OBRA_DETAIL).reduce((s,od)=>s+((od.status||{}).ENSAMBLADO||0),0).toLocaleString('es-CO')}
+    ])+drillTbl(['OBRA','EN PRODUCCIÓN','ENSAMBLADO','% DE LA OBRA','TOTAL OBRA','BARRA'],
+      rows.map(r=>{const pct=r.items>0?(r.prod/r.items*100).toFixed(1)+'%':'-';
+        return[r.OBRA.trim(),
+          `<span style="color:#a0a0a0;font-weight:700">⚙️ ${r.prod.toLocaleString('es-CO')}</span>`,
+          r.ensam>0?r.ensam.toLocaleString('es-CO'):'—',
+          pct,r.items.toLocaleString('es-CO'),pb(r.prod,rows[0]?rows[0].prod:1,'#3d7fff')];}));
+  }
+}
+function dsProdF(){
+  const s=document.getElementById('dsProdOb').value.toLowerCase();
+  const rows=getProduccionData().rows.filter(r=>r.OBRA.toLowerCase().includes(s));
+  document.getElementById('dsProdTb').innerHTML=rows.map(r=>
+    `<tr><td>${r.OBRA.trim()}</td><td><span style="color:#a0a0a0;font-weight:700">⚙️ ${r.prod.toLocaleString('es-CO')}</span></td><td>${r.items.toLocaleString('es-CO')}</td><td>${r.m2.toLocaleString('es-CO',{maximumFractionDigits:1})} m²</td></tr>`
+  ).join('');
+}
+
+function buildAnualChart(){
+  const ctx=document.getElementById('anualChart').getContext('2d');
+  const activeSet=new Set(getActiveYears().map(Number));
+  const rows=DATA.by_año||[];
+  if(charts.anual)charts.anual.destroy();
+  charts.anual=new Chart(ctx,{type:'bar',data:{labels:rows.map(d=>d['AÑO PRODUCCION']),
+    datasets:[{data:rows.map(d=>d[anualMetric]),
+      backgroundColor:rows.map(d=>activeSet.has(d['AÑO PRODUCCION'])?'rgba(0,229,160,0.6)':'rgba(255,255,255,0.1)'),
+      borderColor:rows.map(d=>activeSet.has(d['AÑO PRODUCCION'])?'#00e5a0':'rgba(255,255,255,0.15)'),
+      borderWidth:1,borderRadius:4}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const v=ctx.raw;if(anualMetric==='precio')return' '+fmtPrecio(v);if(anualMetric==='m2')return' '+v.toLocaleString('es-CO')+' m²';return' '+v.toLocaleString('es-CO')+' unid';}}}},
+      scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>anualMetric==='precio'?fmtPrecio(v):v.toLocaleString('es-CO')}}}}});
+}
+function switchAnualTab(m,el){
+  anualMetric=m;
+  document.querySelectorAll('.tab').forEach(t=>{if(t.parentElement.id!=='ensamTabs')t.classList.remove('active');});
+  el.classList.add('active');buildAnualChart();
+}
+
+function buildStatusDonut(){
+  const isAll=selectedYears.size===0;
+  let sc={};
+  // ENSAMBLADO, PRODUCCIÓN, EN COLA = siempre globales
+  // Son unidades pendientes activas independientemente del año de producción
+  const globalCounts=DATA.status_counts||{};
+  sc['ENSAMBLADO']=globalCounts['ENSAMBLADO']||0;
+  sc['PRODUCCIÓN']=globalCounts['PRODUCCIÓN']||0;
+  sc['EN COLA']=globalCounts['EN COLA']||0;
+  if(isAll){
+    sc['DESPACHADO']=globalCounts['DESPACHADO']||0;
+  } else {
+    // DESPACHADO = suma directa de unidades despachadas de obras en años seleccionados
+    const filteredObraNames=new Set(getFilteredYearObraEntries().map(e=>e.obra));
+    let desp=0;
+    filteredObraNames.forEach(obra=>{
+      const od=OBRA_DETAIL[obra]||OBRA_DETAIL[(obra||'').trim()];
+      if(od?.status?.DESPACHADO)desp+=od.status.DESPACHADO;
+    });
+    sc['DESPACHADO']=desp;
+  }
+  // Distinct functional colors — differentiable at a glance
+  const STATUS_COLORS={'DESPACHADO':'#e8e8e8','ENSAMBLADO':'#888888','EN COLA':'#c8a84b','PRODUCCIÓN':'#555555','PRODUCCION':'#555555'};
+  const keys=Object.keys(sc).filter(k=>k!=='EN COLA_M2'&&sc[k]>0);
+  const vals=keys.map(k=>sc[k]);
+  const colors=keys.map(k=>STATUS_COLORS[k]||COLORS[keys.indexOf(k)%COLORS.length]);
+  const total=vals.reduce((s,v)=>s+v,0);
+  const desp=sc.DESPACHADO||0;
+  const pct=total>0?((desp/total)*100).toFixed(1):'0.0';
+  document.getElementById('statusPct').textContent=pct+'%';
+  const ctx=document.getElementById('statusChart').getContext('2d');
+  if(charts.statusChart)charts.statusChart.destroy();
+  charts.statusChart=new Chart(ctx,{type:'doughnut',data:{labels:keys,datasets:[{data:vals,backgroundColor:colors,borderWidth:2,borderColor:'#222222',hoverOffset:4}]},
+    options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw.toLocaleString('es-CO')} unid`}}},animation:{animateRotate:true,duration:700},onClick:(e,els)=>{if(els.length>0){const label=keys[els[0].index];openStatusDrill(label);}}}});
+  document.getElementById('statusLegend').innerHTML=keys.map((l,i)=>`<div class="legend-item" onclick="openStatusDrill('${l}')" style="cursor:pointer" title="Ver detalle"><div class="legend-dot" style="background:${colors[i]}"></div>${l}: ${vals[i].toLocaleString('es-CO')}</div>`).join('');
+}
+
+function buildInstDonut(){
+  const isAll=selectedYears.size===0;
+  let si,no;
+  if(isAll){si=DATA.inst_counts?.SI||0;no=DATA.inst_counts?.NO||0;}
+  else{const e=getFilteredYearObraEntries();si=e.reduce((s,o)=>s+(o.inst||0),0);no=e.reduce((s,o)=>s+o.items,0)-si;}
+  const total=si+no;const pct=total>0?Math.round(si/total*1000)/10:0;
+  document.getElementById('instPct').textContent=pct+'%';
+  const ctx=document.getElementById('instChart').getContext('2d');
+  if(charts.instChart)charts.instChart.destroy();
+  charts.instChart=new Chart(ctx,{type:'doughnut',data:{labels:['Instalado','No instalado'],datasets:[{data:[si,no],backgroundColor:['#00e5a0','#ff6b35'],borderWidth:2,borderColor:'#222222',hoverOffset:4}]},
+    options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw.toLocaleString('es-CO')}`}}},animation:{animateRotate:true,duration:700}}});
+  document.getElementById('instLegend').innerHTML=['Instalado','No instalado'].map((l,i)=>`<div class="legend-item"><div class="legend-dot" style="background:${['#00e5a0','#ff6b35'][i]}"></div>${l}: ${[si,no][i].toLocaleString('es-CO')}</div>`).join('');
+}
+
+function buildColaChart(){
+  const ctx=document.getElementById('colaChart').getContext('2d');
+  if(charts.cola)charts.cola.destroy();
+  // EN COLA has no production year — show top obras with units in queue
+  const colaObras=getColaByObra().slice(0,10);
+  if(colaObras.length===0){
+    ctx.canvas.style.display='none';
+    const existing=ctx.canvas.parentElement.querySelector('.no-cola-msg');
+    if(!existing)ctx.canvas.parentElement.insertAdjacentHTML('beforeend',
+      '<div class="no-cola-msg" style="text-align:center;padding:30px 0;font-size:11px;color:var(--muted)">Sin unidades EN COLA<br><span style="font-size:9px;display:block;margin-top:4px">Aparece cuando STATUS PLANTA = EN COLA</span></div>');
+    return;
+  }
+  // Remove any previous no-data message and show canvas
+  ctx.canvas.style.display='';
+  const msg=ctx.canvas.parentElement.querySelector('.no-cola-msg');
+  if(msg)msg.remove();
+  charts.cola=new Chart(ctx,{type:'bar',
+    data:{
+      labels:colaObras.map(d=>d.OBRA.trim().length>14?d.OBRA.trim().slice(0,14)+'…':d.OBRA.trim()),
+      datasets:[{
+        data:colaObras.map(d=>d.cola),
+        backgroundColor:'rgba(240,180,41,0.65)',
+        borderColor:'#f0b429',
+        borderWidth:1,borderRadius:4
+      }]
+    },
+    options:{
+      indexAxis:'y',responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{
+        title:ctx=>colaObras[ctx[0].dataIndex].OBRA.trim(),
+        label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} en cola`
+      }}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},
+        y:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+function buildMesChart(){
+  const ctx=document.getElementById('mesChart').getContext('2d');
+  const metric=document.getElementById('metricFilter').value;
+  const md={};MES_ORDEN.forEach(m=>md[m]=0);
+  getFilteredByMes().forEach(d=>{const m=d['MES PRODUCCION'];if(m in md)md[m]+=metric==='m2'?d.m2:d.items;});
+  if(charts.mes)charts.mes.destroy();
+  charts.mes=new Chart(ctx,{type:'line',data:{labels:MES_ORDEN.map(m=>m.slice(0,3).toUpperCase()),
+    datasets:[{data:MES_ORDEN.map(m=>md[m]),borderColor:'#c0c0c0',backgroundColor:'rgba(255,255,255,0.04)',borderWidth:2,pointBackgroundColor:'#c0c0c0',pointRadius:4,fill:true,tension:0.4}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} ${metric==='m2'?'m²':'unid'}`}}},
+      scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>v.toLocaleString('es-CO')}}}}});
+}
+
+function buildEnsamChart(){
+  const ctx=document.getElementById('ensamChart').getContext('2d');
+  const top=(DATA.by_ensam||[]).slice(0,10);
+  if(charts.ensam)charts.ensam.destroy();
+  charts.ensam=new Chart(ctx,{type:'bar',data:{labels:top.map(d=>d.ENSAMBLADOR.split(' ')[0]),
+    datasets:[{data:top.map(d=>d[ensamMetric]),backgroundColor:COLORS.map(c=>c+'88'),borderColor:COLORS,borderWidth:1,borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{title:ctx=>top[ctx[0].dataIndex].ENSAMBLADOR,label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} ${ensamMetric==='m2'?'m²':'unid'}`}}},
+      scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});
+}
+function switchEnsamTab(m,el){
+  ensamMetric=m;
+  document.querySelectorAll('#ensamTabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');buildEnsamChart();
+}
+
+function buildDisenoChart(){
+  const ctx=document.getElementById('disenoChart').getContext('2d');
+  const d=(DATA.by_diseño||[]);
+  if(charts.diseno)charts.diseno.destroy();
+  charts.diseno=new Chart(ctx,{type:'bar',data:{labels:d.map(x=>x.DISEÑO.length>18?x.DISEÑO.slice(0,18)+'…':x.DISEÑO),
+    datasets:[{data:d.map(x=>x.items),backgroundColor:'rgba(61,127,255,0.55)',borderColor:'#888888',borderWidth:1,borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{title:ctx=>d[ctx[0].dataIndex].DISEÑO,label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} unid`}}},
+      scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{display:false}}}}});
+}
+
+/* ══ OBRA TABLE ══ */
+function buildObraTable(){
+  const yearObraEntries=getFilteredYearObraEntries();
+  const obraAgg={};
+  yearObraEntries.forEach(o=>{
+    if(!obraAgg[o.obra])obraAgg[o.obra]={OBRA:o.obra,items:0,m2_total:0,precio_total:0,instalados:0};
+    obraAgg[o.obra].items+=o.items;obraAgg[o.obra].m2_total+=(o.m2||0);
+    obraAgg[o.obra].precio_total+=(o.precio||0);obraAgg[o.obra].instalados+=(o.inst||0);
+  });
+  tableData=Object.values(obraAgg).map(r=>({...r,cola:getColaCountForObra(r.OBRA)})).sort((a,b)=>b.items-a.items);
+  renderObraTable();
+}
+function renderObraTable(){
+  const tbody=document.getElementById('obraTableBody');
+  const max=tableData.reduce((m,d)=>Math.max(m,d.items),1);
+  const search=document.getElementById('searchObra').value.toLowerCase();
+  const filtered=tableData.filter(d=>d.OBRA.toLowerCase().includes(search));
+  tbody.innerHTML=filtered.slice(0,60).map(d=>{
+    const pct=d.items>0?d.instalados/d.items*100:0;
+    const cls=pct>=90?'pct-good':pct>=60?'pct-mid':'pct-bad';
+    const bw=Math.round(d.items/max*60);
+    const colaCell=d.cola>0?`<span class="cola-cell">⏳ ${d.cola.toLocaleString('es-CO')}</span>`:`<span style="color:var(--muted)">—</span>`;
+    return`<tr class="clickable-row" onclick="openObraModal('${d.OBRA.replace(/'/g,"\\'")}')">
+      <td>${d.OBRA.trim()}</td>
+      <td><div class="bar-cell"><div class="mini-bar" style="width:${bw}px"></div>${d.items.toLocaleString('es-CO')}</div></td>
+      <td>${colaCell}</td>
+      <td>${d.m2_total.toLocaleString('es-CO',{maximumFractionDigits:0})}</td>
+      <td class="${cls}">${pct.toFixed(0)}%</td></tr>`;
+  }).join('');
+}
+function filterTable(){renderObraTable();}
+function sortTable(col){
+  if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=-1;}
+  document.querySelectorAll('#sort0,#sort1,#sort2,#sort3,#sort4').forEach(s=>s.textContent='↕');
+  document.getElementById('sort'+col).textContent=sortDir===-1?'↓':'↑';
+  const keys=['OBRA','items','cola','m2_total'];
+  if(col===4)tableData.sort((a,b)=>{const pa=a.items>0?a.instalados/a.items:0,pb=b.items>0?b.instalados/b.items:0;return(pa-pb)*sortDir;});
+  else tableData.sort((a,b)=>(a[keys[col]]<b[keys[col]]?-1:a[keys[col]]>b[keys[col]]?1:0)*sortDir);
+  renderObraTable();
+}
+
+/* ══ STATUS POR OBRA TABLE ══ */
+function buildStatusObraTable(){
+  statusTableData=(DATA.by_obra||[]).map(r=>{
+    const od=OBRA_DETAIL[r.OBRA];const st=od?.status||{};
+    return{OBRA:r.OBRA,items:r.items,desp:st.DESPACHADO||0,ensam:st.ENSAMBLADO||0,cola:st['EN COLA']||0,pctDesp:r.items>0?(st.DESPACHADO||0)/r.items*100:0};
+  }).sort((a,b)=>b.cola-a.cola||b.items-a.items);
+  renderStatusTable();
+}
+function renderStatusTable(){
+  const tbody=document.getElementById('statusTableBody');
+  const search=document.getElementById('searchStatus').value.toLowerCase();
+  const filtered=statusTableData.filter(d=>d.OBRA.toLowerCase().includes(search));
+  tbody.innerHTML=filtered.slice(0,60).map(d=>{
+    const p=d.pctDesp.toFixed(0);
+    const cls=d.pctDesp>=95?'pct-good':d.pctDesp>=70?'pct-mid':'pct-bad';
+    const colaCell=d.cola>0?`<span class="cola-cell">⏳ ${d.cola.toLocaleString('es-CO')}</span>`:`<span style="color:var(--muted)">—</span>`;
+    return`<tr class="clickable-row" onclick="openObraModal('${d.OBRA.replace(/'/g,"\\'")}')">
+      <td>${d.OBRA.trim()}</td><td>${d.items.toLocaleString('es-CO')}</td>
+      <td class="st-desp">${d.desp.toLocaleString('es-CO')}</td>
+      <td class="st-ensam">${d.ensam.toLocaleString('es-CO')}</td>
+      <td>${colaCell}</td><td class="${cls}">${p}%</td></tr>`;
+  }).join('');
+}
+function filterStatusTable(){renderStatusTable();}
+function sortStatusTable(col){
+  if(stSortCol===col)stSortDir*=-1;else{stSortCol=col;stSortDir=-1;}
+  document.querySelectorAll('#ss0,#ss1,#ss2,#ss3,#ss4,#ss5').forEach(s=>s.textContent='↕');
+  document.getElementById('ss'+col).textContent=stSortDir===-1?'↓':'↑';
+  const keys=['OBRA','items','desp','ensam','cola','pctDesp'];
+  statusTableData.sort((a,b)=>(a[keys[col]]<b[keys[col]]?-1:a[keys[col]]>b[keys[col]]?1:0)*stSortDir);
+  renderStatusTable();
+}
+
+/* ══ OBRA MODAL ══ */
+function openObraModal(obraName){
+  const obra=OBRA_DETAIL[obraName]||OBRA_DETAIL[(obraName||'').trim()];
+  if(!obra)return;
+  const pct=obra.items>0?(obra.instalados/obra.items*100).toFixed(0):0;
+  const cola=obra.status?.['EN COLA']||0;
+  document.getElementById('modalTitleName').textContent=obraName.trim();
+  document.getElementById('mk-items').textContent=obra.items.toLocaleString('es-CO');
+  document.getElementById('mk-m2').textContent=obra.m2.toLocaleString('es-CO',{maximumFractionDigits:1})+' m²';
+  document.getElementById('mk-precio').textContent=fmtPrecio(obra.precio);
+  document.getElementById('mk-inst').textContent=obra.instalados.toLocaleString('es-CO');
+  document.getElementById('mk-pct').textContent=pct+'%';
+  const statusParts=Object.entries(obra.status||{}).filter(([k])=>k!=='EN COLA'&&k!=='EN COLA_M2').map(([k,v])=>k+': '+v.toLocaleString('es-CO'));
+  document.getElementById('modalSubtitle').textContent=statusParts.join(' · ');
+  const colaBar=document.getElementById('modalColaBar');
+  if(cola>0){colaBar.style.display='flex';document.getElementById('modalColaVal').textContent=cola.toLocaleString('es-CO')+' UNIDADES EN COLA';}
+  else{colaBar.style.display='none';}
+  Object.values(mCharts).forEach(c=>{if(c)c.destroy();});mCharts={};
+  // Build static elements (legend, text) before opening
+  const st=obra.status||{};
+  const stLabels=Object.keys(st).filter(k=>k!=='EN COLA_M2'&&k!=='EN COLA_PRECIO');
+  const stVals=stLabels.map(k=>st[k]);
+  const SC={'DESPACHADO':'#e8e8e8','ENSAMBLADO':'#888888','PRODUCCIÓN':'#555555','PRODUCCION':'#555555','EN COLA':'#c8a84b'};
+  const scArr=stLabels.map(l=>SC[l]||COLORS[stLabels.indexOf(l)%COLORS.length]);
+  document.getElementById('modalStatusLegend').innerHTML=stLabels.map((l,i)=>`<div class="legend-item"><div class="legend-dot" style="background:${scArr[i]}"></div>${l}: ${stVals[i].toLocaleString('es-CO')}</div>`).join('');
+  const si=obra.instalados,no=obra.items-obra.instalados;
+  document.getElementById('modalInstPct').textContent=pct+'%';
+  document.getElementById('modalInstLegend').innerHTML=
+    `<div class="legend-item"><div class="legend-dot" style="background:#e8e8e8"></div>Instalado: ${si.toLocaleString('es-CO')}</div>`+
+    `<div class="legend-item"><div class="legend-dot" style="background:#555555"></div>Pendiente: ${no.toLocaleString('es-CO')}</div>`;
+  // Open modal FIRST so canvases have size, then render charts
+  document.getElementById('obraModal').classList.add('open');
+  document.body.style.overflow='hidden';
+  setTimeout(()=>{
+    // Status donut
+    const stCtx=document.getElementById('modalStatusChart').getContext('2d');
+    if(mCharts.status)mCharts.status.destroy();
+    mCharts.status=new Chart(stCtx,{
+      type:'doughnut',data:{labels:stLabels,datasets:[{data:stVals,backgroundColor:scArr,borderWidth:2,borderColor:'#222222',hoverOffset:4}]},
+      options:{cutout:'60%',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw.toLocaleString('es-CO')} unid`}}}}
+    });
+    // Installation donut
+    const instCtx=document.getElementById('modalInstChart').getContext('2d');
+    if(mCharts.inst)mCharts.inst.destroy();
+    mCharts.inst=new Chart(instCtx,{type:'doughnut',
+      data:{labels:['Instalado','Pendiente'],datasets:[{data:[si,no],backgroundColor:['#e8e8e8','#555555'],borderWidth:2,borderColor:'#222222',hoverOffset:4}]},
+      options:{cutout:'72%',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw.toLocaleString('es-CO')}`}}}}});
+    // Monthly bar — responsive:false prevents resize loop inside modal
+    const mesCtx=document.getElementById('modalMesChart').getContext('2d');
+    if(mCharts.mes)mCharts.mes.destroy();
+    mCharts.mes=new Chart(mesCtx,{type:'bar',
+      data:{labels:MES_ORDEN.map(m=>m.slice(0,3).toUpperCase()),
+        datasets:[{data:MES_ORDEN.map(m=>obra.mes[m]?obra.mes[m].items:0),backgroundColor:'rgba(200,200,200,0.25)',borderColor:'#888888',borderWidth:1,borderRadius:4}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:{duration:400,easing:'easeOutQuart'},
+        onResize:null,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} unid`}}},
+        scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},beginAtZero:true,ticks:{callback:v=>v.toLocaleString('es-CO')}}}}});
+    // Ensambladores
+    const ensD=(obra.ensam||[]).slice(0,8);
+    if(ensD.length){
+      const ensCtx=document.getElementById('modalEnsamChart').getContext('2d');
+      if(mCharts.ensam)mCharts.ensam.destroy();
+      mCharts.ensam=new Chart(ensCtx,{type:'bar',
+        data:{labels:ensD.map(d=>d.n.split(' ')[0]),datasets:[{data:ensD.map(d=>d.v),backgroundColor:'rgba(200,200,200,0.3)',borderColor:'#888888',borderWidth:1,borderRadius:3}]},
+        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:400},
+          plugins:{legend:{display:false},
+          tooltip:{callbacks:{title:ctx=>ensD[ctx[0].dataIndex].n,label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} unid`}}},
+          scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});
+    }
+    // Diseños
+    const disD=(obra.diseño||[]).slice(0,8);
+    if(disD.length){
+      const disCtx=document.getElementById('modalDisenoChart').getContext('2d');
+      if(mCharts.diseno)mCharts.diseno.destroy();
+      mCharts.diseno=new Chart(disCtx,{type:'bar',
+        data:{labels:disD.map(d=>d.n.length>16?d.n.slice(0,16)+'…':d.n),datasets:[{data:disD.map(d=>d.v),backgroundColor:'rgba(200,200,200,0.2)',borderColor:'#c8a84b',borderWidth:1,borderRadius:3}]},
+        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:400},
+          plugins:{legend:{display:false},
+          tooltip:{callbacks:{title:ctx=>disD[ctx[0].dataIndex].n,label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} unid`}}},
+          scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{display:false}}}}});
+    }
+  },80);
+}
+function closeModal(e){if(e.target===document.getElementById('obraModal'))closeModalBtn();}
+function closeModalBtn(){document.getElementById('obraModal').classList.remove('open');document.body.style.overflow='';}
+
+/* ══ KPI DRILL MODAL ══ */
+const KPI_CFG={
+  items:{icon:'📦',color:'#00e5a0',bg:'rgba(0,229,160,0.12)',title:'Total Unidades',subtitle:'Desglose de unidades producidas',tabs:['Por Año','Por Mes','Por Obra','Por Ensamblador']},
+  m2:  {icon:'📐',color:'#3d7fff',bg:'rgba(61,127,255,0.12)',title:'M² Total',subtitle:'Desglose de metros cuadrados',tabs:['Por Año','Por Mes','Por Obra','Por Ensamblador']},
+  precio:{icon:'💰',color:'#ff6b35',bg:'rgba(255,107,53,0.12)',title:'Valor Total',subtitle:'Desglose del valor de producción',tabs:['Por Año','Por Mes','Por Obra']},
+  obras:{icon:'🏗️',color:'#f0b429',bg:'rgba(240,180,41,0.12)',title:'Obras',subtitle:'Análisis de proyectos',tabs:['Listado','Por Año','Ranking']},
+  inst:{icon:'✅',color:'#c77dff',bg:'rgba(199,125,255,0.12)',title:'Instalados',subtitle:'Desglose de instalaciones',tabs:['Por Obra','Por Año','Pendientes']},
+  pct:{icon:'📊',color:'#00e5a0',bg:'rgba(0,229,160,0.15)',title:'% Instalación',subtitle:'Tasa de instalación',tabs:['Por Obra','Por Año','Semáforo']},
+  cola:{icon:'⏳',color:'#f0b429',bg:'rgba(240,180,41,0.15)',title:'En Cola',subtitle:'Unidades pendientes de fabricar por obra',tabs:['Por Obra','Top Críticas']},
+  produccion:{icon:'⚙️',color:'#3d7fff',bg:'rgba(61,127,255,0.15)',title:'En Producción',subtitle:'Unidades con STATUS = ENSAMBLADO por obra',tabs:['Por Obra','Detalle']}
+};
+function openKpiModal(kpi){
+  const cfg=KPI_CFG[kpi];
+  document.getElementById('kpiDrillIcon').textContent=cfg.icon;
+  document.getElementById('kpiDrillIcon').style.background=cfg.bg;
+  document.getElementById('kpiDrillTitle').textContent=cfg.title;
+  document.getElementById('kpiDrillSubtitle').textContent=cfg.subtitle;
+  document.getElementById('kpiDrillNav').innerHTML=cfg.tabs.map((t,i)=>
+    `<button class="kpi-nav-tab${i===0?' active':''}" onclick="switchKpiTab(${i},this,'${kpi}')">${t}</button>`).join('');
+  Object.values(kpiCharts).forEach(c=>{if(c)c.destroy();});kpiCharts={};
+  renderKpiView(kpi,0);
+  document.getElementById('kpiDrillModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function switchKpiTab(idx,el,kpi){
+  document.querySelectorAll('.kpi-nav-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  Object.values(kpiCharts).forEach(c=>{if(c)c.destroy();});kpiCharts={};
+  renderKpiView(kpi,idx);
+}
+function renderKpiView(kpi,tab){
+  const c=document.getElementById('kpiDrillContent');
+  if(kpi==='items')  renderMV(c,tab,'items',v=>v.toLocaleString('es-CO')+' unid','#00e5a0');
+  if(kpi==='m2')     renderMV(c,tab,'m2',v=>v.toLocaleString('es-CO',{maximumFractionDigits:0})+' m²','#3d7fff');
+  if(kpi==='precio') renderPV(c,tab);
+  if(kpi==='obras')  renderOV(c,tab);
+  if(kpi==='inst')   renderIV(c,tab);
+  if(kpi==='pct')    renderPctV(c,tab);
+  if(kpi==='cola')   renderColaV(c,tab);
+  if(kpi==='produccion') renderProduccionV(c,tab);
+}
+
+function renderColaV(c,tab){
+  const allCola=getColaByObra();
+  const total=allCola.reduce((s,r)=>s+r.cola,0);
+  const totalM2=allCola.reduce((s,r)=>s+(r.colaM2||0),0);
+  const totalFab=(DATA.kpis?.total_items||0);
+  if(tab===0){
+    const max=allCola[0]?allCola[0].cola:1;
+    c.innerHTML=sumCards([
+      {l:'Total en Cola',v:total.toLocaleString('es-CO'),vc:'#c8a84b'},
+      {l:'Valor en Cola',v:fmtPrecio(allCola.reduce((s,r)=>s+(r.colaPrecio||0),0)),vc:'#c8a84b'},
+      {l:'Obras afectadas',v:allCola.length+''},
+      {l:'Mayor obra',v:allCola[0]?.OBRA.trim()||'—'}
+    ])+'<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">'
+      +'<input class="drill-search" id="dsColaOb" placeholder="🔍 buscar obra..." oninput="dsColaF()" style="flex:1;margin-bottom:0">'
+      +'<button onclick="openColaCTMV(\'__TODAS__\')" style="white-space:nowrap;padding:7px 12px;border-radius:6px;border:1px solid #c8a84b;background:rgba(200,168,75,0.12);color:#c8a84b;font-size:11px;cursor:pointer;font-weight:600">Ver todas las obras</button>'
+      +'</div>'+
+    (window._kpiColaRows=allCola,'')+
+    chartBox('kcco')+drillTbl(['OBRA','UNID EN COLA','M² EN COLA','VALOR EN COLA','FABRICADAS'],allCola.map((r,_ri)=>{
+      return['<span onclick="openColaCTMV(window._kpiColaRows['+_ri+'].OBRA)" style="cursor:pointer;color:var(--accent2);text-decoration:underline dotted">'+r.OBRA.trim()+'</span>',
+        '<span style="color:#c8a84b;font-weight:700">⏳ '+r.cola.toLocaleString('es-CO')+'</span>',
+        '<span style="color:#c8a84b">'+r.colaM2.toLocaleString('es-CO',{maximumFractionDigits:1})+' m²</span>',
+        '<span style="color:#c8a84b;font-weight:600">'+fmtPrecio(r.colaPrecio)+'</span>',
+        r.items.toLocaleString('es-CO')];
+    }),'dsColaTb');
+    setTimeout(()=>{const ct=document.getElementById('kcco');if(!ct)return;const t12=allCola.slice(0,12);
+      kpiCharts.co=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:t12.map(r=>r.OBRA.trim().length>14?r.OBRA.trim().slice(0,14)+'…':r.OBRA.trim()),
+        datasets:[{data:t12.map(r=>r.cola),backgroundColor:'rgba(240,180,41,0.6)',borderColor:'#f0b429',borderWidth:1,borderRadius:3}]},
+        options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const r=t12[ctx.dataIndex];return[` ${r.cola.toLocaleString('es-CO')} unidades`,` ${r.colaM2.toLocaleString('es-CO',{maximumFractionDigits:1})} m²`];}}}},
+          scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});},50);
+  }
+  if(tab===1){
+    const top10=allCola.slice(0,10);
+    c.innerHTML='<div style="background:rgba(240,180,41,0.07);border:1px solid rgba(240,180,41,0.25);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:11px;color:var(--muted);line-height:1.7">'
+      +'<span style="color:#f0b429;font-weight:700;font-size:13px">⚠️ Atención crítica</span><br>'
+      +'Las siguientes obras tienen el mayor volumen de unidades pendientes de fabricar. Cada unidad en cola representa una unidad comprometida con el cliente que aún no ha entrado a producción.'
+      +'</div>'+chartBox('kcco2')+drillTbl(['#','OBRA','UNID EN COLA','VALOR EN COLA','M² EN COLA'],top10.map((r,i)=>{
+        const m=['🥇','🥈','🥉'][i]||(i+1)+'';
+        const urgCls=r.cola>500?'color:#888888;font-weight:500':'color:#c8a84b;font-weight:500';
+        return[m,r.OBRA.trim(),
+          `<span style="${urgCls}">⏳ ${r.cola.toLocaleString('es-CO')}</span>`,
+          `<span style="color:#c8a84b;font-weight:600">${fmtPrecio(r.colaPrecio)}</span>`,
+          `<span style="color:#c8a84b">${r.colaM2.toLocaleString('es-CO',{maximumFractionDigits:1})} m²</span>`];
+      }));
+    setTimeout(()=>{const ct=document.getElementById('kcco2');if(!ct)return;
+      kpiCharts.co2=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:top10.map(r=>r.OBRA.trim().length>14?r.OBRA.trim().slice(0,14)+'…':r.OBRA.trim()),
+        datasets:[
+          {label:'En Cola',data:top10.map(r=>r.cola),backgroundColor:'rgba(240,180,41,0.7)',borderColor:'#f0b429',borderWidth:1,borderRadius:4,stack:'s'},
+          {label:'Fabricadas',data:top10.map(r=>r.items),backgroundColor:'rgba(200,200,200,0.15)',borderColor:'#c0c0c0',borderWidth:1,borderRadius:4,stack:'s'}
+        ]},
+        options:{responsive:true,plugins:{legend:{display:true,labels:{color:'#5a6480',font:{size:9}}},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw.toLocaleString('es-CO')}`}}},
+          scales:{x:{stacked:true,grid:{color:'rgba(255,255,255,0.03)'}},y:{stacked:true,grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>v.toLocaleString('es-CO')}}}}});},50);
+  }
+}
+function dsColaF(){
+  const s=document.getElementById('dsColaOb').value.toLowerCase();
+  const rows=getColaByObra().filter(r=>r.OBRA.toLowerCase().includes(s));
+  document.getElementById('dsColaTb').innerHTML=rows.map(r=>{
+    return'<tr><td>'+r.OBRA.trim()+'</td>'
+      +'<td><span style="color:#c8a84b;font-weight:700">⏳ '+r.cola.toLocaleString('es-CO')+'</span></td>'
+      +'<td><span style="color:#c8a84b">'+r.colaM2.toLocaleString('es-CO',{maximumFractionDigits:1})+' m²</span></td>'
+      +'<td><span style="color:#c8a84b;font-weight:600">'+fmtPrecio(r.colaPrecio)+'</span></td>'
+      +'<td>'+r.items.toLocaleString('es-CO')+'</td></tr>';
+  }).join('');
+}
+
+/* GENERIC KPI VIEWS (unchanged logic, use tableData for obra-filtered) */
+function renderMV(c,tab,metric,fmt,color){
+  const byAño=getFilteredByAño();
+  if(tab===0){
+    const rows=byAño.map(d=>({año:d['AÑO PRODUCCION'],v:d[metric]}));const max=Math.max(...rows.map(r=>r.v),1);
+    c.innerHTML=sumCards([{l:'Total',v:fmt(rows.reduce((s,r)=>s+r.v,0))},{l:'Mejor año',v:rows.length?rows.reduce((a,b)=>a.v>b.v?a:b).año:'-'},{l:'Promedio/año',v:fmt(Math.round(rows.reduce((s,r)=>s+r.v,0)/Math.max(rows.length,1)))},{l:'Período',v:rows.length?rows[0].año+'-'+rows[rows.length-1].año:'-'}])
+      +chartBox('kca')+drillTbl(['AÑO','VALOR','BARRA'],rows.map(r=>['<b>'+r.año+'</b>',fmt(r.v),pb(r.v,max,color)]));
+    setTimeout(()=>{const ct=document.getElementById('kca');if(!ct)return;kpiCharts.a=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:rows.map(r=>r.año),datasets:[{data:rows.map(r=>r.v),backgroundColor:color+'88',borderColor:color,borderWidth:1,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>v.toLocaleString('es-CO')}}}}});},50);
+  }
+  if(tab===1){
+    const md={};MES_ORDEN.forEach(m=>md[m]=0);getFilteredByMes().forEach(d=>{const m=d['MES PRODUCCION'];if(m in md)md[m]+=d[metric];});
+    const rows=MES_ORDEN.map(m=>({mes:m,v:md[m]}));const max=Math.max(...rows.map(r=>r.v),1);
+    c.innerHTML=sumCards([{l:'Mes pico',v:rows.reduce((a,b)=>a.v>b.v?a:b).mes},{l:'Valor pico',v:fmt(max)},{l:'Promedio/mes',v:fmt(Math.round(rows.reduce((s,r)=>s+r.v,0)/12))},{l:'Activos',v:rows.filter(r=>r.v>0).length+''}])
+      +chartBox('kcm')+drillTbl(['MES','VALOR','BARRA'],rows.map(r=>['<b>'+r.mes+'</b>',fmt(r.v),pb(r.v,max,color)]));
+    setTimeout(()=>{const ct=document.getElementById('kcm');if(!ct)return;kpiCharts.m=new Chart(ct.getContext('2d'),{type:'line',data:{labels:MES_ORDEN.map(m=>m.slice(0,3).toUpperCase()),datasets:[{data:rows.map(r=>r.v),borderColor:color,backgroundColor:color+'15',borderWidth:2,pointBackgroundColor:color,pointRadius:4,fill:true,tension:0.4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>v.toLocaleString('es-CO')}}}}});},50);
+  }
+  if(tab===2){
+    const key=metric==='items'?'items':'m2_total';const rows=[...tableData].sort((a,b)=>b[key]-a[key]);const max=rows[0]?rows[0][key]:1;
+    c.innerHTML='<input class="drill-search" id="dsOb" placeholder="🔍 buscar..." oninput="dsObraF(\''+metric+'\',\''+color+'\')">'+chartBox('kco')+drillTbl(['OBRA','VALOR','BARRA'],rows.map(r=>[r.OBRA.trim(),fmt(r[key]),pb(r[key],max,color)]),'dsObraTb');
+    setTimeout(()=>{const ct=document.getElementById('kco');if(!ct)return;const t10=rows.slice(0,10);kpiCharts.o=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:t10.map(r=>r.OBRA.trim().length>14?r.OBRA.trim().slice(0,14)+'…':r.OBRA.trim()),datasets:[{data:t10.map(r=>r[key]),backgroundColor:COLORS.map(c=>c+'88'),borderColor:COLORS,borderWidth:1,borderRadius:3}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});},50);
+  }
+  if(tab===3){
+    const key=metric==='items'?'items':'m2';const rows=[...DATA.by_ensam||[]].sort((a,b)=>b[key]-a[key]);const max=rows[0]?rows[0][key]:1;
+    c.innerHTML='<input class="drill-search" id="dsEn" placeholder="🔍 buscar..." oninput="dsEnsF(\''+metric+'\',\''+color+'\')">'+chartBox('kce')+drillTbl(['ENSAMBLADOR','VALOR','BARRA'],rows.map(r=>[r.ENSAMBLADOR,fmt(r[key]),pb(r[key],max,color)]),'dsEnsTb');
+    setTimeout(()=>{const ct=document.getElementById('kce');if(!ct)return;const t10=rows.slice(0,10);kpiCharts.e=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:t10.map(r=>r.ENSAMBLADOR.split(' ')[0]),datasets:[{data:t10.map(r=>r[key]),backgroundColor:COLORS.map(c=>c+'88'),borderColor:COLORS,borderWidth:1,borderRadius:3}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{title:ctx=>t10[ctx[0].dataIndex].ENSAMBLADOR,label:ctx=>' '+fmt(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});},50);
+  }
+}
+function dsObraF(metric,color){const s=document.getElementById('dsOb').value.toLowerCase();const key=metric==='items'?'items':'m2_total';const fmt=metric==='items'?(v=>v.toLocaleString('es-CO')+' unid'):(v=>v.toLocaleString('es-CO',{maximumFractionDigits:0})+' m²');const rows=tableData.filter(d=>d.OBRA.toLowerCase().includes(s)).sort((a,b)=>b[key]-a[key]);const max=tableData.reduce((m,r)=>Math.max(m,r[key]),1);document.getElementById('dsObraTb').innerHTML=rows.map(r=>'<tr><td>'+r.OBRA.trim()+'</td><td>'+fmt(r[key])+'</td><td>'+pb(r[key],max,color)+'</td></tr>').join('');}
+function dsEnsF(metric,color){const s=document.getElementById('dsEn').value.toLowerCase();const key=metric==='items'?'items':'m2';const fmt=metric==='items'?(v=>v.toLocaleString('es-CO')+' unid'):(v=>v.toLocaleString('es-CO',{maximumFractionDigits:0})+' m²');const rows=(DATA.by_ensam||[]).filter(d=>d.ENSAMBLADOR.toLowerCase().includes(s)).sort((a,b)=>b[key]-a[key]);const max=(DATA.by_ensam||[]).reduce((m,r)=>Math.max(m,r[key]),1);document.getElementById('dsEnsTb').innerHTML=rows.map(r=>'<tr><td>'+r.ENSAMBLADOR+'</td><td>'+fmt(r[key])+'</td><td>'+pb(r[key],max,color)+'</td></tr>').join('');}
+
+function renderPV(c,tab){const byAño=getFilteredByAño();if(tab===0){const rows=byAño.map(d=>({año:d['AÑO PRODUCCION'],v:d.precio||0}));const max=Math.max(...rows.map(r=>r.v),1);const tot=rows.reduce((s,r)=>s+r.v,0);c.innerHTML=sumCards([{l:'Total',v:fmtPrecio(tot)},{l:'Año pico',v:rows.length?rows.reduce((a,b)=>a.v>b.v?a:b).año:'-'},{l:'Promedio/año',v:fmtPrecio(Math.round(tot/Math.max(rows.length,1)))},{l:'Período',v:rows.length?rows[0].año+'-'+rows[rows.length-1].año:'-'}])+chartBox('kcpañ')+drillTbl(['AÑO','VALOR','BARRA'],rows.map(r=>['<b>'+r.año+'</b>',fmtPrecio(r.v),pb(r.v,max,'#ff6b35')]));setTimeout(()=>{const ct=document.getElementById('kcpañ');if(!ct)return;kpiCharts.pa=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:rows.map(r=>r.año),datasets:[{data:rows.map(r=>r.v),backgroundColor:'rgba(255,107,53,0.5)',borderColor:'#888888',borderWidth:1,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmtPrecio(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>fmtPrecio(v)}}}}});},50);}
+if(tab===1){const rows=MES_ORDEN.map(m=>({mes:m,v:0}));getFilteredByMes().forEach(m=>{const idx=MES_ORDEN.indexOf(m['MES PRODUCCION']);if(idx>=0)rows[idx].v+=(m.precio||0);});const max=Math.max(...rows.map(r=>r.v),1);c.innerHTML=sumCards([{l:'Mes pico',v:rows.reduce((a,b)=>a.v>b.v?a:b).mes},{l:'Valor pico',v:fmtPrecio(max)},{l:'Promedio/mes',v:fmtPrecio(Math.round(rows.reduce((s,r)=>s+r.v,0)/12))},{l:'Total',v:fmtPrecio(byAño.reduce((s,r)=>s+(r.precio||0),0))}])+chartBox('kcpmes')+drillTbl(['MES','VALOR','BARRA'],rows.map(r=>['<b>'+r.mes+'</b>',fmtPrecio(r.v),pb(r.v,max,'#ff6b35')]));setTimeout(()=>{const ct=document.getElementById('kcpmes');if(!ct)return;kpiCharts.pm=new Chart(ct.getContext('2d'),{type:'line',data:{labels:MES_ORDEN.map(m=>m.slice(0,3).toUpperCase()),datasets:[{data:rows.map(r=>r.v),borderColor:'#888888',backgroundColor:'rgba(255,107,53,0.08)',borderWidth:2,pointBackgroundColor:'#ff6b35',pointRadius:4,fill:true,tension:0.4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmtPrecio(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>fmtPrecio(v)}}}}});},50);}
+if(tab===2){const rows=[...tableData].sort((a,b)=>b.precio_total-a.precio_total);const max=rows[0]?rows[0].precio_total:1;c.innerHTML='<input class="drill-search" id="dsPOb" placeholder="🔍 buscar..." oninput="dsPObraF()">'+chartBox('kcpob')+drillTbl(['OBRA','VALOR','UNID','BARRA'],rows.map(r=>[r.OBRA.trim(),fmtPrecio(r.precio_total),r.items.toLocaleString('es-CO'),pb(r.precio_total,max,'#ff6b35')]),'dsPObraTb');setTimeout(()=>{const ct=document.getElementById('kcpob');if(!ct)return;const t10=rows.slice(0,10);kpiCharts.po=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:t10.map(r=>r.OBRA.trim().length>14?r.OBRA.trim().slice(0,14)+'…':r.OBRA.trim()),datasets:[{data:t10.map(r=>r.precio_total),backgroundColor:'rgba(255,107,53,0.55)',borderColor:'#888888',borderWidth:1,borderRadius:3}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmtPrecio(ctx.raw)}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>fmtPrecio(v)}},y:{grid:{display:false}}}}});},50);}}
+function dsPObraF(){const s=document.getElementById('dsPOb').value.toLowerCase();const rows=tableData.filter(d=>d.OBRA.toLowerCase().includes(s)).sort((a,b)=>b.precio_total-a.precio_total);const max=tableData.reduce((m,r)=>Math.max(m,r.precio_total),1);document.getElementById('dsPObraTb').innerHTML=rows.map(r=>'<tr><td>'+r.OBRA.trim()+'</td><td>'+fmtPrecio(r.precio_total)+'</td><td>'+r.items.toLocaleString('es-CO')+'</td><td>'+pb(r.precio_total,max,'#ff6b35')+'</td></tr>').join('');}
+function renderOV(c,tab){if(tab===0){c.innerHTML=sumCards([{l:'Total obras',v:tableData.length+''},{l:'Más grande',v:tableData[0]?.OBRA.trim()||'-'},{l:'Total unidades',v:tableData.reduce((s,r)=>s+r.items,0).toLocaleString('es-CO')},{l:'Total m²',v:tableData.reduce((s,r)=>s+r.m2_total,0).toLocaleString('es-CO',{maximumFractionDigits:0})+' m²'}])+'<input class="drill-search" id="dsOL" placeholder="🔍 buscar..." oninput="dsObraLF()">'+drillTbl(['OBRA','UNID','M²','VALOR','%INST','EN COLA'],tableData.map(r=>{const pct=r.items>0?Math.round(r.instalados/r.items*100):0;const cls=pct>=90?'color:#c0c0c0':pct>=60?'color:#f0b429':'color:#888888';const colaCell=r.cola>0?'<span style="color:#f0b429;font-weight:700">⏳ '+r.cola.toLocaleString('es-CO')+'</span>':'—';return[r.OBRA.trim(),r.items.toLocaleString('es-CO'),r.m2_total.toLocaleString('es-CO',{maximumFractionDigits:0}),fmtPrecio(r.precio_total),'<span style="'+cls+'">'+pct+'%</span>',colaCell];}),'dsObraLTb');}
+if(tab===1){const ay=getActiveYears();const rows=ay.map(yr=>{const obras=YEAR_OBRA[yr]||[];return{yr,n:obras.length,items:obras.reduce((s,o)=>s+o.items,0)};});const max=Math.max(...rows.map(r=>r.n),1);c.innerHTML=sumCards([{l:'Años selec.',v:rows.length+''},{l:'Año más obras',v:rows.length?rows.reduce((a,b)=>a.n>b.n?a:b).yr:'-'},{l:'Máx obras/año',v:Math.max(...rows.map(r=>r.n),0)+''},{l:'Promedio',v:Math.round(rows.reduce((s,r)=>s+r.n,0)/Math.max(rows.length,1))+' obras'}])+chartBox('kcoañ')+drillTbl(['AÑO','OBRAS','UNIDADES','BARRA'],rows.map(r=>['<b>'+r.yr+'</b>',r.n+'',r.items.toLocaleString('es-CO'),pb(r.n,max,'#f0b429')]));setTimeout(()=>{const ct=document.getElementById('kcoañ');if(!ct)return;kpiCharts.oa=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:rows.map(r=>r.yr),datasets:[{data:rows.map(r=>r.n),backgroundColor:'rgba(240,180,41,0.5)',borderColor:'#f0b429',borderWidth:1,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.raw+' obras'}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{stepSize:1}}}}});},50);}
+if(tab===2){const rows=[...tableData];const max=rows[0]?rows[0].items:1;c.innerHTML=drillTbl(['#','OBRA','UNID','M²','VALOR','%INST'],rows.map((r,i)=>{const pct=r.items>0?Math.round(r.instalados/r.items*100):0;const m=['🥇','🥈','🥉'][i]||(i+1)+'';const cls=pct>=90?'color:#c0c0c0':pct>=60?'color:#f0b429':'color:#888888';return[m,r.OBRA.trim(),'<div class="prog-wrap"><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:'+Math.round(r.items/max*100)+'%;background:#00e5a0"></div></div><span>'+r.items.toLocaleString('es-CO')+'</span></div>',r.m2_total.toLocaleString('es-CO',{maximumFractionDigits:0}),fmtPrecio(r.precio_total),'<span style="'+cls+'">'+pct+'%</span>'];},));}}
+function dsObraLF(){const s=document.getElementById('dsOL').value.toLowerCase();const rows=tableData.filter(d=>d.OBRA.toLowerCase().includes(s));document.getElementById('dsObraLTb').innerHTML=rows.map(r=>{const pct=r.items>0?Math.round(r.instalados/r.items*100):0;const cls=pct>=90?'color:#c0c0c0':pct>=60?'color:#f0b429':'color:#888888';const cc=r.cola>0?'<span style="color:#f0b429;font-weight:700">⏳ '+r.cola.toLocaleString('es-CO')+'</span>':'—';return'<tr><td>'+r.OBRA.trim()+'</td><td>'+r.items.toLocaleString('es-CO')+'</td><td>'+r.m2_total.toLocaleString('es-CO',{maximumFractionDigits:0})+'</td><td>'+fmtPrecio(r.precio_total)+'</td><td><span style="'+cls+'">'+pct+'%</span></td><td>'+cc+'</td></tr>';}).join('');}
+function renderIV(c,tab){if(tab===0){const rows=[...tableData].sort((a,b)=>b.instalados-a.instalados);const max=rows[0]?rows[0].instalados:1;c.innerHTML='<input class="drill-search" id="dsInst" placeholder="🔍 buscar..." oninput="dsInstF()">'+chartBox('kcio')+drillTbl(['OBRA','INSTALADOS','TOTAL','BARRA'],rows.map(r=>[r.OBRA.trim(),r.instalados.toLocaleString('es-CO'),r.items.toLocaleString('es-CO'),pb(r.instalados,max,'#c77dff')]),'dsInstTb');setTimeout(()=>{const ct=document.getElementById('kcio');if(!ct)return;const t10=rows.slice(0,10);kpiCharts.io=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:t10.map(r=>r.OBRA.trim().length>14?r.OBRA.trim().slice(0,14)+'…':r.OBRA.trim()),datasets:[{data:t10.map(r=>r.instalados),backgroundColor:'rgba(199,125,255,0.55)',borderColor:'#a0a0a0',borderWidth:1,borderRadius:3}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.raw.toLocaleString('es-CO')+' inst.'}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});},50);}
+if(tab===1){const ay=getActiveYears();const rows=ay.map(yr=>{const obras=YEAR_OBRA[yr]||[];const inst=obras.reduce((s,o)=>s+(o.inst||0),0),total=obras.reduce((s,o)=>s+o.items,0);return{yr,inst,total,pct:total>0?Math.round(inst/total*100):0};});const max=Math.max(...rows.map(r=>r.inst),1);c.innerHTML=sumCards([{l:'Total inst.',v:rows.reduce((s,r)=>s+r.inst,0).toLocaleString('es-CO')},{l:'Mejor año(%)',v:rows.length?rows.reduce((a,b)=>a.pct>b.pct?a:b).yr:'-'},{l:'Mayor volumen',v:rows.length?rows.reduce((a,b)=>a.inst>b.inst?a:b).yr:'-'},{l:'Prom. anual',v:Math.round(rows.reduce((s,r)=>s+r.inst,0)/Math.max(rows.length,1)).toLocaleString('es-CO')}])+chartBox('kciañ')+drillTbl(['AÑO','INST.','TOTAL','%INST','BARRA'],rows.map(r=>{const cls=r.pct>=90?'color:#c0c0c0':r.pct>=60?'color:#f0b429':'color:#888888';return['<b>'+r.yr+'</b>',r.inst.toLocaleString('es-CO'),r.total.toLocaleString('es-CO'),'<span style="'+cls+'">'+r.pct+'%</span>',pb(r.inst,max,'#c77dff')];}));setTimeout(()=>{const ct=document.getElementById('kciañ');if(!ct)return;kpiCharts.ia=new Chart(ct.getContext('2d'),{type:'bar',data:{labels:rows.map(r=>r.yr),datasets:[{label:'Instalados',data:rows.map(r=>r.inst),backgroundColor:'rgba(200,200,200,0.4)',borderColor:'#c0c0c0',borderWidth:1,borderRadius:4},{label:'Pendientes',data:rows.map(r=>r.total-r.inst),backgroundColor:'rgba(120,120,120,0.25)',borderColor:'#888888',borderWidth:1,borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:true,labels:{color:'#5a6480',font:{size:9}}},tooltip:{callbacks:{label:ctx=>' '+ctx.dataset.label+': '+ctx.raw.toLocaleString('es-CO')}}},scales:{x:{stacked:true,grid:{color:'rgba(255,255,255,0.03)'}},y:{stacked:true,grid:{color:'rgba(255,255,255,0.04)'},ticks:{callback:v=>v.toLocaleString('es-CO')}}}}});},50);}
+if(tab===2){const rows=[...tableData].map(r=>({...r,pend:r.items-r.instalados})).filter(r=>r.pend>0).sort((a,b)=>b.pend-a.pend);const total=rows.reduce((s,r)=>s+r.pend,0);const max=rows[0]?rows[0].pend:1;c.innerHTML=sumCards([{l:'Total pendientes',v:total.toLocaleString('es-CO')},{l:'Obras con pend.',v:rows.length+''},{l:'Mayor pendiente',v:rows[0]?.OBRA.trim()||'-'},{l:'Período',v:getActiveYears().join(', ')||'todos'}])+'<input class="drill-search" id="dsPend" placeholder="🔍 buscar..." oninput="dsPendF()">'+drillTbl(['OBRA','PENDIENTES','TOTAL','BARRA'],rows.map(r=>[r.OBRA.trim(),'<span style="color:#888888">'+r.pend.toLocaleString('es-CO')+'</span>',r.items.toLocaleString('es-CO'),pb(r.pend,max,'#ff6b35')]),'dsPendTb');}
+}
+function dsInstF(){const s=document.getElementById('dsInst').value.toLowerCase();const rows=[...tableData].filter(d=>d.OBRA.toLowerCase().includes(s)).sort((a,b)=>b.instalados-a.instalados);const max=tableData.reduce((m,r)=>Math.max(m,r.instalados),1);document.getElementById('dsInstTb').innerHTML=rows.map(r=>'<tr><td>'+r.OBRA.trim()+'</td><td>'+r.instalados.toLocaleString('es-CO')+'</td><td>'+r.items.toLocaleString('es-CO')+'</td><td>'+pb(r.instalados,max,'#c77dff')+'</td></tr>').join('');}
+function dsPendF(){const s=document.getElementById('dsPend').value.toLowerCase();const rows=tableData.filter(d=>d.OBRA.toLowerCase().includes(s)).map(r=>({...r,pend:r.items-r.instalados})).filter(r=>r.pend>0).sort((a,b)=>b.pend-a.pend);const max=tableData.reduce((m,r)=>Math.max(m,r.items-r.instalados),1);document.getElementById('dsPendTb').innerHTML=rows.map(r=>'<tr><td>'+r.OBRA.trim()+'</td><td><span style="color:#888888">'+r.pend.toLocaleString('es-CO')+'</span></td><td>'+r.items.toLocaleString('es-CO')+'</td><td>'+pb(r.pend,max,'#ff6b35')+'</td></tr>').join('');}
+function renderPctV(c,tab){if(tab===0){const rows=[...tableData].map(r=>({...r,pct:r.items>0?r.instalados/r.items*100:0})).sort((a,b)=>b.pct-a.pct);c.innerHTML='<input class="drill-search" id="dsPct" placeholder="🔍 buscar..." oninput="dsPctF()">'+drillTbl(['OBRA','%INST','INST.','TOTAL'],rows.map(r=>{const p=r.pct.toFixed(1);const cls=r.pct>=90?'color:#ffffff;font-weight:500':r.pct>=60?'color:#c8a84b;font-weight:500':'color:#888888;font-weight:500';return[r.OBRA.trim(),'<span style="'+cls+'">'+p+'%</span>',r.instalados.toLocaleString('es-CO'),r.items.toLocaleString('es-CO')];}),'dsPctTb');}
+if(tab===1){const ay=getActiveYears();const rows=ay.map(yr=>{const obras=YEAR_OBRA[yr]||[];const inst=obras.reduce((s,o)=>s+(o.inst||0),0),total=obras.reduce((s,o)=>s+o.items,0);return{yr,pct:total>0?inst/total*100:0,inst,total};});c.innerHTML=sumCards([{l:'Promedio global',v:rows.length?((rows.reduce((s,r)=>s+r.pct,0)/rows.length).toFixed(1)+'%'):'-'},{l:'Mejor año',v:rows.length?(rows.reduce((a,b)=>a.pct>b.pct?a:b).yr+' ('+rows.reduce((a,b)=>a.pct>b.pct?a:b).pct.toFixed(1)+'%)'):'-'},{l:'Peor año',v:rows.length?(rows.reduce((a,b)=>a.pct<b.pct?a:b).yr+' ('+rows.reduce((a,b)=>a.pct<b.pct?a:b).pct.toFixed(1)+'%)'):'-'},{l:'Años ≥90%',v:rows.filter(r=>r.pct>=90).length+''}])+chartBox('kcpañ2')+drillTbl(['AÑO','%INST','INST.','TOTAL'],rows.map(r=>{const p=r.pct.toFixed(1);const cls=r.pct>=90?'color:#ffffff;font-weight:500':r.pct>=60?'color:#c8a84b;font-weight:500':'color:#888888;font-weight:500';return['<b>'+r.yr+'</b>','<span style="'+cls+'">'+p+'%</span>',r.inst.toLocaleString('es-CO'),r.total.toLocaleString('es-CO')];}));setTimeout(()=>{const ct=document.getElementById('kcpañ2');if(!ct)return;kpiCharts.pañ2=new Chart(ct.getContext('2d'),{type:'line',data:{labels:rows.map(r=>r.yr),datasets:[{data:rows.map(r=>Math.round(r.pct*10)/10),borderColor:'#c0c0c0',backgroundColor:'rgba(255,255,255,0.04)',borderWidth:2,pointBackgroundColor:rows.map(r=>r.pct>=90?'#ffffff':r.pct>=60?'#c8a84b':'#888888'),pointRadius:5,fill:true,tension:0.3}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.raw+'%'}}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'}},y:{grid:{color:'rgba(255,255,255,0.04)'},min:0,max:100,ticks:{callback:v=>v+'%'}}}}});},50);}
+if(tab===2){const rows=[...tableData].map(r=>({...r,pct:r.items>0?r.instalados/r.items*100:0}));const v=rows.filter(r=>r.pct>=90).length,am=rows.filter(r=>r.pct>=60&&r.pct<90).length,ro=rows.filter(r=>r.pct<60).length;c.innerHTML=sumCards([{l:'🟢 ≥90%',v:v+' obras',vc:'#00e5a0'},{l:'🟡 60-89%',v:am+' obras',vc:'#f0b429'},{l:'🔴 <60%',v:ro+' obras',vc:'#ff6b35'},{l:'Período',v:getActiveYears().join(', ')||'todos'}])+chartBox('kcsem')+'<h4 style="font-size:10px;color:var(--muted);text-transform:uppercase;margin:12px 0 8px">🔴 Críticas (&lt;60%)</h4>'+drillTbl(['OBRA','%INST','INST.','PEND.'],rows.filter(r=>r.pct<60).sort((a,b)=>a.pct-b.pct).map(r=>[r.OBRA.trim(),'<span style="color:#888888;font-weight:700">'+r.pct.toFixed(1)+'%</span>',r.instalados.toLocaleString('es-CO'),(r.items-r.instalados).toLocaleString('es-CO')]));setTimeout(()=>{const ct=document.getElementById('kcsem');if(!ct)return;kpiCharts.sem=new Chart(ct.getContext('2d'),{type:'doughnut',data:{labels:['≥90%','60-89%','<60%'],datasets:[{data:[v,am,ro],backgroundColor:['#00e5a0','#f0b429','#ff6b35'],borderWidth:2,borderColor:'#161c2a'}]},options:{cutout:'65%',plugins:{legend:{display:true,position:'right',labels:{color:'#5a6480',font:{size:10}}},tooltip:{callbacks:{label:ctx=>' '+ctx.label+': '+ctx.raw+' obras'}}}}});},50);}}
+function dsPctF(){const s=document.getElementById('dsPct').value.toLowerCase();const rows=tableData.filter(d=>d.OBRA.toLowerCase().includes(s)).map(r=>({...r,pct:r.items>0?r.instalados/r.items*100:0})).sort((a,b)=>b.pct-a.pct);document.getElementById('dsPctTb').innerHTML=rows.map(r=>{const p=r.pct.toFixed(1);const cls=r.pct>=90?'color:#ffffff;font-weight:500':r.pct>=60?'color:#c8a84b;font-weight:500':'color:#888888;font-weight:500';return'<tr><td>'+r.OBRA.trim()+'</td><td><span style="'+cls+'">'+p+'%</span></td><td>'+r.instalados.toLocaleString('es-CO')+'</td><td>'+r.items.toLocaleString('es-CO')+'</td></tr>';}).join('');}
+
+/* ══ MES DRILL ══ */
+let mesDrillCharts={};
+
+function openMesDrill(){
+  const activeYears=getActiveYears();
+  const yearLabel=activeYears.length===Object.keys(YEAR_OBRA).length?'TODOS':
+    activeYears.length===1?activeYears[0]:activeYears.length+' años';
+  document.getElementById('mesDrillTitle').textContent='Producción Mensual — '+yearLabel;
+  document.getElementById('mesDrillSubtitle').textContent='Obras y unidades ensambladas por mes seleccionado';
+
+  // Build tabs: one per month that has data
+  const mesData=getMesObraData();
+  const mesesConDatos=MES_ORDEN.filter(m=>mesData[m]&&mesData[m].length>0);
+
+  document.getElementById('mesDrillNav').innerHTML=mesesConDatos.map((m,i)=>{
+    const total=mesData[m].reduce((s,r)=>s+r.items,0);
+    return`<button class="kpi-nav-tab${i===0?' active':''}" onclick="switchMesTab('${m}',this)">${m.slice(0,3).toUpperCase()} <span style="opacity:0.6">(${total.toLocaleString('es-CO')})</span></button>`;
+  }).join('');
+
+  Object.values(mesDrillCharts).forEach(c=>{if(c)c.destroy();});mesDrillCharts={};
+
+  if(mesesConDatos.length>0) renderMesTab(mesesConDatos[0], mesData);
+  else document.getElementById('mesDrillContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--muted);font-size:11px">Sin datos para los años seleccionados</div>';
+
+  document.getElementById('mesDrillModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function getMesObraData(){
+  // Use MES_OBRA which stores exact año+mes+obra counts from raw data
+  // Key format: "2024_enero"
+  const activeYears=new Set(getActiveYears().map(String));
+  const result={};
+  MES_ORDEN.forEach(m=>result[m]=[]);
+
+  Object.entries(MES_OBRA).forEach(([key, obraList])=>{
+    const [yr, mes] = key.split('_');
+    if(!activeYears.has(yr)) return;
+    if(!MES_ORDEN.includes(mes)) return;
+    obraList.forEach(r=>{
+      const existing=result[mes].find(x=>x.obra===r.obra);
+      if(existing){existing.items+=r.items;existing.m2+=r.m2;}
+      else result[mes].push({obra:r.obra,items:r.items,m2:r.m2});
+    });
+  });
+
+  // Sort each month desc
+  MES_ORDEN.forEach(m=>result[m].sort((a,b)=>b.items-a.items));
+  return result;
+}
+
+function switchMesTab(mes, el){
+  document.querySelectorAll('#mesDrillNav .kpi-nav-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  Object.values(mesDrillCharts).forEach(c=>{if(c)c.destroy();});mesDrillCharts={};
+  renderMesTab(mes, getMesObraData());
+}
+
+function renderMesTab(mes, mesData){
+  const rows=mesData[mes]||[];
+  const total=rows.reduce((s,r)=>s+r.items,0);
+  const totalM2=rows.reduce((s,r)=>s+r.m2,0);
+  const c=document.getElementById('mesDrillContent');
+
+  c.innerHTML=sumCards([
+    {l:'Total unidades',v:total.toLocaleString('es-CO'),vc:'#00e5a0'},
+    {l:'Total m²',v:totalM2.toLocaleString('es-CO',{maximumFractionDigits:0})+' m²'},
+    {l:'Obras activas',v:rows.length+''},
+    {l:'Mayor obra',v:rows[0]?.obra.trim()||'—'}
+  ])+
+  '<input class="drill-search" id="dsMesOb" placeholder="🔍 buscar obra..." oninput="dsMesF(\''+mes+'\')">'+
+  chartBox('kcmes')+
+  drillTbl(
+    ['OBRA','UNIDADES','M²','BARRA'],
+    rows.map(r=>[
+      r.obra.trim(),
+      '<strong>'+r.items.toLocaleString('es-CO')+'</strong>',
+      r.m2.toLocaleString('es-CO',{maximumFractionDigits:1})+' m²',
+      pb(r.items,rows[0]?rows[0].items:1,'#00e5a0')
+    ]),
+    'dsMesTb'
+  );
+
+  setTimeout(()=>{
+    const ct=document.getElementById('kcmes');if(!ct)return;
+    const top15=rows.slice(0,15);
+    mesDrillCharts[mes]=new Chart(ct.getContext('2d'),{
+      type:'bar',
+      data:{
+        labels:top15.map(r=>r.obra.trim().length>16?r.obra.trim().slice(0,16)+'…':r.obra.trim()),
+        datasets:[{
+          data:top15.map(r=>r.items),
+          backgroundColor:COLORS.map(c=>c+'99'),
+          borderColor:COLORS,
+          borderWidth:1,borderRadius:4
+        }]
+      },
+      options:{
+        indexAxis:'y',responsive:true,
+        plugins:{legend:{display:false},tooltip:{callbacks:{
+          title:ctx=>top15[ctx[0].dataIndex].obra.trim(),
+          label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} unidades`
+        }}},
+        scales:{
+          x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},
+          y:{grid:{display:false}}
+        }
+      }
+    });
+  },50);
+}
+
+function dsMesF(mes){
+  const s=document.getElementById('dsMesOb').value.toLowerCase();
+  const rows=(getMesObraData()[mes]||[]).filter(r=>r.obra.toLowerCase().includes(s));
+  const max=rows.length?rows[0].items:1;
+  document.getElementById('dsMesTb').innerHTML=rows.map(r=>
+    `<tr><td>${r.obra.trim()}</td><td><strong>${r.items.toLocaleString('es-CO')}</strong></td><td>${r.m2.toLocaleString('es-CO',{maximumFractionDigits:1})} m²</td><td>${pb(r.items,max,'#00e5a0')}</td></tr>`
+  ).join('');
+}
+
+function closeMesDrill(e){if(e.target===document.getElementById('mesDrillModal'))closeMesDrillBtn();}
+function closeMesDrillBtn(){
+  document.getElementById('mesDrillModal').classList.remove('open');
+  document.body.style.overflow='';
+  Object.values(mesDrillCharts).forEach(c=>{if(c)c.destroy();});mesDrillCharts={};
+}
+
+/* HELPERS */
+function sumCards(cards){return'<div class="kpi-summary-grid">'+cards.map(c=>`<div class="kpi-summary-card"><div class="kpi-summary-label">${c.l}</div><div class="kpi-summary-val" style="${c.vc?'color:'+c.vc:''}">${c.v}</div></div>`).join('')+'</div>';}
+function chartBox(id){return`<div class="drill-chart-wrap"><canvas id="${id}" height="180"></canvas></div>`;}
+function drillTbl(headers,rows,tbodyId){const id=tbodyId||'drillTb'+Date.now();return`<div class="drill-table-wrap"><table class="drill-table"><thead><tr>${headers.map(h=>'<th>'+h+'</th>').join('')}</tr></thead><tbody id="${id}">${rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')}</tbody></table></div>`;}
+function pb(v,max,color){const w=max>0?Math.round(v/max*100):0;return`<div class="prog-wrap"><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${w}%;background:${color}"></div></div></div>`;}
+
+function closeKpiModal(){document.getElementById('kpiDrillModal').classList.remove('open');document.body.style.overflow='';}
+function closeKpiModalOverlay(e){if(e.target===document.getElementById('kpiDrillModal'))closeKpiModal();}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModalBtn();closeKpiModal();closeMesDrillBtn();closeUpload();}});
+
+/* ══ EXCEL UPLOAD ══ */
+let currentFileName='PRUEBA_4.xlsx';
+function openUpload(){document.getElementById('uploadOverlay').classList.add('open');document.body.style.overflow='hidden';['uploadError','uploadSuccess'].forEach(id=>document.getElementById(id).classList.remove('show'));document.getElementById('uploadProgress').classList.remove('show');document.getElementById('progressFill').style.width='0%';}
+function closeUpload(){document.getElementById('uploadOverlay').classList.remove('open');document.body.style.overflow='';}
+function closeUploadOverlay(e){if(e.target===document.getElementById('uploadOverlay'))closeUpload();}
+const drop=document.getElementById('uploadDrop');
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('dragover');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('dragover'));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('dragover');const f=e.dataTransfer?.files[0];if(f)processFile(f);});
+function handleFileSelect(e){const f=e.target.files[0];if(f)processFile(f);}
+async function processFile(file){
+  if(!file.name.match(/\.(xlsx|xls)$/i)){showError('Por favor selecciona un archivo Excel (.xlsx o .xls)');return;}
+  const prog=document.getElementById('uploadProgress'),fill=document.getElementById('progressFill'),lbl=document.getElementById('progressLabel');
+  prog.classList.add('show');['uploadError','uploadSuccess'].forEach(id=>document.getElementById(id).classList.remove('show'));
+  try{
+    lbl.textContent='Leyendo archivo...';fill.style.width='20%';await sleep(50);
+    const buf=await file.arrayBuffer();
+    lbl.textContent='Parseando Excel...';fill.style.width='40%';await sleep(50);
+    const wb=XLSX.read(buf,{type:'array',cellDates:true});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const raw=XLSX.utils.sheet_to_json(ws,{defval:''});
+    lbl.textContent='Procesando '+raw.length.toLocaleString('es-CO')+' filas...';fill.style.width='60%';await sleep(50);
+    const result=processRawData(raw);
+    lbl.textContent='Actualizando...';fill.style.width='85%';await sleep(50);
+    DATA=result.DATA;YEAR_OBRA=result.YEAR_OBRA;OBRA_DETAIL=result.OBRA_DETAIL;MES_OBRA=result.MES_OBRA||{};STATUS_BY_OBRA=result.STATUS_BY_OBRA||{};COLA_CTMV=result.COLA_CTMV||{};PROD_DETAIL=result.PROD_DETAIL||{};
+    currentFileName=file.name;
+    saveToStorage();
+    localStorage.setItem('prod_meta',JSON.stringify({name:file.name,time:new Date().toISOString(),rows:raw.length}));
+    fill.style.width='100%';lbl.textContent='¡Listo!';
+    document.getElementById('uploadSuccess').textContent='✓ '+file.name+' — '+raw.length.toLocaleString('es-CO')+' registros cargados';
+    document.getElementById('uploadSuccess').classList.add('show');
+    selectedYears.clear();buildYearChips();applyFilters();updateDataBar();
+    setTimeout(closeUpload,1800);
+  }catch(err){showError('Error: '+err.message);fill.style.width='0%';}
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function showError(msg){const el=document.getElementById('uploadError');el.textContent=msg;el.classList.add('show');}
+
+function processRawData(raw){
+  const MES_ORD=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const parseRow=r=>({
+    OBRA:String(r.OBRA||'SIN OBRA').trim(),M2:Number(r.M2)||0,PRECIO:Number(r.PRECIO)||0,
+    AÑO:parseInt(r['AÑO PRODUCCION'])||0,MES:String(r['MES PRODUCCION']||'').toLowerCase().trim(),
+    ENSAMBLADOR:String(r.ENSAMBLADOR||'SIN ASIGNAR').trim(),DISEÑO:String(r.DISEÑO||'SIN DISEÑO').trim(),
+    STATUS:String(r['STATUS PLANTA']||'SIN STATUS').trim().toUpperCase(),
+    INSTALACION:String(r.INSTALACION||'NO').trim().toUpperCase()
+  });
+
+  // Only EN COLA has no production year — all other statuses (DESPACHADO, ENSAMBLADO, PRODUCCIÓN) have year
+  const rawAll=raw.map(parseRow);
+  const colaRows=rawAll.filter(r=>r.STATUS==='EN COLA');
+
+  // Fabricated rows: must have valid year (all statuses except EN COLA)
+  const df=rawAll.filter(r=>r.STATUS!=='EN COLA'&&r.AÑO>=2010&&r.AÑO<=2030);
+  if(!df.length&&!colaRows.length)throw new Error('No se encontraron filas válidas');
+
+  const ti=df.length,tm=Math.round(df.reduce((s,r)=>s+r.M2,0)*10)/10,tp=Math.round(df.reduce((s,r)=>s+r.PRECIO,0));
+  const inst=df.filter(r=>r.INSTALACION==='SI').length;
+
+  // All obra names from fabricated + cola rows
+  const obras=new Set([...df,...colaRows].map(r=>r.OBRA));
+
+  const añoMap={};df.forEach(r=>{if(!añoMap[r.AÑO])añoMap[r.AÑO]={año:r.AÑO,items:0,m2:0,precio:0};añoMap[r.AÑO].items++;añoMap[r.AÑO].m2+=r.M2;añoMap[r.AÑO].precio+=r.PRECIO;});
+  const by_año=Object.values(añoMap).sort((a,b)=>a.año-b.año).map(r=>({'AÑO PRODUCCION':r.año,items:r.items,m2:Math.round(r.m2*10)/10,precio:Math.round(r.precio)}));
+
+  // by_obra counts fabricated units (DESPACHADO + ENSAMBLADO + PRODUCCIÓN)
+  const obraMap={};df.forEach(r=>{if(!obraMap[r.OBRA])obraMap[r.OBRA]={OBRA:r.OBRA,items:0,m2_total:0,precio_total:0,instalados:0};obraMap[r.OBRA].items++;obraMap[r.OBRA].m2_total+=r.M2;obraMap[r.OBRA].precio_total+=r.PRECIO;if(r.INSTALACION==='SI')obraMap[r.OBRA].instalados++;});
+  // Add obras that ONLY appear in cola (no fabricated units yet)
+  colaRows.forEach(r=>{if(!obraMap[r.OBRA])obraMap[r.OBRA]={OBRA:r.OBRA,items:0,m2_total:0,precio_total:0,instalados:0};});
+  const by_obra=Object.values(obraMap).sort((a,b)=>b.items-a.items).map(r=>({...r,m2_total:Math.round(r.m2_total*10)/10,precio_total:Math.round(r.precio_total)}));
+
+  const mesMap={};df.forEach(r=>{const k=r.AÑO+'_'+r.MES;if(!mesMap[k])mesMap[k]={'AÑO PRODUCCION':r.AÑO,'MES PRODUCCION':r.MES,items:0,m2:0,precio:0};mesMap[k].items++;mesMap[k].m2+=r.M2;mesMap[k].precio+=r.PRECIO;});
+  const by_mes=Object.values(mesMap).map(r=>({...r,m2:Math.round(r.m2*10)/10,precio:Math.round(r.precio)}));
+  const ensamMap={};df.forEach(r=>{if(!ensamMap[r.ENSAMBLADOR])ensamMap[r.ENSAMBLADOR]={ENSAMBLADOR:r.ENSAMBLADOR,items:0,m2:0};ensamMap[r.ENSAMBLADOR].items++;ensamMap[r.ENSAMBLADOR].m2+=r.M2;});
+  const by_ensam=Object.values(ensamMap).sort((a,b)=>b.items-a.items).slice(0,20).map(r=>({...r,m2:Math.round(r.m2*10)/10}));
+  const diseñoMap={};df.forEach(r=>{if(!diseñoMap[r.DISEÑO])diseñoMap[r.DISEÑO]={DISEÑO:r.DISEÑO,items:0};diseñoMap[r.DISEÑO].items++;});
+  const by_diseño=Object.values(diseñoMap).sort((a,b)=>b.items-a.items).slice(0,10);
+
+  // status_counts: fabricated statuses + EN COLA separately
+  const statusMap={};
+  df.forEach(r=>{statusMap[r.STATUS]=(statusMap[r.STATUS]||0)+1;});
+  statusMap['EN COLA']=(statusMap['EN COLA']||0)+colaRows.length;
+
+  const total_cola=colaRows.length;
+  const total_prod=(statusMap['PRODUCCIÓN']||0)+(statusMap['PRODUCCION']||0);
+
+  // MES_OBRA: exact breakdown of año+mes+obra from raw data
+  const mesObraMap={};
+  df.forEach(r=>{
+    if(!r.MES||!MES_ORD.includes(r.MES))return;
+    const key=r.AÑO+'_'+r.MES;
+    if(!mesObraMap[key])mesObraMap[key]={};
+    if(!mesObraMap[key][r.OBRA])mesObraMap[key][r.OBRA]={obra:r.OBRA,items:0,m2:0};
+    mesObraMap[key][r.OBRA].items++;
+    mesObraMap[key][r.OBRA].m2+=r.M2;
+  });
+  const NEW_MES_OBRA={};
+  Object.entries(mesObraMap).forEach(([key,obrasDict])=>{
+    NEW_MES_OBRA[key]=Object.values(obrasDict).map(v=>({...v,m2:Math.round(v.m2*100)/100})).sort((a,b)=>b.items-a.items);
+  });
+  const DATA={kpis:{total_items:ti,total_m2:tm,total_precio:tp,total_obras:obras.size,total_instalados:inst,pct_instalados:ti>0?Math.round(inst/ti*1000)/10:0,total_cola,total_prod},by_año,by_obra,by_mes,by_ensam,by_diseño,status_counts:statusMap,inst_counts:{SI:inst,NO:ti-inst}};
+
+  const YEAR_OBRA={};
+  Object.keys(añoMap).forEach(yr=>{
+    const ym={};df.filter(r=>r.AÑO===parseInt(yr)).forEach(r=>{if(!ym[r.OBRA])ym[r.OBRA]={obra:r.OBRA,items:0,m2:0,precio:0,inst:0};ym[r.OBRA].items++;ym[r.OBRA].m2+=r.M2;ym[r.OBRA].precio+=r.PRECIO;if(r.INSTALACION==='SI')ym[r.OBRA].inst++;});
+    YEAR_OBRA[yr]=Object.values(ym).sort((a,b)=>b.items-a.items).map(r=>({...r,m2:Math.round(r.m2*10)/10,precio:Math.round(r.precio)}));
+  });
+
+  const OBRA_DETAIL={};
+  Object.keys(obraMap).forEach(obra=>{
+    const fabRows=df.filter(r=>r.OBRA===obra);
+    const cRows=colaRows.filter(r=>r.OBRA===obra);
+    const mes={};MES_ORD.forEach(m=>{const mr=fabRows.filter(r=>r.MES===m);mes[m]={items:mr.length,m2:Math.round(mr.reduce((s,r)=>s+r.M2,0)*100)/100};});
+    const em={};fabRows.forEach(r=>{em[r.ENSAMBLADOR]=(em[r.ENSAMBLADOR]||0)+1;});
+    const dm={};fabRows.forEach(r=>{dm[r.DISEÑO]=(dm[r.DISEÑO]||0)+1;});
+    // status from fabricated rows (includes DESPACHADO, ENSAMBLADO, PRODUCCIÓN), plus EN COLA separately
+    const sm={};fabRows.forEach(r=>{sm[r.STATUS]=(sm[r.STATUS]||0)+1;});
+    if(cRows.length){
+      sm['EN COLA']=(sm['EN COLA']||0)+cRows.length;
+      sm['EN COLA_M2']=(sm['EN COLA_M2']||0)+Math.round(cRows.reduce((s,r)=>s+r.M2,0)*100)/100;
+      sm['EN COLA_PRECIO']=(sm['EN COLA_PRECIO']||0)+Math.round(cRows.reduce((s,r)=>s+r.PRECIO,0));
+    }
+    OBRA_DETAIL[obra]={items:fabRows.length,m2:Math.round(fabRows.reduce((s,r)=>s+r.M2,0)*100)/100,precio:Math.round(fabRows.reduce((s,r)=>s+r.PRECIO,0)),instalados:fabRows.filter(r=>r.INSTALACION==='SI').length,no_instalados:fabRows.filter(r=>r.INSTALACION!=='SI').length,mes,ensam:Object.entries(em).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n,v])=>({n,v})),diseño:Object.entries(dm).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n,v])=>({n,v})),status:sm};
+  });
+  // STATUS_BY_OBRA: status × obra breakdown with prices
+  const STATUS_BY_OBRA_NEW={};
+  rawAll.forEach(r=>{
+    const s=r.STATUS;if(!STATUS_BY_OBRA_NEW[s])STATUS_BY_OBRA_NEW[s]={};
+    if(!STATUS_BY_OBRA_NEW[s][r.OBRA])STATUS_BY_OBRA_NEW[s][r.OBRA]={items:0,m2:0,precio:0};
+    STATUS_BY_OBRA_NEW[s][r.OBRA].items++;STATUS_BY_OBRA_NEW[s][r.OBRA].m2+=r.M2;STATUS_BY_OBRA_NEW[s][r.OBRA].precio+=r.PRECIO;
+  });
+  const STATUS_BY_OBRA_RESULT={};
+  Object.entries(STATUS_BY_OBRA_NEW).forEach(([s,obrasObj])=>{
+    STATUS_BY_OBRA_RESULT[s]=Object.entries(obrasObj).sort((a,b)=>b[1].items-a[1].items).map(([obra,v])=>({OBRA:obra,items:v.items,m2:Math.round(v.m2*10)/10,precio:Math.round(v.precio)}));
+  });
+
+  // ── COLA_CTMV: EN COLA items with X/+ per process column (new names) ──
+  const pVal=v=>{const s=String(v||'').trim().toUpperCase();return s==='X'?'X':s==='+'?'+':'';};
+  const COLA_CTMV_NEW={};
+  const _procCols=[['CORTADO','cortado'],['TROQUELADO','troquelado'],['MECANIZADO','mecanizado'],['PROGRAMADO','programado'],['VIDRIO_1','vidrio'],['PREALISTADO','prealistado']];
+  raw.filter(r=>String(r['STATUS PLANTA']||'').trim().toUpperCase()==='EN COLA').forEach(r=>{
+    const obra=String(r.OBRA||'').trim();if(!obra)return;
+    if(!COLA_CTMV_NEW[obra])COLA_CTMV_NEW[obra]={CORTADO_X:0,CORTADO_P:0,TROQUELADO_X:0,TROQUELADO_P:0,MECANIZADO_X:0,MECANIZADO_P:0,PROGRAMADO_X:0,PROGRAMADO_P:0,VIDRIO_X:0,VIDRIO_P:0,PREALISTADO_X:0,PREALISTADO_P:0,items:[]};
+    const d=COLA_CTMV_NEW[obra];
+    _procCols.forEach(([col,key])=>{const v=pVal(r[col]);if(v==='X')d[key.toUpperCase()+'_X']++;else if(v==='+')d[key.toUpperCase()+'_P']++;});
+    const itm={item:String(r.ITEM||''),diseno:String(r.DISEÑO||r.DISENO||''),op_inst:String(r['OP INSTALACION']||'')};
+    _procCols.forEach(([col,key])=>{itm[key]=pVal(r[col]);});
+    d.items.push(itm);
+  });
+
+  // ── PROD_DETAIL: PRODUCCIÓN items with full detail + ensamblador ──
+  const exDate=v=>{if(!v)return'';try{if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();}return String(v);}catch(e){return String(v);}};
+  const exTime=v=>{if(!v)return'';try{if(typeof v==='number'){const t=Math.round(v*24*60);return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');}return String(v);}catch(e){return String(v);}};
+  const PROD_DETAIL_NEW={};
+  raw.filter(r=>String(r['STATUS PLANTA']||'').trim().toUpperCase()==='PRODUCCIÓN').forEach(r=>{
+    const obra=String(r.OBRA||'').trim();if(!obra)return;
+    if(!PROD_DETAIL_NEW[obra])PROD_DETAIL_NEW[obra]=[];
+    PROD_DETAIL_NEW[obra].push({item:String(r.ITEM||''),ubic:String(r['UBICACIÓN']||r.UBICACION||''),
+      piso:String(r.PISO||''),diseno:String(r.DISEÑO||r.DISENO||''),vidrio:String(r.VIDRIO||''),
+      op_inst:String(r['OP INSTALACION']||''),
+      ancho:r.ANCHO||'',alto:r.ALTO||'',m2:Math.round((Number(r.M2)||0)*1000)/1000,
+      hora_i:exTime(r['HORA DE INICIO']),dia_i:exDate(r['DIA INICIO']),
+      ensam:String(r.ENSAMBLADOR||'').trim()});
+  });
+
+  return{DATA,YEAR_OBRA,OBRA_DETAIL,MES_OBRA:NEW_MES_OBRA,STATUS_BY_OBRA:STATUS_BY_OBRA_RESULT,COLA_CTMV:COLA_CTMV_NEW,PROD_DETAIL:PROD_DETAIL_NEW};
+}
+
+
+/* ══ STATUS DRILL ══ */
+let statusDrillCharts={};
+function openStatusDrill(label){
+  const STATUS_COLORS_MAP={'DESPACHADO':'#e8e8e8','ENSAMBLADO':'#888888','PRODUCCIÓN':'#555555','PRODUCCION':'#555555','EN COLA':'#c8a84b'};
+  const color=STATUS_COLORS_MAP[label]||'#888888';
+  // Build rows: DESPACHADO respects year filter; others always global
+  let rows=[];
+  if(label==='DESPACHADO'){
+    const isAll=selectedYears.size===0;
+    if(isAll){
+      rows=(STATUS_BY_OBRA['DESPACHADO']||[]).filter(r=>r.items>0);
+    } else {
+      // Year-filtered: use items produced in selected years, keep only obras with DESPACHADO status
+      const ymap={};
+      getFilteredYearObraEntries().forEach(e=>{
+        if(!ymap[e.obra])ymap[e.obra]={OBRA:e.obra,items:0,m2:0,precio:0};
+        ymap[e.obra].items+=e.items;ymap[e.obra].m2+=e.m2;ymap[e.obra].precio+=e.precio;
+      });
+      rows=Object.values(ymap).filter(r=>{
+        const od=OBRA_DETAIL[r.OBRA]||OBRA_DETAIL[(r.OBRA||'').trim()];
+        return od&&od.status&&(od.status.DESPACHADO||0)>0;
+      }).map(r=>({...r,m2:Math.round(r.m2*10)/10,precio:Math.round(r.precio)}))
+        .filter(r=>r.items>0).sort((a,b)=>b.items-a.items);
+    }
+  } else {
+    // ENSAMBLADO, PRODUCCIÓN, EN COLA — always show ALL years (pending items)
+    rows=(STATUS_BY_OBRA[label]||[]).filter(r=>r.items>0);
+  }
+  if(!rows.length){
+    // Show a friendly empty message without alert
+    document.getElementById('statusDrillTitle').textContent=label;
+    document.getElementById('statusDrillSubtitle').textContent='Sin unidades registradas';
+    document.getElementById('statusDrillContent').innerHTML='<div style="padding:32px;text-align:center;color:var(--muted)">No hay datos para este status en el período seleccionado.</div>';
+    document.getElementById('statusDrillIcon').style.cssText='font-size:20px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:'+color+'22';
+    document.getElementById('statusDrillModal').classList.add('open');
+    document.body.style.overflow='hidden';
+    return;
+  }
+  const totalItems=rows.reduce((s,r)=>s+r.items,0);
+  const totalPrecio=rows.reduce((s,r)=>s+(r.precio||0),0);
+  document.getElementById('statusDrillIcon').style.cssText='font-size:20px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:'+color+'22';
+  document.getElementById('statusDrillTitle').textContent=label;
+  const yearLabel=selectedYears.size===0?'Todos los años':(label==='DESPACHADO'?getActiveYears().join(', '):'Todos los años (vigente)');
+  document.getElementById('statusDrillSubtitle').textContent=totalItems.toLocaleString('es-CO')+' unidades · '+rows.length+' obra'+(rows.length!==1?'s':'')+' · '+fmtPrecio(totalPrecio)+' — '+yearLabel;
+  const max=rows[0].items;
+  const top=rows.slice(0,12);
+  const c=document.getElementById('statusDrillContent');
+  if(statusDrillCharts.bar)statusDrillCharts.bar.destroy();
+  window._sdRows=rows;
+  c.innerHTML='<div style="margin-bottom:14px"><canvas id="sdChart" height="160"></canvas></div>'
+    +drillTbl(['OBRA','UNID','M²','VALOR','BARRA'],rows.map((r,i)=>[
+      '<span onclick="closeStatusDrill2();openObraModal(window._sdRows['+i+'].OBRA)" style="cursor:pointer;color:var(--accent2);text-decoration:underline dotted">'+r.OBRA.trim()+'</span>',
+      '<b style="color:'+color+'">'+r.items.toLocaleString('es-CO')+'</b>',
+      (r.m2||0).toLocaleString('es-CO',{maximumFractionDigits:1})+' m²',
+      fmtPrecio(r.precio||0),
+      pb(r.items,max,color)
+    ]));
+  document.getElementById('statusDrillModal').classList.add('open');
+  document.body.style.overflow='hidden';
+  setTimeout(()=>{
+    const ct=document.getElementById('sdChart');if(!ct)return;
+    if(statusDrillCharts.bar)statusDrillCharts.bar.destroy();
+    statusDrillCharts.bar=new Chart(ct.getContext('2d'),{
+      type:'bar',
+      data:{labels:top.map(r=>r.OBRA.trim().length>18?r.OBRA.trim().slice(0,18)+'…':r.OBRA.trim()),
+        datasets:[{data:top.map(r=>r.items),backgroundColor:color+'88',borderColor:color,borderWidth:1,borderRadius:3}]},
+      options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>{const r=top[ctx.dataIndex];return[' '+r.items.toLocaleString('es-CO')+' unid',' '+fmtPrecio(r.precio||0)];}}}},
+        scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});
+  },60);
+}
+function closeStatusDrill2(){document.getElementById('statusDrillModal').classList.remove('open');document.body.style.overflow='';}
+function closeStatusDrill(e){if(e.target===document.getElementById('statusDrillModal')){closeStatusDrill2();}}
+
+/* ══ COLA CTMV DRILL ══ */
+function openColaCTMV(obraName){
+  // ── Modo "Todas las obras" ──
+  if(obraName==='__TODAS__'){
+    const todasObras=Object.keys(COLA_CTMV);
+    if(!todasObras.length){
+      alert('Sin datos EN COLA disponibles.');return;
+    }
+    // Consolidar items de todas las obras añadiendo columna OBRA
+    const todosItems=[];
+    todasObras.forEach(ob=>{
+      (COLA_CTMV[ob].items||[]).forEach(it=>todosItems.push({...it,_obra:ob}));
+    });
+    const total=todosItems.length;
+    // Sumar conteos globales
+    const totales={CORTADO_X:0,CORTADO_P:0,TROQUELADO_X:0,TROQUELADO_P:0,MECANIZADO_X:0,MECANIZADO_P:0,PROGRAMADO_X:0,PROGRAMADO_P:0,VIDRIO_X:0,VIDRIO_P:0,PREALISTADO_X:0,PREALISTADO_P:0};
+    todasObras.forEach(ob=>{const d=COLA_CTMV[ob];Object.keys(totales).forEach(k=>{totales[k]+=(d[k]||0);});});
+    document.getElementById('colaCTMVTitle').textContent='TODAS LAS OBRAS EN COLA';
+    document.getElementById('colaCTMVSub').textContent=total+' ítems · '+todasObras.length+' obras';
+    const procs=[{k:'CORTADO',label:'CORTE',color:'#e8e8e8'},{k:'TROQUELADO',label:'TROQ.',color:'#c8a84b'},{k:'MECANIZADO',label:'MECA.',color:'#888888'},{k:'PROGRAMADO',label:'PROG.',color:'#aac4e0'},{k:'VIDRIO',label:'VIDR.',color:'#6db56d'},{k:'PREALISTADO',label:'PREAL.',color:'#b07fd4'}];
+    const summaryHTML=procs.map(p=>{
+      const cx=totales[p.k+'_X']||0,cp=totales[p.k+'_P']||0;
+      const pctX=total>0?Math.round(cx/total*100):0,pctP=total>0?Math.round(cp/total*100):0;
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 6px;text-align:center;flex:1;min-width:60px">'
+        +'<div style="font-size:8px;color:var(--muted);letter-spacing:0.05em;margin-bottom:6px">'+p.label+'</div>'
+        +'<div style="display:flex;gap:6px;justify-content:center;margin-bottom:6px">'
+        +'<span style="font-size:13px;font-weight:700;color:'+p.color+'">'+cx+'<span style="font-size:9px;color:var(--muted)"> X</span></span>'
+        +'<span style="font-size:13px;font-weight:700;color:'+p.color+'88">'+cp+'<span style="font-size:9px;color:var(--muted)"> +</span></span>'
+        +'</div>'
+        +'<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
+        +'<div style="height:4px;display:flex"><div style="width:'+pctX+'%;background:'+p.color+'"></div><div style="width:'+pctP+'%;background:'+p.color+'55"></div></div></div>'
+        +'<div style="font-size:9px;color:var(--muted);margin-top:3px">'+pctX+'%&nbsp;/&nbsp;'+pctP+'%</div></div>';
+    }).join('');
+    const cv=v=>v==='X'?'<span style="color:#e8e8e8;font-weight:700">X</span>':v==='+'?'<span style="color:#c8a84b;font-weight:700">+</span>':'<span style="color:var(--muted)">·</span>';
+    const legend='<div style="font-size:10px;color:var(--muted);margin-bottom:10px"><b style="color:#e8e8e8">X</b> = Completo &nbsp;&nbsp; <b style="color:#c8a84b">+</b> = Parcial &nbsp;&nbsp; <b style="color:var(--muted)">·</b> = Sin proceso</div>';
+    const tblHTML='<div style="overflow-x:auto;margin-top:4px"><table class="drill-table"><thead><tr>'
+      +'<th>OBRA</th><th>ÍTEM</th><th>DISEÑO</th><th>OP INST.</th>'
+      +'<th style="text-align:center">CORT.</th><th style="text-align:center">TROQ.</th><th style="text-align:center">MECA.</th>'
+      +'<th style="text-align:center">PROG.</th><th style="text-align:center">VIDR.</th><th style="text-align:center">PREAL.</th>'
+      +'</tr></thead><tbody>'
+      +todosItems.map(r=>'<tr>'
+        +'<td style="font-size:10px;white-space:nowrap;color:var(--accent2);font-weight:600">'+r._obra+'</td>'
+        +'<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+(r.item||'—')+'</td>'
+        +'<td style="font-size:10px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(r.diseno||'')+'">'+(r.diseno||'—')+'</td>'
+        +'<td style="font-family:monospace;font-size:10px;white-space:nowrap;color:var(--accent2)">'+(r.op_inst||'—')+'</td>'
+        +'<td style="text-align:center">'+cv(r.cortado)+'</td>'
+        +'<td style="text-align:center">'+cv(r.troquelado)+'</td>'
+        +'<td style="text-align:center">'+cv(r.mecanizado)+'</td>'
+        +'<td style="text-align:center">'+cv(r.programado)+'</td>'
+        +'<td style="text-align:center">'+cv(r.vidrio)+'</td>'
+        +'<td style="text-align:center">'+cv(r.prealistado)+'</td>'
+        +'</tr>').join('')
+      +'</tbody></table></div>';
+    document.getElementById('colaCTMVContent').innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+summaryHTML+'</div>'+legend+tblHTML;
+    document.getElementById('colaCTMVModal').classList.add('open');
+    document.body.style.overflow='hidden';
+    return;
+  }
+  // ── Modo obra individual ──
+  const d=COLA_CTMV[obraName]||COLA_CTMV[(obraName||'').trim()]||{};
+  const items=d.items||[];
+  const total=items.length;
+  if(!total){
+    document.getElementById('colaCTMVTitle').textContent=obraName.trim();
+    document.getElementById('colaCTMVSub').textContent='Sin datos de proceso';
+    document.getElementById('colaCTMVContent').innerHTML='<div style="padding:32px;text-align:center;color:var(--muted)">No hay ítems EN COLA para esta obra.</div>';
+    document.getElementById('colaCTMVModal').classList.add('open');
+    document.body.style.overflow='hidden';
+    return;
+  }
+  document.getElementById('colaCTMVTitle').textContent=obraName.trim();
+  document.getElementById('colaCTMVSub').textContent=total+' ítems en cola — Estado por proceso';
+
+  const procs=[
+    {k:'CORTADO',    label:'CORTADO',    color:'#e8e8e8'},
+    {k:'TROQUELADO', label:'TROQUELADO', color:'#c8a84b'},
+    {k:'MECANIZADO', label:'MECANIZADO', color:'#888888'},
+    {k:'PROGRAMADO', label:'PROGRAMADO', color:'#aac4e0'},
+    {k:'VIDRIO',     label:'VIDRIO',     color:'#6db56d'},
+    {k:'PREALISTADO',label:'PREALIST.',  color:'#b07fd4'}
+  ];
+
+  const summaryHTML=procs.map(p=>{
+    const cx=d[p.k+'_X']||0,cp=d[p.k+'_P']||0;
+    const pctX=total>0?Math.round(cx/total*100):0,pctP=total>0?Math.round(cp/total*100):0;
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 6px;text-align:center;flex:1;min-width:60px">'
+      +'<div style="font-size:8px;color:var(--muted);letter-spacing:0.05em;margin-bottom:6px">'+p.label+'</div>'
+      +'<div style="display:flex;gap:6px;justify-content:center;margin-bottom:6px">'
+      +'<span style="font-size:13px;font-weight:700;color:'+p.color+'">'+cx+'<span style="font-size:9px;color:var(--muted)"> X</span></span>'
+      +'<span style="font-size:13px;font-weight:700;color:'+p.color+'88">'+cp+'<span style="font-size:9px;color:var(--muted)"> +</span></span>'
+      +'</div>'
+      +'<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
+      +'<div style="height:4px;display:flex">'
+      +'<div style="width:'+pctX+'%;background:'+p.color+'"></div>'
+      +'<div style="width:'+pctP+'%;background:'+p.color+'55"></div>'
+      +'</div></div>'
+      +'<div style="font-size:9px;color:var(--muted);margin-top:3px">'+pctX+'%&nbsp;/&nbsp;'+pctP+'%</div>'
+      +'</div>';
+  }).join('');
+
+  const cv=v=>v==='X'?'<span style="color:#e8e8e8;font-weight:700">X</span>':v==='+'?'<span style="color:#c8a84b;font-weight:700">+</span>':'<span style="color:var(--muted)">·</span>';
+  const legend='<div style="font-size:10px;color:var(--muted);margin-bottom:10px">'
+    +'<b style="color:#e8e8e8">X</b> = Completo &nbsp;&nbsp; <b style="color:#c8a84b">+</b> = Parcial &nbsp;&nbsp; <b style="color:var(--muted)">·</b> = Sin proceso</div>';
+
+  const tblHTML='<div style="overflow-x:auto;margin-top:4px"><table class="drill-table"><thead><tr>'
+    +'<th>ÍTEM</th><th>DISEÑO</th><th>OP INST.</th>'
+    +'<th style="text-align:center">CORT.</th><th style="text-align:center">TROQ.</th><th style="text-align:center">MECA.</th>'
+    +'<th style="text-align:center">PROG.</th><th style="text-align:center">VIDR.</th><th style="text-align:center">PREAL.</th>'
+    +'</tr></thead><tbody>'
+    +items.map(r=>'<tr>'
+      +'<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+(r.item||'—')+'</td>'
+      +'<td style="font-size:10px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(r.diseno||'')+'">'+(r.diseno||'—')+'</td>'
+      +'<td style="font-family:monospace;font-size:10px;white-space:nowrap;color:var(--accent2)">'+(r.op_inst||'—')+'</td>'
+      +'<td style="text-align:center">'+cv(r.cortado)+'</td>'
+      +'<td style="text-align:center">'+cv(r.troquelado)+'</td>'
+      +'<td style="text-align:center">'+cv(r.mecanizado)+'</td>'
+      +'<td style="text-align:center">'+cv(r.programado)+'</td>'
+      +'<td style="text-align:center">'+cv(r.vidrio)+'</td>'
+      +'<td style="text-align:center">'+cv(r.prealistado)+'</td>'
+      +'</tr>').join('')
+    +'</tbody></table></div>';
+
+  document.getElementById('colaCTMVContent').innerHTML=
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+summaryHTML+'</div>'+legend+tblHTML;
+  document.getElementById('colaCTMVModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeColaCTMV(){
+  document.getElementById('colaCTMVModal').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+/* ══ PROD DETAIL DRILL ══ */
+function openProdDetail(obraName){
+  const items=PROD_DETAIL[obraName]||PROD_DETAIL[(obraName||'').trim()]||[];
+  if(!items.length){
+    document.getElementById('prodDetailTitle').textContent=obraName.trim();
+    document.getElementById('prodDetailSub').textContent='Sin detalle disponible';
+    document.getElementById('prodDetailContent').innerHTML='<div style="padding:32px;text-align:center;color:var(--muted)">No hay unidades en producción para esta obra.</div>';
+    document.getElementById('prodDetailModal').classList.add('open');
+    document.body.style.overflow='hidden';
+    return;
+  }
+  // Ordenar por hora de inicio ascendente
+  const sorted=[...items].sort((a,b)=>{
+    const ta=a.hora_i||'99:99', tb=b.hora_i||'99:99';
+    return ta.localeCompare(tb);
+  });
+  document.getElementById('prodDetailTitle').textContent=obraName.trim();
+  document.getElementById('prodDetailSub').textContent=sorted.length+' unidad'+(sorted.length!==1?'es':'')+' en producción — ordenadas por hora de inicio';
+
+  const tbl='<div style="overflow-x:auto"><table class="drill-table"><thead><tr>'
+    +'<th>ÍTEM</th><th>OP INST.</th><th>ENSAMBLADOR</th><th>H. INICIO</th><th>F. INICIO</th><th>UBICACIÓN</th><th>PISO</th><th>DISEÑO</th><th>VIDRIO</th><th>ANCHO</th><th>ALTO</th><th>M²</th>'
+    +'</tr></thead><tbody>'
+    +sorted.map(r=>`<tr>
+      <td style="font-family:monospace;font-size:11px;white-space:nowrap">${r.item||'—'}</td>
+      <td style="font-family:monospace;font-size:10px;white-space:nowrap;color:var(--accent2)">${r.op_inst||'—'}</td>
+      <td style="font-size:10px;white-space:nowrap;color:#c8a84b;font-weight:600">${r.ensam||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;white-space:nowrap;color:#c8a84b">${r.hora_i||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;white-space:nowrap;color:#c8a84b">${r.dia_i||'—'}</td>
+      <td style="font-size:10px;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.ubic||''}">${r.ubic||'—'}</td>
+      <td style="font-size:10px;white-space:nowrap">${r.piso||'—'}</td>
+      <td style="font-size:10px;white-space:nowrap">${r.diseno||'—'}</td>
+      <td style="font-size:10px;white-space:nowrap">${r.vidrio||'—'}</td>
+      <td style="text-align:right;font-family:monospace;font-size:11px">${r.ancho||'—'}</td>
+      <td style="text-align:right;font-family:monospace;font-size:11px">${r.alto||'—'}</td>
+      <td style="text-align:right;font-family:monospace;font-size:11px">${r.m2}</td>
+    </tr>`).join('')
+    +'</tbody></table></div>';
+
+  document.getElementById('prodDetailContent').innerHTML=tbl;
+  document.getElementById('prodDetailModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeProdDetail(){
+  document.getElementById('prodDetailModal').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+/* ══ DATOS EN VIVO (Supabase) ══ */
+const SB = supabase.createClient('https://fnwndrdebndlirmejlgb.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges',
+  {auth:{persistSession:true, autoRefreshToken:true, storageKey:'eliptica-registro'}});
+const DASH_COLS = 'OBRA,ITEM,"UBICACIÓN",PISO,"DISEÑO",VIDRIO,ANCHO,ALTO,M2,"OP INSTALACION",CORTADO,TROQUELADO,MECANIZADO,PROGRAMADO,"VIDRIO PROCESO",PREALISTADO,"HORA DE INICIO","DIA INICIO",ENSAMBLADOR,"STATUS PLANTA",INSTALACION,"MES PRODUCCION","AÑO PRODUCCION",PRECIO';
+let liveBusy = false, liveTimer = null, liveChan = null;
+
+function gate(msg, btn){
+  let g = document.getElementById('liveGate');
+  if(!g){ g = document.createElement('div'); g.id = 'liveGate'; document.body.appendChild(g); }
+  g.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#181818;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center';
+  g.innerHTML = `<div style="max-width:420px"><div class="brand-name" style="font-size:26px">ELÍPTICA<span class="brand-reg">®</span></div>
+    <div class="brand-descriptor" style="margin:8px 0 28px">ÁRTICA · DASHBOARD DE PRODUCCIÓN</div>
+    <div style="color:#c0c0c0;font-size:14px;line-height:1.6;margin-bottom:22px">${msg}</div>${btn||''}</div>`;
+}
+function ungate(){ const g = document.getElementById('liveGate'); if(g) g.remove(); }
+function liveStatus(t){ const el = document.getElementById('dbLoadTime'); if(el) el.textContent = '· '+t; }
+
+async function fetchView(){
+  const mk = o => SB.from('base_exportable').select(DASH_COLS, o);
+  const first = await mk({count:'exact'}).range(0,999);
+  if(first.error) throw first.error;
+  let out = first.data || [];
+  const total = first.count ?? out.length;
+  const ranges = []; for(let f=1000; f<total; f+=1000) ranges.push(f);
+  for(let i=0; i<ranges.length; i+=6){
+    const rs = await Promise.all(ranges.slice(i,i+6).map(f => mk().range(f, f+999)));
+    for(const r of rs){ if(r.error) throw r.error; out = out.concat(r.data); }
+    liveStatus(`cargando ${Math.min(out.length,total).toLocaleString('es-CO')} de ${total.toLocaleString('es-CO')} registros…`);
+  }
+  return out;
+}
+
+async function liveLoad(manual, blocking){
+  if(liveBusy) return; liveBusy = true;
+  const btn = document.getElementById('btnLive'); if(btn) btn.style.opacity = .5;
+  try{
+    const {data:{session}} = await SB.auth.getSession();
+    if(!session){ gate('Para ver el dashboard primero inicia sesión en la app de registro con tu usuario de gerente.', '<a class="btn-update" style="display:inline-flex;text-decoration:none" href="./">IR A INICIAR SESIÓN</a>'); return; }
+    const {data:perfil, error:pe} = await SB.from('perfiles').select('rol').eq('id', session.user.id).maybeSingle();
+    if(pe) throw pe;
+    if(!perfil || perfil.rol !== 'gerente'){ try{ localStorage.removeItem('dash_cache_v1'); }catch(e){} gate('El dashboard es solo para el gerente.', '<a class="btn-update" style="display:inline-flex;text-decoration:none" href="./">VOLVER AL REGISTRO</a>'); return; }
+    if(blocking) gate('<div style="display:flex;gap:10px;justify-content:center;align-items:center"><span class="live-spin"></span>Cargando la base de datos…</div><div id="gateProg" style="color:#686868;font-size:12px;margin-top:10px"></div>');
+    liveStatus('actualizando…');
+    const raw = await fetchView();
+    const fixD = v => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? v.slice(8,10)+'/'+v.slice(5,7)+'/'+v.slice(0,4) : v;
+    raw.forEach(r => { r.VIDRIO_1 = r['VIDRIO PROCESO']; r['DIA INICIO'] = fixD(r['DIA INICIO']); });
+    const res = processRawData(raw);
+    DATA=res.DATA; YEAR_OBRA=res.YEAR_OBRA; OBRA_DETAIL=res.OBRA_DETAIL; MES_OBRA=res.MES_OBRA||{};
+    STATUS_BY_OBRA=res.STATUS_BY_OBRA||{}; COLA_CTMV=res.COLA_CTMV||{}; PROD_DETAIL=res.PROD_DETAIL||{};
+    for(const y of [...selectedYears]) if(!YEAR_OBRA[y]) selectedYears.delete(y);
+    saveToStorage();
+    try{ localStorage.setItem('dash_meta', JSON.stringify({time:new Date().toISOString(), rows:raw.length})); }catch(e){}
+    buildYearChips();
+    document.querySelectorAll('#yearChipsContainer .year-chip').forEach(c => c.classList.toggle('active', selectedYears.has(c.textContent.trim())));
+    document.querySelector('.all-chip').classList.toggle('active', selectedYears.size===0);
+    applyFilters(); updateDataBar(); ungate();
+    if(!liveChan){
+      liveChan = SB.channel('dash-items').on('postgres_changes', {event:'*', schema:'public', table:'items'}, () => {
+        clearTimeout(liveTimer); liveStatus('hay cambios nuevos, actualizando en unos segundos…');
+        liveTimer = setTimeout(() => liveLoad(false, false), 8000);
+      }).subscribe();
+    }
+  }catch(e){
+    const m = (e && e.message) || String(e);
+    if(blocking) gate('No se pudo cargar la base de datos: '+m, '<button class="btn-update" style="display:inline-flex" onclick="location.reload()">REINTENTAR</button>');
+    else liveStatus('sin conexión — se muestran los últimos datos cargados');
+  }finally{
+    liveBusy = false; if(btn) btn.style.opacity = '';
+  }
+}
+initApp();
+
+</script>
+
+<!-- STATUS DRILL MODAL -->
+<div class="kpi-modal-overlay" id="statusDrillModal" onclick="closeStatusDrill(event)">
+  <div class="kpi-modal">
+    <button class="kpi-modal-close" onclick="closeStatusDrill2()">&#10005;</button>
+    <div class="kpi-modal-header">
+      <div class="kpi-modal-icon" id="statusDrillIcon" style="font-size:20px;background:rgba(200,168,75,0.15);">&#128202;</div>
+      <div>
+        <div class="kpi-modal-title" id="statusDrillTitle">Status</div>
+        <div class="kpi-modal-subtitle" id="statusDrillSubtitle">Obras · Unidades · Valor</div>
+      </div>
+    </div>
+    <div id="statusDrillContent"></div>
+  </div>
+</div>
+
+<!-- COLA CTMV DRILL MODAL -->
+<div class="kpi-modal-overlay" id="colaCTMVModal" onclick="if(event.target===this)closeColaCTMV()">
+  <div class="kpi-modal">
+    <button class="kpi-modal-close" onclick="closeColaCTMV()">&#10005;</button>
+    <div class="kpi-modal-header">
+      <div class="kpi-modal-icon" style="font-size:20px;background:rgba(200,168,75,0.15)">⏳</div>
+      <div>
+        <div class="kpi-modal-title" id="colaCTMVTitle">EN COLA</div>
+        <div class="kpi-modal-subtitle" id="colaCTMVSub"></div>
+      </div>
+    </div>
+    <div id="colaCTMVContent"></div>
+  </div>
+</div>
+<!-- PROD DETAIL MODAL -->
+<div class="kpi-modal-overlay" id="prodDetailModal" onclick="if(event.target===this)closeProdDetail()">
+  <div class="kpi-modal">
+    <button class="kpi-modal-close" onclick="closeProdDetail()">&#10005;</button>
+    <div class="kpi-modal-header">
+      <div class="kpi-modal-icon" style="font-size:20px;background:rgba(160,160,160,0.15)">⚙️</div>
+      <div>
+        <div class="kpi-modal-title" id="prodDetailTitle">EN PRODUCCIÓN</div>
+        <div class="kpi-modal-subtitle" id="prodDetailSub"></div>
+      </div>
+    </div>
+    <div id="prodDetailContent"></div>
+  </div>
+</div>
+</body>
+</html>
