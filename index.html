@@ -276,6 +276,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .obs.e{border-color:var(--danger);color:var(--danger);}
 .obs.w{border-color:var(--cola);color:var(--cola);}
 .obs.ok{border-color:var(--inst);color:var(--inst);}
+.mlog{margin-top:14px;font-size:13px;color:var(--text2);display:flex;flex-direction:column;gap:6px;}
 .carga-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;}
 .result{background:var(--surface);border:1px solid var(--border);border-top:2px solid var(--inst);padding:22px;max-width:760px;}
 .result.bad{border-top-color:var(--danger);}
@@ -306,7 +307,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -411,10 +412,10 @@ const API = {
     }
     return out;
   },
-  async insertItems(rows, onProgress){
+  async insertItems(rows, onProgress, size=500, cols='id,op_instalacion'){
     let out = [];
-    for(let i=0; i<rows.length; i+=500){
-      const {data,error} = await this.sb.from('items').insert(rows.slice(i,i+500)).select('id,op_instalacion');
+    for(let i=0; i<rows.length; i+=size){
+      const {data,error} = await this.sb.from('items').insert(rows.slice(i,i+size)).select(cols);
       if(error){ error.parcial = out; throw error; }
       out = out.concat(data); onProgress && onProgress(out.length);
     }
@@ -422,6 +423,16 @@ const API = {
   },
   async insertComercial(rows){
     for(let i=0; i<rows.length; i+=500){ const {error} = await this.sb.from('items_comercial').insert(rows.slice(i,i+500)); if(error) throw error; }
+  },
+  async borrarTodo(onProgress){
+    const {data,error} = await this.sb.from('items').select('id').order('id',{ascending:false}).limit(1);
+    if(error) throw error;
+    const max = data.length ? data[0].id : 0;
+    for(let a=0; a<=max; a+=3000){
+      const r = await this.sb.from('items').delete().gte('id',a).lt('id',a+3000);
+      if(r.error) throw r.error;
+      onProgress && onProgress(Math.min(a+3000, max));
+    }
   },
   async deleteItems(ids){
     for(let i=0; i<ids.length; i+=150){ const {error} = await this.sb.from('items').delete().in('id', ids.slice(i,i+150)); if(error) throw error; }
@@ -511,7 +522,7 @@ function shell(inner){
     ${brandHTML('Ártica · Registro de producción')}
     <div class="top-r">
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(S.perfil.rol)}</span></div>
-      ${isGerente() ? `<button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas desde Excel" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar OPs</span></button>
+      ${isGerente() ? `<button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>
         <button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
       <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button>
     </div>
@@ -1146,7 +1157,12 @@ const COLMAP = {'OBRA':'obra','ITEM':'item','UBICACION':'ubicacion','SISTEMA':'s
 const normH = h => String(h ?? '').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[\s_]+/g,' ').trim();
 const obraKey = o => normH(o).replace(/[^A-Z0-9]/g,'');
 const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-const C = {estado:'inicio', archivo:'', filas:[], soloProblemas:true, cargados:null, progreso:0};
+const C = {tab:'agregar', estado:'inicio', archivo:'', filas:[], soloProblemas:true, cargados:null, progreso:0};
+
+function setCargaTab(t){
+  if(M.estado === 'ejecutando' || C.estado === 'cargando') return toast('Espera a que termine el proceso en curso', true);
+  C.tab = t; renderCarga();
+}
 
 function goCarga(){
   if(!isGerente()) return;
@@ -1159,7 +1175,9 @@ function goCarga(){
 function renderCarga(){
   if(!isGerente()) return goHome(true);
   let body = '';
-  if(C.estado === 'inicio'){
+  if(C.tab === 'reemplazar'){
+    body = migracionHTML();
+  } else if(C.estado === 'inicio'){
     body = `
       <div class="carga-steps">
         <div class="cstep"><b>1</b><div><div class="cs-t">Descarga la plantilla</div><div class="cs-d">Tiene las columnas que la app necesita. Llénala como hoy, con las cantidades ya divididas en OP INSTALACION: una fila por cada una.</div>
@@ -1180,9 +1198,15 @@ function renderCarga(){
   }
   $('#app').innerHTML = shell(`
     <button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="obra-title"><div><div class="h1">Cargar OPs</div><div class="h1-sub">Ítems nuevos desde Excel · entran en estado EN COLA</div></div></div>
+    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
+    <div class="tabs">
+      <button class="tab ${C.tab==='agregar'?'on':''}" onclick="setCargaTab('agregar')">Agregar OPs nuevas</button>
+      <button class="tab ${C.tab==='reemplazar'?'on':''}" onclick="setCargaTab('reemplazar')">Reemplazar base completa</button>
+    </div>
     ${body}`);
   const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
+  const fb = $('#fileBase'); if(fb) fb.onchange = e => { const file = e.target.files[0]; if(file) leerBase(file); };
+  const cf = $('#mConfirm'); if(cf) cf.oninput = () => { M.confirmTxt = cf.value; const b = $('#mGo'); if(b) b.disabled = !(M.backup && normH(cf.value)==='REEMPLAZAR'); };
 }
 
 async function descargarPlantilla(){
@@ -1411,6 +1435,208 @@ async function deshacerCarga(){
 }
 
 // ════════════════════════════════════════════════════════════════
+//  MIGRACIÓN: REEMPLAZAR TODA LA BASE CON LA BASE_ DE EXCEL (solo gerente)
+// ════════════════════════════════════════════════════════════════
+const M = {estado:'inicio', archivo:'', items:[], com:[], resumen:null, actual:null, backup:false, confirmTxt:'', log:[], error:null};
+const STATUS_OK = new Set(['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO']);
+
+function bTxt(v){ if(v==null) return null; const s = String(v).trim(); return (s===''||s==='#N/A'||s==='None') ? null : s; }
+function bNum(v){ if(v==null||v==='') return null; if(typeof v==='number') return v; const n = Number(String(v).trim().replace(',','.')); return isNaN(n) ? null : n; }
+function bFecha(v, campo, notas){
+  if(v==null||v==='') return null;
+  if(typeof v === 'number'){ if(v > 30000 && v < 60000){ const d = new Date(Date.UTC(1899,11,30) + Math.floor(v)*864e5); return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate()); } }
+  const s = String(v).trim(); if(!s || s==='#N/A') return null;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if(m){ let y = +m[3]; if(y < 100) y += 2000; if(y>=2010 && y<=2035 && +m[2]>=1 && +m[2]<=12 && +m[1]>=1 && +m[1]<=31) return y+'-'+pad(+m[2])+'-'+pad(+m[1]); }
+  notas && notas.push(campo+': '+s); return null;
+}
+function bHora(v, campo, notas){
+  if(v==null||v==='') return null;
+  if(typeof v === 'number'){
+    if(v >= 1 && Number.isInteger(v)){ notas && notas.push(campo+': '+v); return null; }   // un número entero no es una hora
+    const fr = v - Math.floor(v); const m = Math.round(fr*1440); return pad(Math.floor(m/60)%24)+':'+pad(m%60);
+  }
+  const s = String(v).trim().toUpperCase().replace(/[\s.]/g,'');
+  const m = s.match(/^(\d{1,2}):(\d{2})(AM|PM)?$/);
+  if(m){ let hh=+m[1], mm=+m[2]; if(m[3]==='PM'&&hh<12) hh+=12; if(m[3]==='AM'&&hh===12) hh=0; if(hh<24&&mm<60) return pad(hh)+':'+pad(mm); }
+  notas && notas.push(campo+': '+v); return null;
+}
+function bProc(v){ const s = (bTxt(v)||'').toUpperCase(); return s.startsWith('X') ? 'X' : (s==='+' ? '+' : null); }
+function bSiNo(v){ const s = (bTxt(v)||'').toUpperCase(); return s==='SI' ? true : (s==='NO' ? false : null); }
+function bCorte(v){ if(typeof v === 'number' && v > 30000 && v < 60000 && !Number.isInteger(v)) return String(Math.floor(v)); return v==null ? null : (bTxt(v)); }
+
+function migracionHTML(){
+  if(M.estado === 'inicio') return `
+    <div class="carga-steps">
+      <div class="cstep"><b>!</b><div><div class="cs-t">Qué hace</div><div class="cs-d">Borra <b>todos</b> los ítems de la app y los vuelve a cargar desde tu BASE_ de Excel, con sus procesos, ensambladores, despachos, instalaciones, precios y cobros.
+        Lo que se haya registrado en la app y no esté en el Excel se pierde. Úsalo mientras el Excel siga siendo tu registro principal y, por última vez, el día de la migración definitiva.</div></div></div>
+      <div class="cstep"><b>1</b><div><div class="cs-t">Sube tu BASE_</div><div class="cs-d">El mismo archivo que usas hoy (hoja Hoja1, encabezados en la primera fila). Guárdalo en Excel antes de subirlo para que las fórmulas BUSCARV queden con su valor. Es más rápido hacerlo desde el computador.</div>
+        <label class="btn primary sm" style="cursor:pointer">${ICON.up} Elegir BASE_.xlsx<input type="file" id="fileBase" accept=".xlsx,.xlsm,.xls" style="display:none"></label></div></div>
+      <div class="cstep"><b>2</b><div><div class="cs-t">Revisa y confirma</div><div class="cs-d">Verás cuántos ítems tiene el archivo frente a la app. Antes de reemplazar, la app descarga una copia de seguridad de la base actual.</div></div></div>
+    </div>`;
+  if(M.estado === 'leyendo') return `<div class="loading"><div class="spin"></div>${esc(M.msg||'Leyendo el archivo')}</div>`;
+  if(M.estado === 'revision'){
+    const r = M.resumen, a = M.actual;
+    const fila = (t, x, y) => `<tr><td>${t}</td><td>${y==null?'—':fmtN(y)}</td><td><b>${fmtN(x)}</b></td><td>${y==null?'':(x-y>0?'+':'')+fmtN(x-y)}</td></tr>`;
+    return `
+      <div class="summary" style="margin-bottom:14px">Archivo <b>${esc(M.archivo)}</b> · ${fmtN(r.n)} ítems · ${fmtN(r.obras)} obras${r.notas ? ` · ${fmtN(r.notas)} con alguna fecha u hora escrita como texto (ej. "15 AL 18 ABR"): se cargan igual y el texto queda como nota del ítem` : ''}</div>
+      <div class="ctable-wrap" style="border-top:1px solid var(--border);max-width:620px"><table class="ctable">
+        <thead><tr><th></th><th>En la app hoy</th><th>En tu Excel</th><th>Diferencia</th></tr></thead>
+        <tbody>
+          ${fila('Ítems', r.n, a && a.n)}
+          ${['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'].map(k => fila(STAGES[k].t, r.st[k]||0, a && (a.st[k]||0))).join('')}
+          ${fila('Instalados', r.inst, a && a.inst)}
+          ${fila('Obras', r.obras, a && a.obras)}
+        </tbody></table></div>
+      ${r.descartadas ? `<div class="warn" style="margin-top:12px;max-width:620px"><b>${fmtN(r.descartadas)}</b> filas sin OBRA se omitieron.</div>` : ''}
+      <div class="carga-steps" style="margin-top:18px">
+        <div class="cstep"><b>1</b><div><div class="cs-t">Copia de seguridad ${M.backup ? '<span class="obs ok" style="margin-left:6px">Descargada</span>' : ''}</div>
+          <div class="cs-d">Descarga la base actual de la app en Excel. Si algo sale mal, con este archivo se recupera.</div>
+          <button class="btn sm ${M.backup?'':'primary'}" onclick="migBackup()">${ICON.down} Descargar copia</button></div></div>
+        <div class="cstep"><b>2</b><div><div class="cs-t">Confirma</div><div class="cs-d">Escribe <b>REEMPLAZAR</b> para habilitar el botón.</div>
+          <input id="mConfirm" autocomplete="off" autocapitalize="characters" placeholder="REEMPLAZAR" value="${esc(M.confirmTxt)}" style="max-width:260px"></div></div>
+      </div>
+      <div class="carga-foot">
+        <button class="btn" onclick="M.estado='inicio';renderCarga()">Elegir otro archivo</button>
+        <button class="btn primary" id="mGo" onclick="migEjecutar()" ${M.backup && normH(M.confirmTxt)==='REEMPLAZAR' ? '' : 'disabled'}>Reemplazar base con ${fmtN(r.n)} ítems</button>
+      </div>`;
+  }
+  if(M.estado === 'ejecutando' || M.estado === 'listo') return `
+    <div class="result ${M.error?'bad':''}">
+      <div class="h1" style="font-size:20px">${M.estado==='ejecutando' ? 'Reemplazando la base…' : (M.error ? 'El proceso no terminó' : '✓ Base reemplazada')}</div>
+      <div class="mlog">${M.log.map(l => `<div>${esc(l)}</div>`).join('')}</div>
+      ${M.estado==='ejecutando' ? '<div class="loading" style="padding:16px 0 0;justify-content:flex-start"><div class="spin"></div>No cierres esta pantalla</div>' : ''}
+      ${M.error ? `<div class="warn" style="margin-top:12px">Error: ${esc(M.error)}<br>La base puede haber quedado incompleta. Vuelve a ejecutar el reemplazo con el mismo archivo: el proceso empieza borrando todo, así que repetirlo es seguro.</div>` : ''}
+      ${M.estado==='listo' ? `<div class="quick" style="margin-top:16px">
+        ${M.error ? `<button class="btn sm primary" onclick="migEjecutar()">Reintentar</button>` : `<button class="btn sm primary" onclick="goHome()">Ir a obras</button>`}
+        <button class="btn sm" onclick="M.estado='inicio';M.error=null;renderCarga()">Volver</button></div>` : ''}
+    </div>`;
+  return '';
+}
+
+async function leerBase(file){
+  M.estado = 'leyendo'; M.archivo = file.name; M.msg = 'Leyendo el archivo (puede tardar unos segundos)'; M.backup = false; M.confirmTxt = ''; M.error = null; renderCarga();
+  try{
+    if(!window.XLSX) await loadScript(XLSX_URL);
+    const buf = await file.arrayBuffer();
+    await new Promise(r => setTimeout(r, 30));
+    const wb = XLSX.read(buf, {type:'array'});
+    let aoa = null;
+    const names = [...wb.SheetNames].sort((a,b) => (normH(b)==='HOJA1') - (normH(a)==='HOJA1'));
+    for(const n of names){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null, blankrows:false});
+      if(rows.length && rows[0] && rows[0].some(c=>normH(c)==='OBRA') && rows[0].some(c=>normH(c)==='STATUS PLANTA')){ aoa = rows; break; }
+    }
+    if(!aoa) throw new Error('No encontré la hoja de la BASE_ (encabezados OBRA y STATUS PLANTA en la primera fila).');
+    const h = aoa[0].map(normH);
+    const I = {}; h.forEach((x,i) => { if(I[x] === undefined) I[x] = i; });
+    const vids = h.map((x,i) => x==='VIDRIO' ? i : -1).filter(i => i >= 0);
+    const need = ['OBRA','ITEM','OP INSTALACION','STATUS PLANTA','DESPACHO','INSTALACION','PRECIO'];
+    const faltan = need.filter(k => I[k] === undefined);
+    if(faltan.length) throw new Error('Faltan columnas: '+faltan.join(', '));
+    const items = [], com = [], st = {}, obras = new Set();
+    let notasN = 0, inst = 0, descartadas = 0;
+    for(let r = 1; r < aoa.length; r++){
+      const row = aoa[r]; if(!row) continue;
+      const g = k => I[k] === undefined ? null : row[I[k]];
+      const obra = bTxt(g('OBRA'));
+      if(!obra){ if(row.some(c => c!=null && String(c).trim()!=='')) descartadas++; continue; }
+      const notas = [];
+      let status = (bTxt(g('STATUS PLANTA'))||'EN COLA').toUpperCase();
+      if(status === 'PRODUCCION') status = 'PRODUCCIÓN';
+      const desp = (bTxt(g('DESPACHO'))||'').toUpperCase()==='SI' || status==='DESPACHADO';
+      const ins = (bTxt(g('INSTALACION'))||'').toUpperCase()==='SI';
+      const it = {
+        obra, item:bTxt(g('ITEM')), ubicacion:bTxt(g('UBICACION')), sistema:bTxt(g('SISTEMA')), serie:bTxt(g('SERIE')),
+        piso:bTxt(g('PISO')), diseno:bTxt(g('DISENO')), vidrio:bTxt(vids.length ? row[vids[0]] : null),
+        ancho:bNum(g('ANCHO')), alto:bNum(g('ALTO')), m2:bNum(g('M2')), cant:bNum(g('CANT')),
+        op:bTxt(g('OP')), op_instalacion:bTxt(g('OP INSTALACION')), fecha_op:bFecha(g('FECHA OP'),'fecha_op',notas),
+        tiempo_op:bNum(g('TIEMPO OP')), puntos:bNum(g('PUNTOS')),
+        cortado:bProc(g('CORTADO')), troquelado:bProc(g('TROQUELADO')), mecanizado:bProc(g('MECANIZADO')), programado:bProc(g('PROGRAMADO')),
+        vidrio_proc:bProc(vids.length > 1 ? row[vids[1]] : null), prealistado:bProc(g('PREALISTADO')),
+        ensamblador:bTxt(g('ENSAMBLADOR')),
+        dia_inicio:bFecha(g('DIA INICIO'),'dia_inicio',notas), hora_inicio:bHora(g('HORA DE INICIO'),'hora_inicio',notas),
+        dia_final:bFecha(g('DIA FINAL'),'dia_final',notas), hora_final:bHora(g('HORA FINAL'),'hora_final',notas),
+        status, despachado:desp, fecha_despacho:bFecha(g('FECHA DESPACHO'),'fecha_despacho',notas), remision:bTxt(g('REMISION')),
+        instalado:ins, fecha_instalacion:bFecha(g('FECHA INSTALACION'),'fecha_instalacion',notas), instalador:bTxt(g('INSTALADOR')),
+        notas_importacion:null
+      };
+      if(!STATUS_OK.has(it.status)){ notas.push('status: '+it.status); it.status = deriveStatus(it); }
+      if(notas.length){ it.notas_importacion = notas.join(' | '); notasN++; }
+      items.push(it);
+      com.push({precio:bNum(g('PRECIO')), cobrado_despacho:bSiNo(g('COBRADO PUESTO EN OBRA')), fecha_corte_despacho:bFecha(g('FECHA CORTE PUESTO EN OBRA')),
+        num_corte_despacho:bCorte(g('# CORTE PUESTO EN OBRA')), cobrado_instalacion:bSiNo(g('COBRADO INSTALADO')),
+        fecha_corte_instalacion:bFecha(g('FECHA CORTE INSTALADO')), num_corte_instalacion:bCorte(g('# CORTE INSTALADO'))});
+      st[it.status] = (st[it.status]||0)+1; obras.add(obra); if(ins) inst++;
+    }
+    if(!items.length) throw new Error('El archivo no tiene filas con OBRA.');
+    M.items = items; M.com = com;
+    M.resumen = {n:items.length, st, inst, obras:obras.size, notas:notasN, descartadas};
+    M.msg = 'Comparando con la base actual'; renderCarga();
+    try{
+      const act = S.anual || await API.anual();
+      const ast = {}; let ainst = 0; const aob = new Set();
+      for(const x of act){ ast[x.status] = (ast[x.status]||0)+1; if(x.instalado) ainst++; aob.add(x.obra); }
+      M.actual = {n:act.length, st:ast, inst:ainst, obras:aob.size};
+    }catch(e){ M.actual = null; }
+    M.estado = 'revision';
+  }catch(e){ M.estado = 'inicio'; toast(errMsg(e), true); }
+  renderCarga();
+}
+
+async function migBackup(){
+  if(M.actual && M.actual.n === 0){ M.backup = true; return renderCarga(); }
+  const ok = await exportar('COPIA_SEGURIDAD');
+  if(ok){ M.backup = true; renderCarga(); }
+}
+
+const mLog = t => { M.log.push(t); const el = document.querySelector('.mlog'); if(el) el.insertAdjacentHTML('beforeend', `<div>${esc(t)}</div>`); };
+const mLast = t => { M.log[M.log.length-1] = t; const el = document.querySelector('.mlog'); if(el && el.lastChild) el.lastChild.textContent = t; };
+
+async function migEjecutar(){
+  if(!M.backup || normH(M.confirmTxt) !== 'REEMPLAZAR') return;
+  M.estado = 'ejecutando'; M.log = []; M.error = null; renderCarga();
+  try{ if(API.chan) await API.sb.removeChannel(API.chan); }catch(e){}
+  const t0 = Date.now();
+  try{
+    mLog('Borrando la base actual…');
+    await API.borrarTodo(n => mLast(`Borrando la base actual… ${fmtN(n)} ítems`));
+    mLast('✓ Base actual borrada');
+    mLog(`Cargando ítems… 0 de ${fmtN(M.items.length)}`);
+    const ins = await API.insertItems(M.items, n => mLast(`Cargando ítems… ${fmtN(n)} de ${fmtN(M.items.length)}`), 1000, 'id,obra,item,op_instalacion');
+    // Emparejar los id nuevos con las filas del Excel (en orden; si algo no cuadra, por obra+ítem+OP)
+    let ids = ins.map(r => r.id);
+    const cuadra = ins.length === M.items.length && ins.every((r,i) => r.op_instalacion === M.items[i].op_instalacion && r.item === M.items[i].item && r.obra === M.items[i].obra);
+    if(!cuadra){
+      const pool = new Map();
+      ins.forEach(r => { const k = r.obra+'|'+r.item+'|'+r.op_instalacion; if(!pool.has(k)) pool.set(k, []); pool.get(k).push(r.id); });
+      ids = M.items.map(it => { const a = pool.get(it.obra+'|'+it.item+'|'+it.op_instalacion); return a && a.length ? a.shift() : null; });
+    }
+    mLast(`✓ ${fmtN(ins.length)} ítems cargados`);
+    mLog('Cargando precios y cobros…');
+    const com = M.com.map((c,i) => ({item_id: ids[i], ...c})).filter(c => c.item_id);
+    for(let i=0; i<com.length; i+=1000){
+      const {error} = await API.sb.from('items_comercial').insert(com.slice(i,i+1000)); if(error) throw error;
+      mLast(`Cargando precios y cobros… ${fmtN(Math.min(i+1000, com.length))} de ${fmtN(com.length)}`);
+    }
+    mLast(`✓ ${fmtN(com.length)} registros de precios y cobros`);
+    mLog('Actualizando la lista de ensambladores…');
+    const ens = [...new Set(M.items.map(i => i.ensamblador && i.ensamblador.trim()).filter(Boolean))].map(nombre => ({nombre}));
+    if(ens.length){ const {error} = await API.sb.from('ensambladores').upsert(ens, {onConflict:'nombre', ignoreDuplicates:true}); if(error) throw error; }
+    try{ S.ensambladores = await API.ensambladores(); }catch(e){}
+    mLast('✓ Ensambladores actualizados');
+    mLog(`Listo en ${Math.round((Date.now()-t0)/1000)} segundos.`);
+  }catch(e){
+    M.error = errMsg(e);
+  }
+  S.obrasAll = null; S.anual = null; S.anualIdx = null; S.anualPos = null;
+  try{ await loadActivos(); }catch(e){}
+  API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; });
+  M.estado = 'listo'; M.confirmTxt = ''; M.backup = false;
+  renderCarga();
+}
+
+// ════════════════════════════════════════════════════════════════
 //  SINCRONIZACIÓN
 // ════════════════════════════════════════════════════════════════
 function mergeRows(rows){
@@ -1463,8 +1689,9 @@ function onRemoteChange(p){
 //  EXPORTAR (solo gerente)
 // ════════════════════════════════════════════════════════════════
 function loadScript(src){ return new Promise((ok,ko) => { const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error('No se pudo cargar '+src)); document.head.appendChild(s); }); }
-async function exportar(){
-  if(!isGerente()) return;
+async function exportar(prefijo){
+  if(!isGerente()) return false;
+  if(typeof prefijo !== 'string') prefijo = 'BASE';
   toast('Preparando el Excel… puede tardar unos segundos');
   try{
     if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
@@ -1480,9 +1707,10 @@ async function exportar(){
     ws['!cols'] = cols.map(c => ({wch: Math.max(10, Math.min(28, c.length+2))}));
     ws['!autofilter'] = {ref: ws['!ref']};
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
-    XLSX.writeFile(wb, `BASE_${today()}.xlsx`);
+    XLSX.writeFile(wb, `${prefijo}_${today()}.xlsx`);
     toast(`✓ Exportados ${fmtN(rows.length)} registros`);
-  }catch(e){ toast('Error al exportar: '+errMsg(e), true); }
+    return true;
+  }catch(e){ toast('Error al exportar: '+errMsg(e), true); return false; }
 }
 
 // ════════════════════════════════════════════════════════════════
