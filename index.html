@@ -257,6 +257,29 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .gp-row .seg button{flex:1;min-width:0;font-family:var(--sans);font-size:11px;letter-spacing:.06em;}
 @media(max-width:640px){.ov{align-items:flex-end;padding:0;}.sheet{max-width:none;max-height:92vh;border-left:0;border-right:0;border-bottom:0;}}
 
+
+/* ── Carga de OPs ── */
+.carga-steps{display:flex;flex-direction:column;gap:10px;max-width:760px;}
+.cstep{display:flex;gap:16px;background:var(--surface);border:1px solid var(--border);padding:18px;}
+.cstep>b{font-family:var(--sans);font-weight:300;font-size:28px;line-height:1;color:var(--muted);width:28px;flex-shrink:0;}
+.cs-t{font-family:var(--sans);font-size:14px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;}
+.cs-d{color:var(--text2);font-size:13px;margin-bottom:12px;}
+.cstep:last-child .cs-d{margin-bottom:0;}
+.badge-new{display:inline-block;margin-left:6px;padding:2px 7px;font-family:var(--sans);font-size:9.5px;letter-spacing:.14em;color:#181818;background:var(--cola);vertical-align:middle;}
+.ctable-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-top:0;}
+.ctable{width:100%;border-collapse:collapse;font-size:12px;}
+.ctable th{font-family:var(--sans);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:400;padding:10px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.ctable td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;vertical-align:top;}
+.ctable td:last-child{white-space:normal;min-width:220px;}
+.ctable tr.err td{background:rgba(208,112,95,.07);}
+.obs{display:inline-block;margin:0 6px 4px 0;padding:2px 7px;font-size:11px;border:1px solid var(--border);}
+.obs.e{border-color:var(--danger);color:var(--danger);}
+.obs.w{border-color:var(--cola);color:var(--cola);}
+.obs.ok{border-color:var(--inst);color:var(--inst);}
+.carga-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;}
+.result{background:var(--surface);border:1px solid var(--border);border-top:2px solid var(--inst);padding:22px;max-width:760px;}
+.result.bad{border-top-color:var(--danger);}
+@media(max-width:640px){.hide-sm{display:none;}}
 /* ── Toast / carga ── */
 .toast{position:fixed;left:50%;bottom:calc(var(--sb) + 90px);transform:translateX(-50%);z-index:80;background:var(--text);color:#181818;padding:12px 18px;font-family:var(--sans);font-size:13px;letter-spacing:.06em;max-width:calc(100vw - 32px);box-shadow:0 6px 24px rgba(0,0,0,.4);animation:fade .15s;}
 .toast.err{background:var(--danger);color:#fff;}
@@ -283,7 +306,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.1';
+const APP_VERSION = '1.2';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -327,6 +350,7 @@ const ICON = {
   close:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
   out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   ref:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10"/></svg>'
 };
 const SYMBOL = '<svg viewBox="30 60 990 755" aria-hidden="true"><path fill="none" stroke="#fff" stroke-width="22" stroke-linejoin="round" d="M48 80H1000V160L920 240H210M210 160H1000M210 160V318H1000V475H210M210 240L48 395H1000L920 475M210 475L48 632H1000V795H178M210 475V632M210 555H1000M1000 632L920 712H48"/></svg>';
@@ -378,6 +402,30 @@ const API = {
     return out;
   },
   exportar(){ return this.all(o => this.sb.from('base_exportable').select('*',o)); },
+  // ── Carga de OPs (solo gerente) ──
+  async existentes(ops){
+    const out = new Set();
+    for(let i=0; i<ops.length; i+=100){
+      const {data,error} = await this.sb.from('items').select('op_instalacion').in('op_instalacion', ops.slice(i,i+100));
+      if(error) throw error; data.forEach(r => out.add(r.op_instalacion));
+    }
+    return out;
+  },
+  async insertItems(rows, onProgress){
+    let out = [];
+    for(let i=0; i<rows.length; i+=500){
+      const {data,error} = await this.sb.from('items').insert(rows.slice(i,i+500)).select('id,op_instalacion');
+      if(error){ error.parcial = out; throw error; }
+      out = out.concat(data); onProgress && onProgress(out.length);
+    }
+    return out;
+  },
+  async insertComercial(rows){
+    for(let i=0; i<rows.length; i+=500){ const {error} = await this.sb.from('items_comercial').insert(rows.slice(i,i+500)); if(error) throw error; }
+  },
+  async deleteItems(ids){
+    for(let i=0; i<ids.length; i+=150){ const {error} = await this.sb.from('items').delete().in('id', ids.slice(i,i+150)); if(error) throw error; }
+  },
   realtime(cb, status){
     this.chan = this.sb.channel('items-cambios')
       .on('postgres_changes', {event:'*', schema:'public', table:'items'}, p => cb(p))
@@ -463,7 +511,8 @@ function shell(inner){
     ${brandHTML('Ártica · Registro de producción')}
     <div class="top-r">
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(S.perfil.rol)}</span></div>
-      ${isGerente() ? `<button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
+      ${isGerente() ? `<button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas desde Excel" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar OPs</span></button>
+        <button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
       <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button>
     </div>
   </header>
@@ -659,6 +708,7 @@ function onPop(ev){
     return;
   }
   if(S.view === 'obra' && S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra}, ''); return; }
+  if(st.v === 'carga'){ S.view='carga'; renderCarga(); return; }
   if(st.v === 'obra') openObra(st.obra, true, st.anio);
   else { S.view='home'; S.obra=null; S.sel.clear(); S.detailId=null; S.draft=null; document.body.style.overflow=''; closeSheet(); renderHome(); }
 }
@@ -1085,6 +1135,279 @@ function sheetInstalacion(){
     if(!f){ toast('Falta la fecha de instalación', true); return false; }
     await applyGroup(items, () => ({instalado:true, fecha_instalacion:f, instalador:nz(ins)}));
   });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CARGA DE OPs NUEVAS (solo gerente)
+// ════════════════════════════════════════════════════════════════
+const PLANTILLA = ['OBRA','ITEM','UBICACIÓN','SISTEMA','SERIE','PISO','DISEÑO','VIDRIO','ANCHO','ALTO','M2','CANT','OP','OP INSTALACION','FECHA OP','TIEMPO OP','PUNTOS','PRECIO'];
+const COLMAP = {'OBRA':'obra','ITEM':'item','UBICACION':'ubicacion','SISTEMA':'sistema','SERIE':'serie','PISO':'piso','DISENO':'diseno','VIDRIO':'vidrio',
+  'ANCHO':'ancho','ALTO':'alto','M2':'m2','CANT':'cant','OP':'op','OP INSTALACION':'op_instalacion','FECHA OP':'fecha_op','TIEMPO OP':'tiempo_op','PUNTOS':'puntos','PRECIO':'precio'};
+const normH = h => String(h ?? '').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[\s_]+/g,' ').trim();
+const obraKey = o => normH(o).replace(/[^A-Z0-9]/g,'');
+const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const C = {estado:'inicio', archivo:'', filas:[], soloProblemas:true, cargados:null, progreso:0};
+
+function goCarga(){
+  if(!isGerente()) return;
+  if(S.view === 'carga') return;
+  S.view = 'carga'; S.sel.clear(); S.detailId = null; S.draft = null; document.body.style.overflow = '';
+  history.pushState({v:'carga'}, '');
+  renderCarga();
+}
+
+function renderCarga(){
+  if(!isGerente()) return goHome(true);
+  let body = '';
+  if(C.estado === 'inicio'){
+    body = `
+      <div class="carga-steps">
+        <div class="cstep"><b>1</b><div><div class="cs-t">Descarga la plantilla</div><div class="cs-d">Tiene las columnas que la app necesita. Llénala como hoy, con las cantidades ya divididas en OP INSTALACION: una fila por cada una.</div>
+          <button class="btn sm" onclick="descargarPlantilla()">${ICON.down} Descargar plantilla</button></div></div>
+        <div class="cstep"><b>2</b><div><div class="cs-t">Sube el archivo</div><div class="cs-d">Excel (.xlsx o .xls) o CSV. También sirve un archivo con las columnas de tu BASE_: las columnas que sobren se ignoran.</div>
+          <label class="btn primary sm" style="cursor:pointer">${ICON.up} Elegir archivo<input type="file" id="fileOp" accept=".xlsx,.xls,.csv" style="display:none"></label></div></div>
+        <div class="cstep"><b>3</b><div><div class="cs-t">Revisa y confirma</div><div class="cs-d">Antes de guardar verás el resumen por obra y cualquier problema: OP INSTALACION repetidas o ya cargadas, medidas vacías, fechas inválidas, obras con nombre parecido a una existente.</div></div></div>
+      </div>`;
+  } else if(C.estado === 'leyendo'){
+    body = `<div class="loading"><div class="spin"></div>${esc(C.msg||'Leyendo el archivo')}</div>`;
+  } else if(C.estado === 'revision'){
+    body = revisionHTML();
+  } else if(C.estado === 'cargando'){
+    const n = C.filas.filter(f=>!f.errors.length).length;
+    body = `<div class="loading"><div class="spin"></div>Cargando ítems… ${fmtN(C.progreso)} de ${fmtN(n)}</div>`;
+  } else if(C.estado === 'listo'){
+    body = resultadoHTML();
+  }
+  $('#app').innerHTML = shell(`
+    <button class="back" onclick="history.back()">${ICON.back} Volver</button>
+    <div class="obra-title"><div><div class="h1">Cargar OPs</div><div class="h1-sub">Ítems nuevos desde Excel · entran en estado EN COLA</div></div></div>
+    ${body}`);
+  const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
+}
+
+async function descargarPlantilla(){
+  try{
+    if(!window.XLSX) await loadScript(XLSX_URL);
+    const ws = XLSX.utils.aoa_to_sheet([PLANTILLA]);
+    ws['!cols'] = PLANTILLA.map(h => ({wch: Math.max(10, h.length+4)}));
+    const ins = XLSX.utils.aoa_to_sheet([
+      ['PLANTILLA DE CARGA DE OPs — ELÍPTICA'],[],
+      ['Columna','Obligatoria','Cómo llenarla'],
+      ['OBRA','Sí','Nombre de la obra, igual que en la base (ej. VILANOVA T5). Si es nueva, escríbela como quieres que quede.'],
+      ['ITEM','Sí','Código del ítem (ej. PV-15).'],
+      ['UBICACIÓN, SISTEMA, SERIE, PISO, DISEÑO, VIDRIO','No','Texto, igual que hoy.'],
+      ['ANCHO, ALTO','Sí','En milímetros, solo números.'],
+      ['M2','No','Si la dejas vacía se calcula: ancho × alto / 1.000.000.'],
+      ['OP','Sí','Número de la OP (ej. 6295-23).'],
+      ['OP INSTALACION','Sí','Una fila por cada OP INSTALACION (ej. 6295-23.1). No puede repetirse ni existir ya en la base.'],
+      ['FECHA OP','No','Fecha (dd/mm/aaaa). Si la dejas vacía se usa la fecha de hoy.'],
+      ['TIEMPO OP, PUNTOS, CANT','No','Números.'],
+      ['PRECIO','No','Valor unitario en pesos, sin puntos ni signo $. Solo lo ves tú.'],[],
+      ['Ejemplo','','LA CITE | PV-15 | TERRAZA 708 | ABSOLUTE |  | P7 | ABSO.041/042 -OX | LAM CRUDO INCOL 3+3 | 1197 | 2347 |  |  | 6295-23 | 6295-23.1 | 13/10/2026 | 0 | 0 | 1250000']
+    ]);
+    ins['!cols'] = [{wch:44},{wch:12},{wch:100}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'OPs');
+    XLSX.utils.book_append_sheet(wb, ins, 'Instrucciones');
+    XLSX.writeFile(wb, 'PLANTILLA_CARGA_OPS.xlsx');
+  }catch(e){ toast('No se pudo crear la plantilla: '+errMsg(e), true); }
+}
+
+// ── Conversión de valores ──
+function cTxt(v){ if(v==null) return null; const s = String(v).replace(/\s+/g,' ').trim(); return s === '' ? null : s; }
+function cNum(v){
+  if(v==null || v==='') return {v:null};
+  if(typeof v === 'number') return {v};
+  let s = String(v).replace(/\s|\$/g,'');
+  if(s === '') return {v:null};
+  if(/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g,'').replace(',','.');
+  else if(/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g,'');
+  else s = s.replace(',','.');
+  const n = Number(s);
+  return isNaN(n) ? {v:null, bad:true} : {v:n};
+}
+function cFecha(v){
+  if(v==null || v==='') return {v:null};
+  if(typeof v === 'number' && v > 20000 && v < 80000){
+    const d = new Date(Date.UTC(1899,11,30) + Math.round(v)*864e5);
+    return {v: d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())};
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(m){ let y = +m[3]; if(y < 100) y += 2000; const d=+m[1], mo=+m[2]; if(mo>=1&&mo<=12&&d>=1&&d<=31) return {v: y+'-'+pad(mo)+'-'+pad(d)}; }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return {v: m[1]+'-'+pad(+m[2])+'-'+pad(+m[3])};
+  return {v:null, bad:true};
+}
+
+async function leerArchivo(file){
+  C.estado = 'leyendo'; C.archivo = file.name; C.msg = 'Leyendo el archivo'; renderCarga();
+  try{
+    if(!window.XLSX) await loadScript(XLSX_URL);
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    // Hoja: la que se llame OPs, o la primera que tenga encabezados OBRA e ITEM
+    let aoa = null, hdrRow = -1;
+    const names = [...wb.SheetNames].sort((a,b) => (normH(b)==='OPS') - (normH(a)==='OPS'));
+    for(const n of names){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null, blankrows:false});
+      const i = rows.slice(0,15).findIndex(r => r && r.some(c=>normH(c)==='OBRA') && r.some(c=>normH(c)==='ITEM'));
+      if(i >= 0){ aoa = rows; hdrRow = i; break; }
+    }
+    if(!aoa) throw new Error('No encontré una hoja con los encabezados OBRA e ITEM.');
+    const hdr = aoa[hdrRow].map(normH);
+    const idx = {};
+    hdr.forEach((h,i) => { const k = COLMAP[h]; if(k && idx[k] === undefined) idx[k] = i; });   // si hay dos "VIDRIO", vale la primera
+    const faltan = ['obra','item','op_instalacion','ancho','alto'].filter(k => idx[k] === undefined);
+    if(faltan.length) throw new Error('Faltan columnas en el archivo: '+faltan.map(k => PLANTILLA.find(h => COLMAP[normH(h)]===k)).join(', '));
+    const hoy = today();
+    const filas = [];
+    for(let r = hdrRow+1; r < aoa.length; r++){
+      const row = aoa[r]; if(!row || row.every(c => c==null || String(c).trim()==='')) continue;
+      const g = k => idx[k] === undefined ? null : row[idx[k]];
+      const f = {n: r+1, errors:[], warns:[], d:{}};
+      const d = f.d;
+      for(const k of ['item','ubicacion','sistema','serie','piso','diseno','vidrio','op']) d[k] = cTxt(g(k));
+      d.obra = cTxt(g('obra')); if(d.obra) d.obra = d.obra.toUpperCase();
+      d.op_instalacion = cTxt(g('op_instalacion'));
+      for(const k of ['ancho','alto','m2','cant','tiempo_op','puntos','precio']){
+        const x = cNum(g(k)); d[k] = x.v;
+        if(x.bad) f.errors.push(`${k==='precio'?'PRECIO':k.toUpperCase().replace('_',' ')} no es un número`);
+      }
+      const fe = cFecha(g('fecha_op'));
+      if(fe.bad) f.errors.push('FECHA OP no es una fecha válida');
+      d.fecha_op = fe.v || (fe.bad ? null : hoy);
+      if(!fe.v && !fe.bad) f.warns.push('Sin FECHA OP: se usará hoy');
+      if(!d.obra) f.errors.push('Falta OBRA');
+      if(!d.item) f.errors.push('Falta ITEM');
+      if(!d.op_instalacion) f.errors.push('Falta OP INSTALACION');
+      if(d.ancho==null || d.alto==null) f.warns.push('Medidas incompletas');
+      if(d.m2==null && d.ancho!=null && d.alto!=null){ d.m2 = Math.round(d.ancho*d.alto/1e4)/100; f.warns.push('M² calculado'); }
+      if(d.precio==null) f.warns.push('Sin precio');
+      filas.push(f);
+    }
+    if(!filas.length) throw new Error('El archivo no tiene filas con datos debajo de los encabezados.');
+    // Repetidas dentro del archivo
+    const cnt = new Map(); filas.forEach(f => f.d.op_instalacion && cnt.set(f.d.op_instalacion, (cnt.get(f.d.op_instalacion)||0)+1));
+    filas.forEach(f => { if(cnt.get(f.d.op_instalacion) > 1) f.errors.push('OP INSTALACION repetida en el archivo'); });
+    // Ya existentes en la base
+    C.msg = 'Comparando con la base de datos'; renderCarga();
+    const ops = [...cnt.keys()];
+    const ya = await API.existentes(ops);
+    filas.forEach(f => { if(ya.has(f.d.op_instalacion)) f.errors.push('Esa OP INSTALACION ya existe en la base'); });
+    // Obras nuevas o con nombre parecido
+    if(!S.obrasAll) S.obrasAll = S.anual ? S.anual.map(r=>r.obra) : await API.todasObras();
+    const exist = new Set(S.obrasAll), porClave = new Map();
+    for(const o of exist) porClave.set(obraKey(o), o);
+    const obrasInfo = new Map();
+    for(const f of filas){
+      const o = f.d.obra; if(!o) continue;
+      if(!obrasInfo.has(o)){
+        const parecida = !exist.has(o) ? (porClave.get(obraKey(o)) || null) : null;
+        obrasInfo.set(o, {nueva: !exist.has(o), parecida});
+      }
+      const inf = obrasInfo.get(o);
+      if(inf.parecida) f.warns.push(`¿Es la obra ${inf.parecida}? El nombre no coincide exactamente`);
+    }
+    C.filas = filas; C.obrasInfo = obrasInfo; C.soloProblemas = filas.some(f => f.errors.length);
+    C.estado = 'revision';
+  }catch(e){
+    C.estado = 'inicio';
+    toast(errMsg(e), true);
+  }
+  renderCarga();
+}
+
+function revisionHTML(){
+  const ok = C.filas.filter(f => !f.errors.length), bad = C.filas.filter(f => f.errors.length);
+  const porObra = new Map();
+  for(const f of ok){
+    let o = porObra.get(f.d.obra);
+    if(!o){ o = {obra:f.d.obra, n:0, m2:0, valor:0, sinPrecio:0, ops:new Set()}; porObra.set(f.d.obra, o); }
+    o.n++; o.m2 += f.d.m2 || 0; o.valor += f.d.precio || 0; if(f.d.precio==null) o.sinPrecio++; if(f.d.op) o.ops.add(f.d.op);
+  }
+  const lista = C.soloProblemas ? C.filas.filter(f => f.errors.length || f.warns.some(w => !/^(M² calculado|Sin precio|Sin FECHA OP)/.test(w))) : C.filas;
+  const opsTxt = s => { const a = [...s].sort(nat); return a.length > 4 ? a.slice(0,4).join(', ')+` y ${a.length-4} más` : a.join(', '); };
+  return `
+    <div class="summary" style="margin-bottom:14px">Archivo <b>${esc(C.archivo)}</b> · ${fmtN(C.filas.length)} filas leídas ·
+      <b style="color:var(--inst)">${fmtN(ok.length)} listas para cargar</b>${bad.length ? ` · <b style="color:var(--danger)">${fmtN(bad.length)} con errores</b> (no se cargarán)` : ''}</div>
+    ${porObra.size ? `<div class="grid-obras" style="margin-bottom:18px">${[...porObra.values()].sort((a,b)=>b.n-a.n).map(o => {
+      const inf = C.obrasInfo.get(o.obra) || {};
+      return `<div class="obra-card" style="cursor:default">
+        <div><div class="oc-name">${esc(o.obra)} ${inf.nueva ? `<span class="badge-new">${inf.parecida?'Nombre distinto':'Obra nueva'}</span>` : ''}</div>
+        <div class="oc-meta">OP ${esc(opsTxt(o.ops)) || '—'}</div></div>
+        <div class="oc-nums" style="grid-template-columns:repeat(3,1fr)">
+          <div><b>${fmtN(o.n)}</b><span>Ítems</span></div>
+          <div><b>${fmtN(o.m2,1)}</b><span>M²</span></div>
+          <div><b>${o.valor ? '$'+fmtN(o.valor/1e6,1)+'M' : '—'}</b><span>Valor${o.sinPrecio?` · ${o.sinPrecio} sin precio`:''}</span></div>
+        </div></div>`; }).join('')}</div>` : ''}
+    <div class="list-head">
+      <span class="lbl">${C.soloProblemas ? 'Filas con problemas' : 'Todas las filas'} <b>${fmtN(lista.length)}</b></span>
+      <button class="btn sm" onclick="C.soloProblemas=!C.soloProblemas;renderCarga()">${C.soloProblemas ? 'Ver todas las filas' : 'Ver solo problemas'}</button>
+    </div>
+    <div class="ctable-wrap"><table class="ctable">
+      <thead><tr><th>Fila</th><th>Obra</th><th>Ítem</th><th>OP inst.</th><th>Medidas</th><th>M²</th><th>Precio</th><th>Observaciones</th></tr></thead>
+      <tbody>${lista.slice(0,500).map(f => `<tr class="${f.errors.length?'err':''}">
+        <td>${f.n}</td><td>${esc(f.d.obra||'—')}</td><td>${esc(f.d.item||'—')}</td><td class="mono">${esc(f.d.op_instalacion||'—')}</td>
+        <td>${f.d.ancho!=null?fmtN(f.d.ancho):'—'} × ${f.d.alto!=null?fmtN(f.d.alto):'—'}</td><td>${fmtN(f.d.m2,2)}</td><td>${f.d.precio!=null?'$'+fmtN(f.d.precio):'—'}</td>
+        <td>${f.errors.map(e=>`<span class="obs e">${esc(e)}</span>`).join('')}${f.warns.map(w=>`<span class="obs w">${esc(w)}</span>`).join('')}${!f.errors.length&&!f.warns.length?'<span class="obs ok">OK</span>':''}</td>
+      </tr>`).join('') || `<tr><td colspan="8" class="empty">Ninguna fila con problemas.</td></tr>`}</tbody>
+    </table></div>
+    ${lista.length > 500 ? `<div class="d-meta">Se muestran las primeras 500 filas.</div>` : ''}
+    <div class="carga-foot">
+      <button class="btn" onclick="C.estado='inicio';renderCarga()">Elegir otro archivo</button>
+      <button class="btn primary" onclick="confirmarCarga()" ${ok.length?'':'disabled'}>Cargar ${fmtN(ok.length)} ítems</button>
+    </div>`;
+}
+
+async function confirmarCarga(){
+  const ok = C.filas.filter(f => !f.errors.length);
+  if(!ok.length) return;
+  const obras = [...new Set(ok.map(f=>f.d.obra))];
+  if(!confirm(`¿Cargar ${ok.length} ítems en ${obras.length === 1 ? 'la obra '+obras[0] : obras.length+' obras'}?\n\nEntrarán en estado EN COLA y tu asistente los verá de inmediato.`)) return;
+  C.estado = 'cargando'; C.progreso = 0; renderCarga();
+  const rows = ok.map(f => { const {precio, ...d} = f.d; return d; });
+  let ins = [];
+  try{
+    ins = await API.insertItems(rows, n => { C.progreso = n; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Cargando ítems… ${fmtN(n)} de ${fmtN(rows.length)}`; });
+    const idPorOp = new Map(ins.map(r => [r.op_instalacion, r.id]));
+    const com = ok.map(f => ({item_id: idPorOp.get(f.d.op_instalacion), precio: f.d.precio})).filter(r => r.item_id);
+    try{ await API.insertComercial(com); C.errComercial = null; }
+    catch(e){ C.errComercial = errMsg(e); }
+    C.cargados = {ids: ins.map(r=>r.id), obras, n: ins.length, total: rows.length};
+  }catch(e){
+    const parcial = (e && e.parcial) || [];
+    C.cargados = {ids: parcial.map(r=>r.id), obras, n: parcial.length, total: rows.length, error: errMsg(e)};
+  }
+  C.estado = 'listo';
+  S.obrasAll = null; S.anual = null; S.anualIdx = null; S.anualPos = null;
+  try{ await loadActivos(); }catch(e){}
+  renderCarga();
+}
+
+function resultadoHTML(){
+  const c = C.cargados;
+  return `<div class="result ${c.error?'bad':''}">
+      <div class="h1" style="font-size:20px">${c.error ? 'La carga quedó incompleta' : '✓ Carga completa'}</div>
+      <div class="h1-sub" style="font-size:14px;margin-top:8px">${fmtN(c.n)} de ${fmtN(c.total)} ítems guardados en la base${c.error ? `. Error: ${esc(c.error)}` : ''}.</div>
+      ${C.errComercial ? `<div class="warn" style="margin-top:12px">Los ítems quedaron cargados pero <b>los precios no</b> se guardaron: ${esc(C.errComercial)}. Deshaz la carga y vuelve a intentarlo.</div>` : ''}
+      <div class="quick" style="margin-top:18px">
+        ${c.obras.map(o => `<button class="btn sm primary" onclick="openObra(decodeURIComponent('${encodeURIComponent(o)}'))">Ver ${esc(o)}</button>`).join('')}
+        <button class="btn sm" onclick="C.estado='inicio';C.cargados=null;renderCarga()">Cargar otro archivo</button>
+        ${c.ids.length ? `<button class="btn sm" style="border-color:var(--danger);color:var(--danger)" onclick="deshacerCarga()">Deshacer esta carga</button>` : ''}
+      </div></div>`;
+}
+
+async function deshacerCarga(){
+  const c = C.cargados; if(!c || !c.ids.length) return;
+  if(!confirm(`¿Borrar los ${c.ids.length} ítems que se acaban de cargar? Esto no se puede deshacer.`)) return;
+  try{ await API.deleteItems(c.ids); }
+  catch(e){ return toast('No se pudo deshacer: '+errMsg(e), true); }
+  toast(`✓ Se borraron ${fmtN(c.ids.length)} ítems`);
+  C.estado = 'inicio'; C.cargados = null;
+  S.obrasAll = null; S.anual = null; S.anualIdx = null; S.anualPos = null;
+  try{ await loadActivos(); }catch(e){}
+  renderCarga();
 }
 
 // ════════════════════════════════════════════════════════════════
