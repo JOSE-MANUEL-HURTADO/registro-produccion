@@ -307,7 +307,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -340,7 +340,14 @@ const fmtN = (n,d=0) => n==null||n==='' ? '' : Number(n).toLocaleString('es-CO',
 const nat = (a,b) => String(a||'').localeCompare(String(b||''),'es',{numeric:true,sensitivity:'base'});
 const nz = v => (v===''||v===undefined) ? null : v;
 // Año de un ítem = año de la FECHA OP. Si la fecha OP no es válida (ej. 01/01/2001), se usa el año de producción o de despacho.
-const yearOf = it => { const f = it.fecha_op; if(f && f >= '2010') return f.slice(0,4); const d = it.dia_inicio || it.fecha_despacho; return d ? d.slice(0,4) : 'S/F'; };
+// Año de un ítem = mismo criterio del dashboard: año de producción (DIA INICIO).
+// Los ítems EN COLA aún no tienen año de producción: se ubican por el año de su FECHA OP.
+const okYear = y => y && y >= '2010' && y <= '2035';
+const enCola = it => !it.despachado && (it.status || 'EN COLA') === 'EN COLA';
+const yearOf = it => {
+  if(enCola(it)){ const y = it.fecha_op ? it.fecha_op.slice(0,4) : ''; return okYear(y) ? y : 'S/F'; }
+  const y = it.dia_inicio ? it.dia_inicio.slice(0,4) : ''; return okYear(y) ? y : 'S/F';
+};
 const yearsTxt = set => { const ys = [...set].filter(y => y !== 'S/F').sort(); if(!ys.length) return ''; return ys.length === 1 ? ys[0] : ys[0]+'–'+ys[ys.length-1]; };
 const stageOf = it => it.instalado ? 'INSTALADO' : (it.despachado ? 'DESPACHADO' : (it.status||'EN COLA'));
 const deriveStatus = it => it.despachado ? 'DESPACHADO' : (it.dia_final ? 'ENSAMBLADO' : ((it.ensamblador||it.dia_inicio) ? 'PRODUCCIÓN' : 'EN COLA'));
@@ -587,7 +594,7 @@ function renderHome(){
   const res = resumenObras();
   const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a), {d:0,i:0});
   const sub = anual
-    ? `Ítems agrupados por el año de su fecha de OP · ${liveHTML()}`
+    ? `Año de producción (DIA INICIO), igual que el dashboard · los ítems en cola se ubican por su FECHA OP · ${liveHTML()}`
     : `${res.length} obras · ${fmtN(tot.d)} ítems por despachar · ${fmtN(tot.i)} por instalar · ${liveHTML()}`;
   const legend = anual
     ? [['var(--cola)','En cola'],['var(--ens)','En planta'],['var(--desp)','Despachado sin instalar'],['var(--inst)','Instalado']]
@@ -631,9 +638,14 @@ function renderAnualBox(){
   const q = S.q.trim().toUpperCase();
   const m = idx.byYear.get(S.anio) || new Map();
   const list = [...m.values()].filter(o => !q || o.obra.toUpperCase().includes(q)).sort((a,b) => b.n-a.n || nat(a.obra,b.obra));
-  $('#obrasBox').innerHTML = list.length
+  const all = [...m.values()];
+  const soloCola = all.filter(o => o.cola === o.n).length;
+  const resumen = S.anio === 'S/F'
+    ? `<div class="h1-sub" style="margin:-4px 0 14px">${fmtN(all.length)} obras con ítems sin fecha de producción registrada</div>`
+    : `<div class="h1-sub" style="margin:-4px 0 14px"><b style="color:var(--text)">${fmtN(all.length - soloCola)}</b> obras con producción en ${S.anio}${soloCola ? ` · <b style="color:var(--cola)">${fmtN(soloCola)}</b> solo con ítems en cola (OP de ${S.anio})` : ''}</div>`;
+  $('#obrasBox').innerHTML = resumen + (list.length
     ? `<div class="grid-obras">${list.map(o => anualCard(o, idx.obraYears.get(o.obra))).join('')}</div>`
-    : `<div class="empty">No hay obras${q ? ' que coincidan con “'+esc(S.q)+'”' : ''} en ${esc(S.anio)}.</div>`;
+    : `<div class="empty">No hay obras${q ? ' que coincidan con “'+esc(S.q)+'”' : ''} en ${esc(S.anio)}.</div>`);
 }
 
 function anualCard(o, ys){
@@ -643,7 +655,7 @@ function anualCard(o, ys){
   const multi = ys && [...ys].filter(y=>y!=='S/F').length > 1;
   return `<button class="obra-card" onclick="openObra(decodeURIComponent('${encodeURIComponent(o.obra)}'), false, '${S.anio}')">
     <div><div class="oc-name">${esc(o.obra)}</div>
-      <div class="oc-meta">${fmtN(o.n)} ítems con OP de ${S.anio==='S/F'?'fecha desconocida':S.anio}${multi ? ` · <span style="color:var(--text2)">obra ${span}</span>` : ''}</div></div>
+      <div class="oc-meta">${S.anio==='S/F' ? fmtN(o.n)+' ítems sin fecha de producción' : (o.cola===o.n ? `<span style="color:var(--cola)">Solo en cola · ${fmtN(o.n)} ítems con OP de ${S.anio}</span>` : `${fmtN(o.n-o.cola)} fabricados en ${S.anio}${o.cola ? ` · ${fmtN(o.cola)} en cola` : ''}`)}${multi ? ` · <span style="color:var(--text2)">obra ${span}</span>` : ''}</div></div>
     <div class="bar">${bar}</div>
     <div class="oc-nums">
       <div><b style="color:var(--cola)">${fmtN(o.cola)}</b><span>En cola</span></div>
@@ -768,7 +780,7 @@ function renderObra(){
         <div class="chips" id="chips"></div>
         <div class="filters">
           <div class="search">${ICON.search}<input id="qItem" placeholder="Ítem, ubicación, OP, remisión…" value="${esc(S.f.q)}" autocomplete="off" autocapitalize="characters"></div>
-          <select id="fAnio"><option value="">Todos los años</option>${years.map(y=>`<option value="${y}" ${y===S.f.anio?'selected':''}>${y==='S/F'?'Sin fecha':'OP '+y} (${fmtN(ycount.get(y))})</option>`).join('')}</select>
+          <select id="fAnio"><option value="">Todos los años</option>${years.map(y=>`<option value="${y}" ${y===S.f.anio?'selected':''}>${y==='S/F'?'Sin fecha':'Año '+y} (${fmtN(ycount.get(y))})</option>`).join('')}</select>
           <select id="fPiso"><option value="">Todos los pisos</option>${pisos.map(p=>`<option ${p===S.f.piso?'selected':''}>${esc(p)}</option>`).join('')}</select>
           <select id="fOp"><option value="">Todas las OP</option>${ops.map(p=>`<option ${p===S.f.op?'selected':''}>${esc(p)}</option>`).join('')}</select>
         </div>
