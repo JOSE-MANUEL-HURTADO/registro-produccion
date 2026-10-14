@@ -319,7 +319,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -462,14 +462,22 @@ const API = {
     for(let i=0; i<rows.length; i+=500){ const {error} = await this.sb.from('items_comercial').insert(rows.slice(i,i+500)); if(error) throw error; }
   },
   async borrarTodo(onProgress){
+    // Vía rápida: función de la base (solo gerente) que vacía las tablas de una vez.
+    const rpc = await this.sb.rpc('vaciar_base');
+    if(!rpc.error) return 'rapido';
+    const faltaFn = /vaciar_base|could not find|schema cache|404/i.test((rpc.error.message||'')+(rpc.error.code||''));
+    if(!faltaFn) throw rpc.error;
+    // Vía lenta (respaldo): bloques pequeños.
     const {data,error} = await this.sb.from('items').select('id').order('id',{ascending:false}).limit(1);
     if(error) throw error;
     const max = data.length ? data[0].id : 0;
-    for(let a=0; a<=max; a+=3000){
-      const r = await this.sb.from('items').delete().gte('id',a).lt('id',a+3000);
+    const paso = 500;
+    for(let a=0; a<=max; a+=paso){
+      const r = await this.sb.from('items').delete().gte('id',a).lt('id',a+paso);
       if(r.error) throw r.error;
-      onProgress && onProgress(Math.min(a+3000, max));
+      onProgress && onProgress(Math.min(a+paso, max), max);
     }
+    return 'lento';
   },
   async deleteItems(ids){
     for(let i=0; i<ids.length; i+=150){ const {error} = await this.sb.from('items').delete().in('id', ids.slice(i,i+150)); if(error) throw error; }
@@ -1692,10 +1700,10 @@ async function migEjecutar(){
   const t0 = Date.now();
   try{
     mLog('Borrando la base actual…');
-    await API.borrarTodo(n => mLast(`Borrando la base actual… ${fmtN(n)} ítems`));
-    mLast('✓ Base actual borrada');
+    const modo = await API.borrarTodo((n,max) => mLast(`Borrando la base actual (modo lento)… ${fmtN(n)} de ${fmtN(max)}`));
+    mLast('✓ Base actual borrada' + (modo === 'lento' ? ' (modo lento: conviene crear la función vaciar_base, ver README)' : ''));
     mLog(`Cargando ítems… 0 de ${fmtN(M.items.length)}`);
-    const ins = await API.insertItems(M.items, n => mLast(`Cargando ítems… ${fmtN(n)} de ${fmtN(M.items.length)}`), 1000, 'id,obra,item,op_instalacion');
+    const ins = await API.insertItems(M.items, n => mLast(`Cargando ítems… ${fmtN(n)} de ${fmtN(M.items.length)}`), 500, 'id,obra,item,op_instalacion');
     // Emparejar los id nuevos con las filas del Excel (en orden; si algo no cuadra, por obra+ítem+OP)
     let ids = ins.map(r => r.id);
     const cuadra = ins.length === M.items.length && ins.every((r,i) => r.op_instalacion === M.items[i].op_instalacion && r.item === M.items[i].item && r.obra === M.items[i].obra);
