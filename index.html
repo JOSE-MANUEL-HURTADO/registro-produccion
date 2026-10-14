@@ -318,7 +318,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -940,7 +940,7 @@ async function recargarObra(){
 // ════════════════════════════════════════════════════════════════
 const byId = id => S.items.find(i => i.id === id);
 const COM_KEYS = ['precio','cobrado_despacho','fecha_corte_despacho','num_corte_despacho','cobrado_instalacion','fecha_corte_instalacion','num_corte_instalacion'];
-function draftOf(it){ const d = {_dirty:false}; if(isGerente()){ const c = com(it); d.c = {}; for(const k of COM_KEYS) d.c[k] = c[k] ?? null; } for(const k of EDITABLE) d[k] = it[k] ?? null; if(d.hora_inicio) d.hora_inicio = fmtT(d.hora_inicio); if(d.hora_final) d.hora_final = fmtT(d.hora_final); return d; }
+function draftOf(it){ const d = {_dirty:false}; if(isGerente()){ const c = com(it); d.c = {}; for(const k of COM_KEYS) d.c[k] = c[k] ?? null; } for(const k of EDITABLE) d[k] = it[k] ?? null; if(d.hora_inicio) d.hora_inicio = fmtT(d.hora_inicio); if(d.hora_final) d.hora_final = fmtT(d.hora_final); d._base = JSON.parse(JSON.stringify({...d, _dirty:undefined})); return d; }
 
 function openDetail(id){
   if(S.detailId === id) return;
@@ -1073,17 +1073,18 @@ async function dSave(){
   if((d.dia_inicio||d.dia_final) && !d.ensamblador) return toast('Falta el ensamblador', true);
   if(d.dia_final && !d.dia_inicio) return toast('Falta el día de inicio', true);
   if(d.dia_final && d.dia_inicio && d.dia_final < d.dia_inicio) return toast('El día final es anterior al de inicio', true);
+  // Solo se envían los campos que esta persona cambió (comparado con lo que había al abrir el ítem),
+  // para no deshacer lo que otro usuario haya guardado mientras tanto.
   const patch = {};
   for(const k of EDITABLE){
-    const a = (k==='hora_inicio'||k==='hora_final') ? fmtT(it[k]) || null : (it[k] ?? null);
-    if((d[k] ?? null) !== a) patch[k] = nz(d[k]);
+    if((d[k] ?? null) !== (d._base[k] ?? null)) patch[k] = nz(d[k]);
   }
   const ns = deriveStatus({...it, ...patch});
   if(ns !== it.status) patch.status = ns;
   let cpatch = null;
   if(d.c){
     for(const k of ['despacho','instalacion']) if(d.c['cobrado_'+k] && !d.c['fecha_corte_'+k]) return toast('Falta la fecha de corte del cobro de '+(k==='despacho'?'despacho':'instalación'), true);
-    const c0 = com(it);
+    const c0 = d._base.c || {};
     for(const k of COM_KEYS) if((d.c[k] ?? null) !== (c0[k] ?? null)){ cpatch = cpatch || {}; cpatch[k] = d.c[k]; }
   }
   if(!Object.keys(patch).length && !cpatch){ d._dirty=false; return renderDetail(); }
