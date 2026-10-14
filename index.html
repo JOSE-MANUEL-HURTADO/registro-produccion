@@ -173,6 +173,10 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .row.sel{background:rgba(200,168,75,.07);}
 .row.open{background:rgba(255,255,255,.05);}
 .row.open::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--text);}
+fieldset.d-fs{border:0;padding:0;margin:0;min-width:0;}
+fieldset.d-fs:disabled{opacity:.8;}
+fieldset.d-fs:disabled .quick{display:none;}
+body.ro .ck{visibility:hidden;}
 .ck{grid-area:ck;width:44px;height:44px;display:flex;align-items:center;justify-content:center;align-self:center;}
 .ck span{width:22px;height:22px;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;}
 .row.sel .ck span{background:var(--cola);border-color:var(--cola);}
@@ -349,7 +353,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.0';
+const APP_VERSION = '2.1';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -463,6 +467,18 @@ const API = {
     }
     return out;
   },
+  async cobros(ids){
+    let out = [];
+    for(let i=0; i<ids.length; i+=200){
+      const {data,error} = await this.sb.from('items_cobros').select('*').in('item_id', ids.slice(i,i+200));
+      if(error) throw error; out = out.concat(data);
+    }
+    return out;
+  },
+  async marcarCobros(ids, tipo, cobrado, fecha, num){
+    const {data,error} = await this.sb.rpc('marcar_cobros', {p_ids:ids, p_tipo:tipo, p_cobrado:cobrado, p_fecha:fecha||null, p_num:num||null});
+    if(error) throw error; return data;
+  },
   async upsertComercial(rows){
     let out = [];
     for(let i=0; i<rows.length; i+=500){
@@ -531,6 +547,11 @@ const S = {
   sel:new Set(), detailId:null, draft:null, live:false, com:new Map()
 };
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
+const rolEs = (...r) => !!S.perfil && r.includes(S.perfil.rol);
+const puedeRegistrar = () => rolEs('gerente','asistente');   // procesos, ensamble, despacho, instalación
+const veCobros = () => rolEs('gerente','cobros');            // marcas de cobro (cobros no ve precios)
+const veDash = () => rolEs('gerente','consulta');            // dashboard
+const puedeSeleccionar = () => puedeRegistrar() || rolEs('cobros');
 
 // ════════════════════════════════════════════════════════════════
 //  ARRANQUE Y SESIÓN
@@ -566,6 +587,7 @@ function renderLogin(err){
 
 async function afterLogin(ses){
   S.user = ses.user;
+  document.body.classList.remove('ro','rol-cobros');
   $('#app').innerHTML = '<div class="loading"><div class="spin"></div>Cargando</div>';
   try{
     S.perfil = await API.perfil(ses.user.id);
@@ -574,6 +596,8 @@ async function afterLogin(ses){
     await API.logout();
     return renderLogin('Tu usuario no tiene un rol asignado. Pídele al gerente que lo active.');
   }
+  if(!puedeSeleccionar()) document.body.classList.add('ro');
+  if(rolEs('cobros')) document.body.classList.add('rol-cobros');
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
   window.addEventListener('popstate', onPop);
@@ -598,7 +622,8 @@ function shell(inner){
     ${brandHTML('Ártica · Registro de producción')}
     <div class="top-r">
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(S.perfil.rol)}</span></div>
-      ${isGerente() ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>
+      ${veDash() ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
+      ${isGerente() ? `
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>
         <button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
       <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button>
@@ -983,8 +1008,8 @@ function onPop(ev){
 
 async function loadComercial(){
   S.com = new Map();
-  if(!isGerente() || !S.items.length) return;
-  try{ for(const c of await API.comercial(S.items.map(i => i.id))) S.com.set(c.item_id, c); }
+  if(!veCobros() || !S.items.length) return;
+  try{ for(const c of await (isGerente() ? API.comercial : API.cobros).call(API, S.items.map(i => i.id))) S.com.set(c.item_id, c); }
   catch(e){ toast('No se pudieron leer precios y cobros: '+errMsg(e), true); }
 }
 const com = it => S.com.get(it.id) || {};
@@ -1057,7 +1082,7 @@ function renderObra(){
 function renderChips(){
   const base = S.items.filter(baseMatch);
   const rng = S.f.rng ? `<button class="chip on" title="Quitar filtro de fecha" onclick="S.f.rng=null;S.limit=300;renderChips();renderList()">${esc(S.f.rng.label)} ✕</button>` : '';
-  $('#chips').innerHTML = rng + FILTROS.filter(f => !f[3] || isGerente()).map(([k,t,fn,g]) => {
+  $('#chips').innerHTML = rng + FILTROS.filter(f => !f[3] || veCobros()).map(([k,t,fn,g]) => {
     const n = base.filter(fn).length;
     const col = STAGES[k] ? `<i style="background:${STAGES[k].c}"></i>` : '';
     return `<button class="chip ${S.f.estado===k?'on':''} ${g?'chip-cob':''}" onclick="setEstado('${k}')">${g?'<span class="cob-ic">$</span>':''}${col}${t} <b>${fmtN(n)}</b></button>`;
@@ -1072,7 +1097,7 @@ function rowHTML(it){
   const st = stageOf(it);
   let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}</span>`
             : it.despachado ? `<span class="subtag">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}</span>` : '';
-  if(isGerente() && it.despachado){
+  if(veCobros() && it.despachado){
     const c = com(it);
     const m = (ok, l, n) => `<span class="cobm ${ok?'ok':'pend'}" title="${ok?'Cobrado':'Por cobrar'} ${l}${ok&&n?' · corte '+esc(n):''}">$${l}${ok?' ✓':''}</span>`;
     sub += `<span class="cobs">${m(c.cobrado_despacho,'D',c.num_corte_despacho)}${it.instalado ? m(c.cobrado_instalacion,'I',c.num_corte_instalacion) : ''}</span>`;
@@ -1093,7 +1118,7 @@ function renderList(){
   const rows = filtered();
   const allSel = rows.length && rows.every(r => S.sel.has(r.id));
   $('#listHead').innerHTML = `<span class="lbl">Mostrando <b>${fmtN(rows.length)}</b> ítems</span>
-    ${rows.length ? `<button class="btn sm" onclick="selectAll(${allSel?0:1})">${allSel?'Quitar selección':'Seleccionar los '+fmtN(rows.length)}</button>` : ''}`;
+    ${rows.length && puedeSeleccionar() ? `<button class="btn sm" onclick="selectAll(${allSel?0:1})">${allSel?'Quitar selección':'Seleccionar los '+fmtN(rows.length)}</button>` : ''}`;
   const box = $('#list');
   if(!rows.length){ box.innerHTML = `<div class="empty">No hay ítems con este filtro.</div>`; return; }
   box.innerHTML = rows.slice(0,S.limit).map(rowHTML).join('') +
@@ -1102,7 +1127,7 @@ function renderList(){
 
 document.addEventListener('click', ev => {
   const ck = ev.target.closest('[data-ck]');
-  if(ck){ ev.stopPropagation(); toggleSel(+ck.dataset.ck); return; }
+  if(ck){ ev.stopPropagation(); if(puedeSeleccionar()) toggleSel(+ck.dataset.ck); return; }
   const row = ev.target.closest('.row[data-id]');
   if(row) openDetail(+row.dataset.id);
 });
@@ -1130,12 +1155,12 @@ function renderSelbar(){
   box.innerHTML = `<div class="selbar">
     <div class="count"><b>${fmtN(S.sel.size)}</b>selec.</div>
     <div class="acts">
-      <button class="btn sm" onclick="sheetProcesos()">Procesos</button>
+      ${puedeRegistrar() ? `<button class="btn sm" onclick="sheetProcesos()">Procesos</button>
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
       <button class="btn sm" onclick="sheetDespacho()">Despacho</button>
-      <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>
-      ${isGerente() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
+      <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
+      ${veCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
       <button class="btn sm btn-cob" onclick="sheetCobro('i')">$ Cobro instalación</button>` : ''}
     </div>
     <button class="icon-btn" onclick="clearSel()" title="Quitar selección">${ICON.close}</button>
@@ -1158,7 +1183,7 @@ async function recargarObra(){
 // ════════════════════════════════════════════════════════════════
 const byId = id => S.items.find(i => i.id === id);
 const COM_KEYS = ['precio','cobrado_despacho','fecha_corte_despacho','num_corte_despacho','cobrado_instalacion','fecha_corte_instalacion','num_corte_instalacion'];
-function draftOf(it){ const d = {_dirty:false}; if(isGerente()){ const c = com(it); d.c = {}; for(const k of COM_KEYS) d.c[k] = c[k] ?? null; } for(const k of EDITABLE) d[k] = it[k] ?? null; if(d.hora_inicio) d.hora_inicio = fmtT(d.hora_inicio); if(d.hora_final) d.hora_final = fmtT(d.hora_final); d._base = JSON.parse(JSON.stringify({...d, _dirty:undefined})); return d; }
+function draftOf(it){ const d = {_dirty:false}; if(veCobros()){ const c = com(it); d.c = {}; for(const k of COM_KEYS) d.c[k] = c[k] ?? null; } for(const k of EDITABLE) d[k] = it[k] ?? null; if(d.hora_inicio) d.hora_inicio = fmtT(d.hora_inicio); if(d.hora_final) d.hora_final = fmtT(d.hora_final); d._base = JSON.parse(JSON.stringify({...d, _dirty:undefined})); return d; }
 
 function openDetail(id){
   if(S.detailId === id) return;
@@ -1207,6 +1232,7 @@ function renderDetail(){
         </div>
         ${it.notas_importacion ? `<div class="note">Nota del Excel original: ${esc(it.notas_importacion)}</div>` : ''}
       </div>
+      <fieldset class="d-fs" ${puedeRegistrar() ? '' : 'disabled'}>
       <div class="d-sec"><div class="lbl">Procesos <span style="letter-spacing:.1em">X completo · + parcial</span></div>
         ${PROCS.map(([k,t]) => `<div class="proc-row"><span>${t}</span>${seg3(k)}</div>`).join('')}
       </div>
@@ -1239,8 +1265,9 @@ function renderDetail(){
         </div>` : ''}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
-      ${isGerente() && d.c ? `<div class="d-sec sec-cob"><div class="lbl">Precio y cobros <span style="letter-spacing:.1em">solo gerente</span></div>
-        <div class="field" style="margin-bottom:14px"><span class="lbl">Precio unitario</span><input inputmode="numeric" value="${d.c.precio!=null?fmtN(d.c.precio):''}" onchange="cSet('precio', cNum(this.value).v)"></div>
+      </fieldset>
+      ${veCobros() && d.c ? `<div class="d-sec sec-cob"><div class="lbl">${isGerente() ? 'Precio y cobros <span style="letter-spacing:.1em">solo gerente</span>' : 'Cobros'}</div>
+        ${isGerente() ? `<div class="field" style="margin-bottom:14px"><span class="lbl">Precio unitario</span><input inputmode="numeric" value="${d.c.precio!=null?fmtN(d.c.precio):''}" onchange="cSet('precio', cNum(this.value).v)"></div>` : ''}
         ${[['despacho','Despacho', d.despachado],['instalacion','Instalación', d.instalado]].map(([k,t,hecho]) => `
           <div class="switch"><span>Cobrado ${t.toLowerCase()}${!hecho ? ' <span style="color:var(--dim)">(aún no '+(k==='despacho'?'despachado':'instalado')+')</span>' : ''}</span><button class="tgl ${d.c['cobrado_'+k]?'on':''}" onclick="cToggle('${k}')"></button></div>
           ${d.c['cobrado_'+k] ? `<div class="fgrid" style="margin-bottom:10px">
@@ -1249,7 +1276,7 @@ function renderDetail(){
           </div>` : ''}`).join('')}
       </div>` : ''}
     </div>
-    <div class="d-foot">
+    <div class="d-foot" ${puedeRegistrar() || veCobros() ? '' : 'style="display:none"'}>
       <button class="btn" onclick="dDiscard()" ${d._dirty?'':'disabled style="opacity:.4"'}>Descartar</button>
       <button class="btn primary" onclick="dSave()" ${d._dirty?'':'disabled'}>Guardar</button>
     </div>
@@ -1285,12 +1312,14 @@ function dDiscard(){ S.draft = draftOf(byId(S.detailId)); renderDetail(); }
 
 async function dSave(){
   const it = byId(S.detailId), d = S.draft;
+  if(puedeRegistrar()){
   if(d.despachado && !d.fecha_despacho) return toast('Falta la fecha de despacho', true);
   if(d.despachado && !d.remision) return toast('Falta el número de remisión', true);
   if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
   if((d.dia_inicio||d.dia_final) && !d.ensamblador) return toast('Falta el ensamblador', true);
   if(d.dia_final && !d.dia_inicio) return toast('Falta el día de inicio', true);
   if(d.dia_final && d.dia_inicio && d.dia_final < d.dia_inicio) return toast('El día final es anterior al de inicio', true);
+  }
   // Solo se envían los campos que esta persona cambió (comparado con lo que había al abrir el ítem),
   // para no deshacer lo que otro usuario haya guardado mientras tanto.
   const patch = {};
@@ -1311,9 +1340,16 @@ async function dSave(){
       const rows = await API.update([it.id], patch);
       mergeRows(rows.length ? rows : [{...it, ...patch}]);
     }
-    if(cpatch){
+    if(cpatch && isGerente()){
       const rc = await API.upsertComercial([{item_id: it.id, ...cpatch}]);
       rc.forEach(r => S.com.set(r.item_id, r));
+    } else if(cpatch){
+      for(const k of ['despacho','instalacion']){
+        if(!Object.keys(cpatch).some(x => x.endsWith('_'+k))) continue;
+        if(!(k==='despacho' ? it.despachado : it.instalado)){ toast('Este ítem no está '+(k==='despacho'?'despachado':'instalado')+'; no se puede registrar ese cobro', true); continue; }
+        await API.marcarCobros([it.id], k, !!d.c['cobrado_'+k], d.c['fecha_corte_'+k], d.c['num_corte_'+k]);
+      }
+      for(const r of await API.cobros([it.id])) S.com.set(r.item_id, r);
     }
     S.draft = draftOf(byId(it.id));
     toast('✓ Ítem guardado');
@@ -1949,7 +1985,7 @@ async function migEjecutar(){
 //  COBROS EN GRUPO (solo gerente)
 // ════════════════════════════════════════════════════════════════
 function sheetCobro(tipo){
-  if(!isGerente()) return;
+  if(!veCobros()) return;
   const k = tipo === 'd' ? 'despacho' : 'instalacion';
   const T = tipo === 'd' ? 'despacho' : 'instalación';
   const items = selItems();
@@ -1964,7 +2000,7 @@ function sheetCobro(tipo){
       <div class="field"><span class="lbl"># Corte</span><input id="gCorte" placeholder="Ej. 5"></div></div>
     ${warn(noAptos, tipo==='d' ? 'no están despachados y se omitirán.' : 'no están instalados y se omitirán.')}
     ${warn(ya, 'ya tenían cobro de '+T+'; se reemplazará la fecha y el corte.')}
-    <div class="summary">${fmtN(aptos.length)} ítems · valor total <b>$${fmtN(valor)}</b>${sinPrecio ? ` · ${fmtN(sinPrecio)} sin precio` : ''}</div>`;
+    <div class="summary">${fmtN(aptos.length)} ítems${isGerente() ? ` · valor total <b>$${fmtN(valor)}</b>${sinPrecio ? ` · ${fmtN(sinPrecio)} sin precio` : ''}` : ''}</div>`;
   openSheet('Cobro de '+T, subSel(items.length), body, `Aplicar a ${fmtN(aptos.length)}`, async () => {
     if(!aptos.length){ toast('Ningún ítem seleccionado está '+(tipo==='d'?'despachado':'instalado'), true); return false; }
     const quitar = document.querySelector('#cobModo .on').dataset.v === 'quitar';
@@ -1976,7 +2012,12 @@ function sheetCobro(tipo){
       if(!n){ toast('Falta el número de corte', true); return false; }
       patch = {['cobrado_'+k]:true, ['fecha_corte_'+k]:f, ['num_corte_'+k]:n};
     }
-    const rows = await API.upsertComercial(aptos.map(i => ({item_id:i.id, ...patch})));
+    let rows;
+    if(isGerente()) rows = await API.upsertComercial(aptos.map(i => ({item_id:i.id, ...patch})));
+    else {
+      await API.marcarCobros(aptos.map(i => i.id), k, !quitar, patch['fecha_corte_'+k], patch['num_corte_'+k]);
+      rows = await API.cobros(aptos.map(i => i.id));
+    }
     rows.forEach(r => S.com.set(r.item_id, r));
     S.sel.clear(); refreshAfterChange();
     toast(`✓ ${quitar ? 'Cobro quitado' : 'Cobro registrado'} en ${fmtN(rows.length)} ítems`);

@@ -1855,8 +1855,12 @@ function ungate(){ const g = document.getElementById('liveGate'); if(g) g.remove
 function liveStatus(t){ const el = document.getElementById('dbLoadTime'); if(el) el.textContent = '· '+t; }
 
 async function fetchView(){
-  const mk = o => SB.from('base_exportable').select(DASH_COLS, o);
-  const first = await mk({count:'exact'}).range(0,999);
+  let vista = 'base_dashboard';
+  let mk = o => SB.from(vista).select(DASH_COLS, o);
+  let first = await mk({count:'exact'}).range(0,999);
+  if(first.error && /base_dashboard|does not exist|schema cache|PGRST205|42P01/i.test((first.error.message||'')+(first.error.code||''))){
+    vista = 'base_exportable'; first = await mk({count:'exact'}).range(0,999);   // antes de crear la vista nueva
+  }
   if(first.error) throw first.error;
   let out = first.data || [];
   const total = first.count ?? out.length;
@@ -1874,10 +1878,10 @@ async function liveLoad(manual, blocking){
   const btn = document.getElementById('btnLive'); if(btn) btn.style.opacity = .5;
   try{
     const {data:{session}} = await SB.auth.getSession();
-    if(!session){ gate('Para ver el dashboard primero inicia sesión en la app de registro con tu usuario de gerente.', '<a class="btn-update" style="display:inline-flex;text-decoration:none" href="./">IR A INICIAR SESIÓN</a>'); return; }
+    if(!session){ gate('Para ver el dashboard primero inicia sesión en la app de registro con tu usuario.', '<a class="btn-update" style="display:inline-flex;text-decoration:none" href="./">IR A INICIAR SESIÓN</a>'); return; }
     const {data:perfil, error:pe} = await SB.from('perfiles').select('rol').eq('id', session.user.id).maybeSingle();
     if(pe) throw pe;
-    if(!perfil || perfil.rol !== 'gerente'){ try{ localStorage.removeItem('dash_cache_v1'); }catch(e){} gate('El dashboard es solo para el gerente.', '<a class="btn-update" style="display:inline-flex;text-decoration:none" href="./">VOLVER AL REGISTRO</a>'); return; }
+    if(!perfil || !['gerente','consulta'].includes(perfil.rol)){ try{ localStorage.removeItem('dash_cache_v1'); }catch(e){} gate('El dashboard es solo para el gerente y el usuario de consulta.', '<a class="btn-update" style="display:inline-flex;text-decoration:none" href="./">VOLVER AL REGISTRO</a>'); return; }
     if(blocking) gate('<div style="display:flex;gap:10px;justify-content:center;align-items:center"><span class="live-spin"></span>Cargando la base de datos…</div><div id="gateProg" style="color:#686868;font-size:12px;margin-top:10px"></div>');
     liveStatus('actualizando…');
     const raw = await fetchView();
