@@ -109,6 +109,31 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .other-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px;}
 .other-list button{background:var(--surface);border:1px solid var(--border);padding:12px 14px;text-align:left;display:flex;justify-content:space-between;gap:8px;font-size:13px;}
 .other-list button span{color:var(--muted);}
+.st-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;}
+@media(max-width:700px){.st-tiles{grid-template-columns:1fr 1fr;}}
+.st-tile{background:var(--surface);border:1px solid var(--border);padding:14px 14px 12px;text-align:left;display:flex;flex-direction:column;gap:6px;position:relative;min-height:96px;transition:border-color .15s,background .15s;}
+.st-tile::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--c);}
+.st-tile .t{font-family:var(--sans);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+.st-tile b{font-size:28px;font-weight:500;line-height:1;}
+.st-tile span{font-size:12px;color:var(--muted);}
+.st-tile.on{background:var(--surface3);border-color:var(--text2);}
+.st-tile.on .t{color:var(--text);}
+.pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;align-items:start;}
+@media(max-width:520px){.pl-grid{grid-template-columns:1fr;}}
+.pl-card{background:var(--surface);border:1px solid var(--border);}
+.pl-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);}
+.pl-head .n{font-family:var(--sans);font-weight:500;font-size:15px;letter-spacing:.12em;text-transform:uppercase;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-head .n.sin{color:var(--cola);}
+.pl-head .m{font-size:12px;color:var(--muted);white-space:nowrap;}
+.pl-head .m b{color:var(--text);font-weight:500;font-size:15px;}
+.pl-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;width:100%;text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);}
+.pl-row:last-child{border-bottom:0;}
+.pl-row:hover{background:var(--surface2);}
+.pl-row .o{font-size:13px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-row .o em{font-style:normal;color:var(--text2);font-family:var(--mono);}
+.pl-row .k{font-family:var(--mono);font-size:14px;text-align:right;}
+.pl-row .d{grid-column:1/-1;font-size:11.5px;color:var(--muted);}
+.pl-row .d .old{color:var(--cola);}
 .empty{color:var(--muted);padding:40px 10px;text-align:center;font-size:13px;}
 
 /* ── Vista de obra ── */
@@ -319,7 +344,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -336,7 +361,7 @@ const STAGES = {
   'DESPACHADO':{c:'var(--desp)', t:'Despachado'},
   'INSTALADO': {c:'var(--inst)', t:'Instalado'}
 };
-const MIN_COLS = 'id,obra,status,despachado,instalado,m2,fecha_op,dia_inicio';
+const MIN_COLS = 'id,obra,status,despachado,instalado,m2,fecha_op,dia_inicio,dia_final,ensamblador,op,fecha_despacho';
 const ANUAL_COLS = 'id,obra,fecha_op,dia_inicio,fecha_despacho,status,despachado,instalado';
 const EDITABLE = ['cortado','troquelado','mecanizado','programado','vidrio_proc','prealistado','ensamblador','dia_inicio','hora_inicio','dia_final','hora_final','despachado','fecha_despacho','remision','instalado','fecha_instalacion','instalador'];
 
@@ -627,6 +652,7 @@ function goHome(replace){
 function setHomeTab(t){ S.homeTab = t; renderHome(); }
 
 function renderHome(){
+  if(S.homeTab === 'planta') return renderPlanta();
   const anual = S.homeTab === 'anio';
   const res = resumenObras();
   const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a), {d:0,i:0});
@@ -637,9 +663,7 @@ function renderHome(){
     ? [['var(--cola)','En cola'],['var(--ens)','En planta'],['var(--desp)','Despachado sin instalar'],['var(--inst)','Instalado']]
     : ['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'].map(k => [STAGES[k].c, k==='DESPACHADO' ? 'Despachado sin instalar' : STAGES[k].t]);
   $('#app').innerHTML = shell(`
-    <div class="tabs">
-      <button class="tab ${anual?'':'on'}" onclick="setHomeTab('activas')">Obras activas</button>
-      <button class="tab ${anual?'on':''}" onclick="setHomeTab('anio')">Por año</button>
+    <div class="tabs">${homeTabs()}
     </div>
     <div class="home-head">
       <div><div class="h1">${anual ? 'Obras por año' : 'Obras activas'}</div><div class="h1-sub">${sub}</div></div>
@@ -651,6 +675,105 @@ function renderHome(){
   const inp = $('#qObra');
   inp.oninput = () => { S.q = inp.value; anual ? renderAnualBox() : renderObrasBox(resumenObras()); };
   if(anual) loadAnual(); else renderObrasBox(res);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PLANTA — panorama por status (todas las obras)
+// ════════════════════════════════════════════════════════════════
+function homeTabs(){
+  const t = S.homeTab;
+  return `<button class="tab ${t==='activas'?'on':''}" onclick="setHomeTab('activas')">Obras activas</button>
+      <button class="tab ${t==='planta'?'on':''}" onclick="setHomeTab('planta')">Planta</button>
+      <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>`;
+}
+function refreshHomeBox(){
+  if(S.homeTab === 'anio') renderAnualBox();
+  else if(S.homeTab === 'planta') renderPlantaBox();
+  else renderObrasBox(resumenObras());
+}
+const PL_ST = [
+  ['EN COLA',    'En cola',          'Sin ensamblador asignado'],
+  ['PRODUCCIÓN', 'En ensamble',      'Con ensamblador, sin terminar'],
+  ['ENSAMBLADO', 'Ensamblado',       'Terminado, por despachar'],
+  ['DESPACHADO', 'Por instalar',     'Despachado sin instalar']
+];
+const plStage = it => it.despachado ? (it.instalado ? null : 'DESPACHADO') : (it.status || 'EN COLA');
+const diasDesde = f => { if(!f) return null; const d = Math.floor((Date.parse(today()) - Date.parse(f)) / 864e5); return isNaN(d) ? null : d; };
+const diasTxt = d => d == null ? '' : d <= 0 ? 'hoy' : d === 1 ? 'hace 1 día' : `hace ${fmtN(d)} días`;
+
+function renderPlanta(){
+  if(!S.plSt) S.plSt = 'PRODUCCIÓN';
+  $('#app').innerHTML = shell(`
+    <div class="tabs">${homeTabs()}</div>
+    <div class="home-head">
+      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div></div>
+      <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP o ensamblador…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
+    </div>
+    <div class="st-tiles" id="stTiles"></div>
+    <div id="obrasBox"></div>`);
+  const inp = $('#qObra');
+  inp.oninput = () => { S.q = inp.value; renderPlantaBox(); };
+  renderPlantaBox();
+}
+function setPlSt(k){ S.plSt = k; renderPlantaBox(); }
+
+function renderPlantaBox(){
+  const by = {}; for(const [k] of PL_ST) by[k] = [];
+  for(const it of S.activos){ const k = plStage(it); if(k && by[k]) by[k].push(it); }
+  const tiles = $('#stTiles');
+  if(tiles) tiles.innerHTML = PL_ST.map(([k,t,d]) => {
+    const l = by[k], ob = new Set(l.map(i=>i.obra)).size, m2 = l.reduce((a,i)=>a+(Number(i.m2)||0),0);
+    return `<button class="st-tile ${S.plSt===k?'on':''}" style="--c:${STAGES[k].c}" onclick="setPlSt('${k}')">
+      <span class="t">${t}</span><b>${fmtN(l.length)}</b><span>${fmtN(ob)} obra${ob===1?'':'s'} · ${fmtN(m2,1)} m²</span></button>`;
+  }).join('');
+  const q = S.q.trim().toUpperCase();
+  const list = by[S.plSt].filter(it => !q || [it.obra, it.op, it.ensamblador].some(v => v && String(v).toUpperCase().includes(q)));
+  const box = $('#obrasBox'); if(!box) return;
+  const desc = PL_ST.find(x => x[0]===S.plSt);
+  let h = `<div class="section-t">${desc[1]} · ${desc[2]}</div>`;
+  if(!list.length){ box.innerHTML = h + `<div class="empty">No hay ítems${q ? ' que coincidan con “'+esc(S.q)+'”' : ''} en este estado.</div>`; return; }
+  h += S.plSt === 'PRODUCCIÓN' ? plPorEnsamblador(list) : plPorObra(list, S.plSt);
+  box.innerHTML = h;
+}
+
+// Agrupa por clave → Map
+function grp(list, fk){ const m = new Map(); for(const it of list){ const k = fk(it); if(!m.has(k)) m.set(k, []); m.get(k).push(it); } return m; }
+const minF = (l, k) => l.reduce((a,i) => i[k] && (!a || i[k] < a) ? i[k] : a, null);
+const maxF = (l, k) => l.reduce((a,i) => i[k] && (!a || i[k] > a) ? i[k] : a, null);
+const encQ = v => encodeURIComponent(v||'').replace(/'/g,'%27');
+const plGo = (obra, estado, op, q) => `openObra(decodeURIComponent('${encQ(obra)}'), false, '', {estado:'${estado}', op:decodeURIComponent('${encQ(op)}'), q:decodeURIComponent('${encQ(q)}')})`;
+
+function plPorEnsamblador(list){
+  const g = [...grp(list, it => (it.ensamblador||'').trim()).entries()]
+    .sort((a,b) => (a[0]==='') - (b[0]==='') || nat(a[0], b[0]));
+  return `<div class="pl-grid">${g.map(([ens, items]) => {
+    const filas = [...grp(items, it => it.obra + '\u0001' + (it.op||'')).values()]
+      .map(l => ({obra:l[0].obra, op:l[0].op, n:l.length, desde:minF(l,'dia_inicio')}))
+      .sort((a,b) => nat(a.desde||'9999', b.desde||'9999') || nat(a.obra,b.obra) || nat(a.op,b.op));
+    const nob = new Set(items.map(i=>i.obra)).size;
+    return `<div class="pl-card">
+      <div class="pl-head"><span class="n ${ens?'':'sin'}">${ens ? esc(ens) : 'Sin ensamblador'}</span>
+        <span class="m"><b>${fmtN(items.length)}</b> ítem${items.length===1?'':'s'} · ${fmtN(nob)} obra${nob===1?'':'s'}</span></div>
+      ${filas.map(f => { const d = diasDesde(f.desde); return `<button class="pl-row" onclick="${plGo(f.obra,'PRODUCCIÓN',f.op,ens)}">
+        <span class="o">${esc(f.obra)} · <em>OP ${esc(f.op||'—')}</em></span><span class="k">${fmtN(f.n)}</span>
+        <span class="d">${f.desde ? `Inició ${fmtD(f.desde)} · <span class="${d>7?'old':''}">${diasTxt(d)}</span>` : 'Sin fecha de inicio'}</span></button>`; }).join('')}
+    </div>`; }).join('')}</div>`;
+}
+
+function plPorObra(list, st){
+  const campo = st === 'EN COLA' ? ['fecha_op','OP del','min'] : st === 'ENSAMBLADO' ? ['dia_final','Último terminado','max'] : ['fecha_despacho','Último despacho','max'];
+  const g = [...grp(list, it => it.obra).entries()].sort((a,b) => b[1].length - a[1].length || nat(a[0], b[0]));
+  return `<div class="pl-grid">${g.map(([obra, items]) => {
+    const filas = [...grp(items, it => it.op||'').values()]
+      .map(l => ({op:l[0].op, n:l.length, m2:l.reduce((a,i)=>a+(Number(i.m2)||0),0), f: campo[2]==='min' ? minF(l,campo[0]) : maxF(l,campo[0]), ens:[...new Set(l.map(i=>i.ensamblador).filter(Boolean))]}))
+      .sort((a,b) => nat(a.op, b.op));
+    const m2 = items.reduce((a,i)=>a+(Number(i.m2)||0),0);
+    return `<div class="pl-card">
+      <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(items.length)}</b> ítems · ${fmtN(m2,1)} m²</span></div>
+      ${filas.map(f => { const d = diasDesde(f.f); return `<button class="pl-row" onclick="${plGo(obra,st,f.op,'')}">
+        <span class="o"><em>OP ${esc(f.op||'—')}</em>${st==='ENSAMBLADO' && f.ens.length ? ' · '+esc(f.ens.join(', ')) : ''}</span><span class="k">${fmtN(f.n)}</span>
+        <span class="d">${fmtN(f.m2,1)} m²${f.f ? ` · ${campo[1]} ${fmtD(f.f)} · <span class="${st==='EN COLA'&&d>30 || st!=='EN COLA'&&d>7 ?'old':''}">${diasTxt(d)}</span>` : ''}</span></button>`; }).join('')}
+    </div>`; }).join('')}</div>`;
 }
 
 async function loadAnual(){
@@ -745,10 +868,10 @@ function obraCard(o){
 // ════════════════════════════════════════════════════════════════
 //  VISTA DE OBRA
 // ════════════════════════════════════════════════════════════════
-async function openObra(name, fromPop, anio){
+async function openObra(name, fromPop, anio, pf){
   S.view = 'obra'; S.obra = name; S.items = []; S.sel.clear(); S.detailId = null; S.draft = null;
-  S.f = {estado: anio ? 'TODOS' : 'PEND', piso:'', op:'', anio: anio || '', q:''}; S.limit = 300;
-  if(!fromPop) history.pushState({v:'obra', obra:name, anio:anio||''}, '');
+  S.f = {estado: pf ? pf.estado : (anio ? 'TODOS' : 'PEND'), piso:'', op: (pf && pf.op) || '', anio: anio || '', q: (pf && pf.q) || ''}; S.limit = 300;
+  if(!fromPop) history.pushState({v:'obra', obra:name, anio:anio||'', pf:pf||null}, '');
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
   window.scrollTo(0,0);
@@ -756,7 +879,7 @@ async function openObra(name, fromPop, anio){
   catch(e){ toast('Error al cargar la obra: '+e.message, true); return; }
   if(S.view !== 'obra' || S.obra !== name) return;
   S.items.sort((a,b) => nat(a.op_instalacion,b.op_instalacion) || nat(a.item,b.item) || a.id-b.id);
-  if(!S.f.anio && !S.items.some(isPend)) S.f.estado = 'TODOS';
+  if(!pf && !S.f.anio && !S.items.some(isPend)) S.f.estado = 'TODOS';
   renderObra();
 }
 
@@ -771,7 +894,7 @@ function onPop(ev){
   }
   if(S.view === 'obra' && S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra}, ''); return; }
   if(st.v === 'carga'){ S.view='carga'; renderCarga(); return; }
-  if(st.v === 'obra') openObra(st.obra, true, st.anio);
+  if(st.v === 'obra') openObra(st.obra, true, st.anio, st.pf || undefined);
   else { S.view='home'; S.obra=null; S.sel.clear(); S.detailId=null; S.draft=null; document.body.style.overflow=''; closeSheet(); renderHome(); }
 }
 
@@ -844,6 +967,7 @@ function renderObra(){
   $('#fOp').onchange = e => { S.f.op = e.target.value; S.limit = 300; renderChips(); renderList(); };
   $('#fAnio').onchange = e => { S.f.anio = e.target.value; S.limit = 300; renderChips(); renderList(); };
   renderChips(); renderList(); renderDetail(); renderSelbar();
+  const on = document.querySelector('#chips .chip.on'); if(on && on.offsetLeft > 0) $('#chips').scrollLeft = on.offsetLeft - 20;
 }
 
 function renderChips(){
@@ -1800,7 +1924,7 @@ function mergeRows(rows){
     }
   }
 }
-const pick = r => ({id:r.id, obra:r.obra, status:r.status, despachado:r.despachado, instalado:r.instalado, m2:r.m2, fecha_op:r.fecha_op, dia_inicio:r.dia_inicio});
+const pick = r => ({id:r.id, obra:r.obra, status:r.status, despachado:r.despachado, instalado:r.instalado, m2:r.m2, fecha_op:r.fecha_op, dia_inicio:r.dia_inicio, dia_final:r.dia_final, ensamblador:r.ensamblador, op:r.op, fecha_despacho:r.fecha_despacho});
 
 function refreshAfterChange(){
   if(S.view === 'obra'){
@@ -1808,7 +1932,7 @@ function refreshAfterChange(){
     renderChips(); renderList(); renderSelbar();
     if(S.detailId){ if(!S.draft || !S.draft._dirty) S.draft = draftOf(byId(S.detailId)); renderDetail(); }
     window.scrollTo(0, y);
-  } else if(S.view === 'home') S.homeTab === 'anio' ? renderAnualBox() : renderObrasBox(resumenObras());
+  } else if(S.view === 'home') refreshHomeBox();
 }
 
 let rtTimer = null;
@@ -1824,7 +1948,7 @@ function onRemoteChange(p){
     if(S.view === 'obra'){
       const y = window.scrollY; renderChips(); renderList(); window.scrollTo(0,y);
       if(S.detailId && S.draft && !S.draft._dirty){ S.draft = draftOf(byId(S.detailId)); renderDetail(); }
-    } else if(S.view === 'home') S.homeTab === 'anio' ? renderAnualBox() : renderObrasBox(resumenObras());
+    } else if(S.view === 'home') refreshHomeBox();
   }, 400);
 }
 
