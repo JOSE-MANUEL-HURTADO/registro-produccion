@@ -109,8 +109,13 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .other-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px;}
 .other-list button{background:var(--surface);border:1px solid var(--border);padding:12px 14px;text-align:left;display:flex;justify-content:space-between;gap:8px;font-size:13px;}
 .other-list button span{color:var(--muted);}
-.st-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;}
-@media(max-width:700px){.st-tiles{grid-template-columns:1fr 1fr;}}
+.st-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:18px;}
+@media(max-width:900px){.st-tiles{grid-template-columns:1fr 1fr;}.st-tiles .st-tile:last-child{grid-column:1/-1;}}
+.seg-modo{display:inline-flex;border:1px solid var(--border);margin:0 0 12px;}
+.seg-modo button{min-height:40px;padding:0 16px;font-family:var(--sans);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.seg-modo button.on{background:var(--text);color:#181818;}
+.per-rango{display:flex;gap:10px;margin:-2px 0 12px;max-width:440px;}
+.per-rango label{flex:1;display:flex;flex-direction:column;gap:4px;}
 .st-tile{background:var(--surface);border:1px solid var(--border);padding:14px 14px 12px;text-align:left;display:flex;flex-direction:column;gap:6px;position:relative;min-height:96px;transition:border-color .15s,background .15s;}
 .st-tile::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--c);}
 .st-tile .t{font-family:var(--sans);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
@@ -344,7 +349,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -433,6 +438,7 @@ const API = {
     }
     return out;
   },
+  porFecha(campo, d1, d2){ return this.all(o => this.sb.from('items').select('id,obra,op,item,m2,ensamblador,instalador,dia_final,fecha_instalacion,remision',o).gte(campo,d1).lte(campo,d2).order('id')); },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -687,6 +693,7 @@ function homeTabs(){
       <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>`;
 }
 function refreshHomeBox(){
+  S.plCache = null;
   if(S.homeTab === 'anio') renderAnualBox();
   else if(S.homeTab === 'planta') renderPlantaBox();
   else renderObrasBox(resumenObras());
@@ -695,8 +702,43 @@ const PL_ST = [
   ['EN COLA',    'En cola',          'Sin ensamblador asignado'],
   ['PRODUCCIÓN', 'En ensamble',      'Con ensamblador, sin terminar'],
   ['ENSAMBLADO', 'Ensamblado',       'Terminado, por despachar'],
-  ['DESPACHADO', 'Por instalar',     'Despachado sin instalar']
+  ['DESPACHADO', 'Por instalar',     'Despachado sin instalar'],
+  ['INSTALADO',  'Instalado',        'Instalado en el periodo']
 ];
+// Periodos para ver lo ensamblado / instalado por fecha
+const PERIODOS = [['hoy','Hoy'],['ayer','Ayer'],['7d','Últimos 7 días'],['mes','Este mes'],['rango','Elegir fechas']];
+const addDays = (f, n) => { const d = new Date(f+'T12:00:00'); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
+function rangoPer(){
+  const p = S.plPer || (S.plPer = {k:'hoy'}), t = today();
+  if(p.k === 'ayer') return [addDays(t,-1), addDays(t,-1)];
+  if(p.k === '7d') return [addDays(t,-6), t];
+  if(p.k === 'mes') return [t.slice(0,8)+'01', t];
+  if(p.k === 'rango'){ const a = p.d1 || t, b = p.d2 || a; return a <= b ? [a,b] : [b,a]; }
+  return [t, t];
+}
+function perLabel(){ const [a,b] = rangoPer(); const k = S.plPer.k;
+  return k==='hoy' ? 'hoy' : k==='ayer' ? 'ayer' : a===b ? 'el '+fmtD(a) : `del ${fmtD(a)} al ${fmtD(b)}`; }
+function setPer(k){ S.plPer = {...(S.plPer||{}), k}; if(k==='rango' && !S.plPer.d1){ S.plPer.d1 = addDays(today(),-1); S.plPer.d2 = today(); } renderPlantaBox(); }
+function setPerFecha(i, v){ if(!v) return; S.plPer['d'+i] = v; renderPlantaBox(); }
+function setEnsModo(m){ S.plEnsModo = m; renderPlantaBox(); }
+// Consulta por fecha (todas las obras, incluidas las terminadas); se guarda hasta el próximo cambio
+async function plFecha(campo){
+  const [a,b] = rangoPer(), key = campo+'|'+a+'|'+b;
+  S.plCache = S.plCache || {};
+  if(S.plCache[key]) return S.plCache[key].rows || null;
+  S.plCache[key] = {loading:true};
+  try{ S.plCache[key].rows = await API.porFecha(campo, a, b); }
+  catch(e){ delete S.plCache[key]; toast('Error: '+errMsg(e), true); return null; }
+  if(S.view === 'home' && S.homeTab === 'planta') renderPlantaBox();
+  return null;
+}
+const plFechaYa = campo => { const [a,b] = rangoPer(); const c = S.plCache && S.plCache[campo+'|'+a+'|'+b]; return c && c.rows; };
+function perBar(){
+  const p = S.plPer;
+  return `<div class="chips" style="margin:0 0 12px">${PERIODOS.map(([k,t]) => `<button class="chip ${p.k===k?'on':''}" onclick="setPer('${k}')">${t}</button>`).join('')}</div>
+    ${p.k==='rango' ? `<div class="per-rango"><label><span class="lbl">Desde</span><input type="date" value="${p.d1||''}" max="${today()}" onchange="setPerFecha(1,this.value)"></label>
+      <label><span class="lbl">Hasta</span><input type="date" value="${p.d2||''}" max="${today()}" onchange="setPerFecha(2,this.value)"></label></div>` : ''}`;
+}
 const plStage = it => it.despachado ? (it.instalado ? null : 'DESPACHADO') : (it.status || 'EN COLA');
 const diasDesde = f => { if(!f) return null; const d = Math.floor((Date.parse(today()) - Date.parse(f)) / 864e5); return isNaN(d) ? null : d; };
 const diasTxt = d => d == null ? '' : d <= 0 ? 'hoy' : d === 1 ? 'hace 1 día' : `hace ${fmtN(d)} días`;
@@ -707,7 +749,7 @@ function renderPlanta(){
     <div class="tabs">${homeTabs()}</div>
     <div class="home-head">
       <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div></div>
-      <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP o ensamblador…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
+      <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP, ensamblador o instalador…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div class="st-tiles" id="stTiles"></div>
     <div id="obrasBox"></div>`);
@@ -718,23 +760,64 @@ function renderPlanta(){
 function setPlSt(k){ S.plSt = k; renderPlantaBox(); }
 
 function renderPlantaBox(){
+  if(!S.plPer) S.plPer = {k:'hoy'};
   const by = {}; for(const [k] of PL_ST) by[k] = [];
   for(const it of S.activos){ const k = plStage(it); if(k && by[k]) by[k].push(it); }
+  const inst = plFechaYa('fecha_instalacion');
+  if(!inst) plFecha('fecha_instalacion');
   const tiles = $('#stTiles');
   if(tiles) tiles.innerHTML = PL_ST.map(([k,t,d]) => {
-    const l = by[k], ob = new Set(l.map(i=>i.obra)).size, m2 = l.reduce((a,i)=>a+(Number(i.m2)||0),0);
+    const l = k === 'INSTALADO' ? inst : by[k];
+    const sub = !l ? 'Cargando…' : `${fmtN(new Set(l.map(i=>i.obra)).size)} obra${new Set(l.map(i=>i.obra)).size===1?'':'s'} · ${fmtN(l.reduce((a,i)=>a+(Number(i.m2)||0),0),1)} m²`;
     return `<button class="st-tile ${S.plSt===k?'on':''}" style="--c:${STAGES[k].c}" onclick="setPlSt('${k}')">
-      <span class="t">${t}</span><b>${fmtN(l.length)}</b><span>${fmtN(ob)} obra${ob===1?'':'s'} · ${fmtN(m2,1)} m²</span></button>`;
+      <span class="t">${t}${k==='INSTALADO' ? ' · '+perLabel() : ''}</span><b>${l ? fmtN(l.length) : '—'}</b><span>${sub}</span></button>`;
   }).join('');
-  const q = S.q.trim().toUpperCase();
-  const list = by[S.plSt].filter(it => !q || [it.obra, it.op, it.ensamblador].some(v => v && String(v).toUpperCase().includes(q)));
   const box = $('#obrasBox'); if(!box) return;
+  const q = S.q.trim().toUpperCase();
+  const okQ = it => !q || [it.obra, it.op, it.ensamblador, it.instalador, it.remision].some(v => v && String(v).toUpperCase().includes(q));
   const desc = PL_ST.find(x => x[0]===S.plSt);
-  let h = `<div class="section-t">${desc[1]} · ${desc[2]}</div>`;
+  let h = '';
+  // Ensamblado e Instalado: por fecha
+  const ensFecha = S.plSt === 'ENSAMBLADO' && S.plEnsModo === 'fecha';
+  if(S.plSt === 'ENSAMBLADO') h += `<div class="seg-modo"><button class="${ensFecha?'':'on'}" onclick="setEnsModo('pend')">Por despachar</button><button class="${ensFecha?'on':''}" onclick="setEnsModo('fecha')">Ensamblado por fecha</button></div>`;
+  if(ensFecha || S.plSt === 'INSTALADO'){
+    const campo = ensFecha ? 'dia_final' : 'fecha_instalacion';
+    h += perBar();
+    const rows = plFechaYa(campo);
+    if(!rows){ plFecha(campo); box.innerHTML = h + '<div class="loading"><div class="spin"></div>Buscando</div>'; return; }
+    const list = rows.filter(okQ);
+    const m2 = list.reduce((a,i)=>a+(Number(i.m2)||0),0);
+    h += `<div class="section-t">${ensFecha ? 'Ensamblado' : 'Instalado'} ${perLabel()} · ${fmtN(list.length)} ítem${list.length===1?'':'s'} · ${fmtN(m2,1)} m²</div>`;
+    if(!list.length){ box.innerHTML = h + `<div class="empty">No hay ítems ${ensFecha?'ensamblados':'instalados'} ${perLabel()}${q ? ' que coincidan con “'+esc(S.q)+'”' : ''}.</div>`; return; }
+    box.innerHTML = h + plPorPersona(list, ensFecha ? 'ensamblador' : 'instalador', campo);
+    return;
+  }
+  const list = by[S.plSt].filter(okQ);
+  h += `<div class="section-t">${desc[1]} · ${desc[2]}</div>`;
   if(!list.length){ box.innerHTML = h + `<div class="empty">No hay ítems${q ? ' que coincidan con “'+esc(S.q)+'”' : ''} en este estado.</div>`; return; }
   h += S.plSt === 'PRODUCCIÓN' ? plPorEnsamblador(list) : plPorObra(list, S.plSt);
   box.innerHTML = h;
 }
+
+// Lo ensamblado / instalado en el periodo, agrupado por persona → obra · OP
+function plPorPersona(list, quien, campo){
+  const [a,b] = rangoPer(), varios = a !== b;
+  const g = [...grp(list, it => (it[quien]||'').trim()).entries()].sort((x,y) => (x[0]==='') - (y[0]==='') || y[1].length - x[1].length || nat(x[0], y[0]));
+  const lbl = (quien==='ensamblador' ? 'Ensamblado ' : 'Instalado ') + perLabel();
+  return `<div class="pl-grid">${g.map(([per, items]) => {
+    const filas = [...grp(items, it => it.obra + '\u0001' + (it.op||'')).values()]
+      .map(l => ({obra:l[0].obra, op:l[0].op, n:l.length, m2:l.reduce((s,i)=>s+(Number(i.m2)||0),0), f1:minF(l,campo), f2:maxF(l,campo), rem:[...new Set(l.map(i=>i.remision).filter(Boolean))]}))
+      .sort((x,y) => nat(y.f2, x.f2) || nat(x.obra,y.obra) || nat(x.op,y.op));
+    const m2 = items.reduce((s,i)=>s+(Number(i.m2)||0),0);
+    return `<div class="pl-card">
+      <div class="pl-head"><span class="n ${per?'':'sin'}">${per ? esc(per) : 'Sin '+quien}</span>
+        <span class="m"><b>${fmtN(items.length)}</b> ítem${items.length===1?'':'s'} · ${fmtN(m2,1)} m²</span></div>
+      ${filas.map(f => `<button class="pl-row" onclick="${plGoF(f.obra, f.op, per, campo, a, b, lbl)}">
+        <span class="o">${esc(f.obra)} · <em>OP ${esc(f.op||'—')}</em></span><span class="k">${fmtN(f.n)}</span>
+        <span class="d">${fmtN(f.m2,1)} m²${varios ? ' · '+(f.f1===f.f2 ? fmtD(f.f1) : fmtD(f.f1)+' – '+fmtD(f.f2)) : ''}${quien==='instalador' && f.rem.length ? ' · Rem. '+esc(f.rem.slice(0,3).join(', '))+(f.rem.length>3?'…':'') : ''}</span></button>`).join('')}
+    </div>`; }).join('')}</div>`;
+}
+const plGoF = (obra, op, q, campo, d1, d2, label) => `openObra(decodeURIComponent('${encQ(obra)}'), false, '', {estado:'TODOS', op:decodeURIComponent('${encQ(op)}'), q:decodeURIComponent('${encQ(q)}'), rng:{campo:'${campo}', d1:'${d1}', d2:'${d2}', label:decodeURIComponent('${encQ(label)}')}})`;
 
 // Agrupa por clave → Map
 function grp(list, fk){ const m = new Map(); for(const it of list){ const k = fk(it); if(!m.has(k)) m.set(k, []); m.get(k).push(it); } return m; }
@@ -870,7 +953,7 @@ function obraCard(o){
 // ════════════════════════════════════════════════════════════════
 async function openObra(name, fromPop, anio, pf){
   S.view = 'obra'; S.obra = name; S.items = []; S.sel.clear(); S.detailId = null; S.draft = null;
-  S.f = {estado: pf ? pf.estado : (anio ? 'TODOS' : 'PEND'), piso:'', op: (pf && pf.op) || '', anio: anio || '', q: (pf && pf.q) || ''}; S.limit = 300;
+  S.f = {estado: pf ? pf.estado : (anio ? 'TODOS' : 'PEND'), piso:'', op: (pf && pf.op) || '', anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null}; S.limit = 300;
   if(!fromPop) history.pushState({v:'obra', obra:name, anio:anio||'', pf:pf||null}, '');
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
@@ -927,7 +1010,8 @@ function baseMatch(it){
   return (!S.f.piso || (it.piso||'') === S.f.piso)
     && (!S.f.op || (it.op||'') === S.f.op)
     && (!S.f.anio || yearOf(it) === S.f.anio)
-    && (!q || [it.item,it.ubicacion,it.op_instalacion,it.op,it.diseno,it.ensamblador,it.remision].some(v => v && String(v).toUpperCase().includes(q)));
+    && (!S.f.rng || (it[S.f.rng.campo] && it[S.f.rng.campo] >= S.f.rng.d1 && it[S.f.rng.campo] <= S.f.rng.d2))
+    && (!q || [it.item,it.ubicacion,it.op_instalacion,it.op,it.diseno,it.ensamblador,it.instalador,it.remision].some(v => v && String(v).toUpperCase().includes(q)));
 }
 function filtered(){
   const fe = FILTROS.find(f => f[0]===S.f.estado)[2];
@@ -972,7 +1056,8 @@ function renderObra(){
 
 function renderChips(){
   const base = S.items.filter(baseMatch);
-  $('#chips').innerHTML = FILTROS.filter(f => !f[3] || isGerente()).map(([k,t,fn,g]) => {
+  const rng = S.f.rng ? `<button class="chip on" title="Quitar filtro de fecha" onclick="S.f.rng=null;S.limit=300;renderChips();renderList()">${esc(S.f.rng.label)} ✕</button>` : '';
+  $('#chips').innerHTML = rng + FILTROS.filter(f => !f[3] || isGerente()).map(([k,t,fn,g]) => {
     const n = base.filter(fn).length;
     const col = STAGES[k] ? `<i style="background:${STAGES[k].c}"></i>` : '';
     return `<button class="chip ${S.f.estado===k?'on':''} ${g?'chip-cob':''}" onclick="setEstado('${k}')">${g?'<span class="cob-ic">$</span>':''}${col}${t} <b>${fmtN(n)}</b></button>`;
@@ -1907,6 +1992,7 @@ function sheetCobro(tipo){
 //  SINCRONIZACIÓN
 // ════════════════════════════════════════════════════════════════
 function mergeRows(rows){
+  S.plCache = null;
   for(const r of rows){
     const i = S.items.findIndex(x => x.id === r.id);
     if(i >= 0) S.items[i] = {...S.items[i], ...r};
