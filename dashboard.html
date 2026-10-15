@@ -1911,6 +1911,95 @@ async function liveLoad(manual, blocking){
     liveBusy = false; if(btn) btn.style.opacity = '';
   }
 }
+
+/* ══ TODAS LAS OBRAS EN COLA · filtro por proceso ══ */
+window._CT = {proc:'', est:'pend', obra:''};
+const CT_PROCS = [['CORTADO','cortado','Cortado','CORTE'],['TROQUELADO','troquelado','Troquelado','TROQ.'],['MECANIZADO','mecanizado','Mecanizado','MECA.'],['PROGRAMADO','programado','Programado','PROG.'],['VIDRIO','vidrio','Vidrio','VIDR.'],['PREALISTADO','prealistado','Prealistado','PREAL.']];
+const CT_EST = [['pend','Sin hacer'],['parc','Parcial'],['falta','Sin terminar (sin hacer + parcial)'],['comp','Completo']];
+const ctEsc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ctOp = r => String(r.op_inst||'').split('.')[0] || '—';
+function ctMatch(v, est){ return est==='pend' ? !v : est==='parc' ? v==='+' : est==='comp' ? v==='X' : v!=='X'; }
+function ctSet(k, v){ _CT[k] = v; if(k==='proc' && v && !_CT.est) _CT.est='pend'; colaTodas(true); }
+function colaTodas(keep){
+  if(!keep) window._CT = {proc:'', est:'pend', obra:''};
+  const obras = Object.keys(COLA_CTMV).sort((a,b)=>a.localeCompare(b,'es'));
+  if(!obras.length){ alert('Sin datos EN COLA disponibles.'); return; }
+  let items = [];
+  obras.forEach(ob => (COLA_CTMV[ob].items||[]).forEach(it => items.push({...it, _obra:ob})));
+  const base = _CT.obra ? items.filter(r => r._obra===_CT.obra) : items;
+  const P = CT_PROCS.find(p => p[0]===_CT.proc);
+  const list = P ? base.filter(r => ctMatch(r[P[1]], _CT.est)) : base;
+  const nOb = new Set(list.map(r=>r._obra)).size;
+  document.getElementById('colaCTMVTitle').textContent = 'TODAS LAS OBRAS EN COLA';
+  document.getElementById('colaCTMVSub').textContent = P
+    ? `${P[2]} · ${CT_EST.find(e=>e[0]===_CT.est)[1].toLowerCase()}: ${list.length} ítems · ${nOb} obra${nOb===1?'':'s'}`
+    : `${base.length} ítems · ${_CT.obra ? '1 obra' : obras.length+' obras'}`;
+  const chip = (on, txt, js) => `<button class="year-chip ${on?'active':''}" style="margin:0 4px 4px 0" onclick="${js}">${txt}</button>`;
+  // Tarjetas de resumen (tocables)
+  const cards = CT_PROCS.map(([k,key,lab,short]) => {
+    const cx = base.filter(r=>r[key]==='X').length, cp = base.filter(r=>r[key]==='+').length, cs = base.length - cx - cp;
+    const pctX = base.length ? Math.round(cx/base.length*100) : 0, pctP = base.length ? Math.round(cp/base.length*100) : 0;
+    const on = _CT.proc===k;
+    return `<div onclick="ctSet('proc', _CT.proc==='${k}' ? '' : '${k}')" style="cursor:pointer;background:${on?'rgba(255,255,255,0.08)':'var(--surface2)'};border:1px solid ${on?'#fff':'var(--border)'};padding:10px 6px;text-align:center;flex:1;min-width:92px">
+      <div style="font-size:9px;color:${on?'#fff':'var(--muted)'};letter-spacing:0.12em;margin-bottom:6px">${lab.toUpperCase()}</div>
+      <div style="font-size:12px;margin-bottom:6px"><b style="color:#e8e8e8">${cx}</b><span style="color:var(--muted);font-size:9px"> X</span> &nbsp;<b style="color:#c8a84b">${cp}</b><span style="color:var(--muted);font-size:9px"> +</span> &nbsp;<b style="color:#888">${cs}</b><span style="color:var(--muted);font-size:9px"> sin</span></div>
+      <div style="height:4px;background:var(--border);display:flex"><div style="width:${pctX}%;background:#e8e8e8"></div><div style="width:${pctP}%;background:#c8a84b"></div></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:3px">${pctX}% completo</div></div>`;
+  }).join('');
+  let h = `<div style="font-size:10px;color:var(--muted);letter-spacing:0.15em;margin-bottom:6px">PROCESO · toca uno para ver qué falta</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${cards}</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-bottom:10px">
+      <div>${chip(!_CT.proc,'Todos los procesos',"ctSet('proc','')")}${CT_PROCS.map(p => chip(_CT.proc===p[0], p[2], `ctSet('proc','${p[0]}')`)).join('')}</div>
+    </div>
+    ${P ? `<div style="margin-bottom:10px">${CT_EST.map(e => chip(_CT.est===e[0], e[1], `ctSet('est','${e[0]}')`)).join('')}</div>` : ''}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <select onchange="ctSet('obra', this.value)" style="font-size:14px;padding:8px 10px;min-height:40px;max-width:100%">
+        <option value="">Todas las obras (${obras.length})</option>${obras.map(o => `<option ${o===_CT.obra?'selected':''} value="${ctEsc(o)}">${ctEsc(o)} (${(COLA_CTMV[o].items||[]).length})</option>`).join('')}
+      </select>
+      ${P && list.length ? `<button class="btn-update" style="min-height:40px" onclick="ctCopiar()">COPIAR INSTRUCCIÓN</button>` : ''}
+    </div>`;
+  // Resumen por obra y OP cuando hay un proceso elegido
+  if(P){
+    const g = {};
+    list.forEach(r => { const k = r._obra + '\u0001' + ctOp(r); g[k] = (g[k]||0) + 1; });
+    const rows = Object.entries(g).map(([k,n]) => { const [o,op] = k.split('\u0001'); return {o, op, n}; })
+      .sort((a,b) => a.o.localeCompare(b.o,'es') || a.op.localeCompare(b.op,'es',{numeric:true}));
+    window._CT_rows = rows;
+    h += rows.length ? `<div style="font-size:10px;color:var(--muted);letter-spacing:0.15em;margin:4px 0 6px">${P[2].toUpperCase()} ${CT_EST.find(e=>e[0]===_CT.est)[1].toUpperCase()} · POR OBRA Y OP</div>
+      <div style="overflow-x:auto;margin-bottom:14px"><table class="drill-table"><thead><tr><th>OBRA</th><th>OP</th><th style="text-align:right">ÍTEMS</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td style="font-weight:600;color:var(--accent2)">${ctEsc(r.o)}</td><td style="font-family:monospace">${ctEsc(r.op)}</td><td style="text-align:right;font-weight:700">${r.n}</td></tr>`).join('')}
+      <tr><td colspan="2" style="color:var(--muted)">TOTAL</td><td style="text-align:right;font-weight:700">${list.length}</td></tr></tbody></table></div>`
+      : `<div style="padding:24px;text-align:center;color:var(--muted)">No hay ítems en cola con ${P[2].toLowerCase()} ${CT_EST.find(e=>e[0]===_CT.est)[1].toLowerCase()}.</div>`;
+  }
+  const cv = v => v==='X' ? '<span style="color:#e8e8e8;font-weight:700">X</span>' : v==='+' ? '<span style="color:#c8a84b;font-weight:700">+</span>' : '<span style="color:var(--muted)">·</span>';
+  const MAX = 400;
+  h += `<div style="font-size:10px;color:var(--muted);margin-bottom:8px"><b style="color:#e8e8e8">X</b> = Completo &nbsp; <b style="color:#c8a84b">+</b> = Parcial &nbsp; <b>·</b> = Sin proceso${list.length > MAX ? ` &nbsp;· mostrando ${MAX} de ${list.length}` : ''}</div>
+    <div style="overflow-x:auto"><table class="drill-table"><thead><tr><th>OBRA</th><th>ÍTEM</th><th>DISEÑO</th><th>OP INST.</th>${CT_PROCS.map(p => `<th style="text-align:center;${_CT.proc===p[0]?'color:#fff':''}">${p[3]}</th>`).join('')}</tr></thead><tbody>
+    ${list.slice(0, MAX).map(r => `<tr><td style="font-size:10px;white-space:nowrap;color:var(--accent2);font-weight:600">${ctEsc(r._obra)}</td><td style="font-family:monospace;font-size:11px;white-space:nowrap">${ctEsc(r.item||'—')}</td><td style="font-size:10px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ctEsc(r.diseno||'—')}</td><td style="font-family:monospace;font-size:10px;white-space:nowrap;color:var(--accent2)">${ctEsc(r.op_inst||'—')}</td>${CT_PROCS.map(p => `<td style="text-align:center">${cv(r[p[1]])}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>`;
+  const box = document.getElementById('colaCTMVContent');
+  const sc = keep ? document.getElementById('colaCTMVModal').scrollTop : 0;
+  box.innerHTML = h;
+  document.getElementById('colaCTMVModal').classList.add('open');
+  document.getElementById('colaCTMVModal').scrollTop = sc;
+  document.body.style.overflow = 'hidden';
+}
+function ctCopiar(){
+  const P = CT_PROCS.find(p => p[0]===_CT.proc); if(!P) return;
+  const est = CT_EST.find(e=>e[0]===_CT.est)[1].toLowerCase();
+  const rows = window._CT_rows || [];
+  let txt = `${P[2].toUpperCase()} — ítems en cola ${est} (${new Date().toLocaleDateString('es-CO')}):\n`;
+  const byOb = {};
+  rows.forEach(r => (byOb[r.o] = byOb[r.o] || []).push(r));
+  Object.keys(byOb).forEach(o => { const l = byOb[o], n = l.reduce((a,r)=>a+r.n,0);
+    txt += `\n${o} — ${n} ítem${n===1?'':'s'}:\n  OP ` + l.map(r => r.n > 1 ? `${r.op} (${r.n})` : r.op).join(', ') + '\n'; });
+  txt += `\nTotal: ${rows.reduce((a,r)=>a+r.n,0)} ítems`;
+  const ok = () => { const b = event && event.target; if(b){ const t = b.textContent; b.textContent = '✓ COPIADO'; setTimeout(()=>b.textContent=t, 1800); } };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, () => prompt('Copia el texto:', txt));
+  else prompt('Copia el texto:', txt);
+}
+(function(){ const orig = openColaCTMV; openColaCTMV = function(ob){ return ob === '__TODAS__' ? colaTodas() : orig(ob); }; })();
+
 initApp();
 
 </script>
