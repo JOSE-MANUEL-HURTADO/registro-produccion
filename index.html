@@ -131,6 +131,9 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .cob-it .o{white-space:normal;}
 .pl-row .k.sm{font-size:12px;color:var(--text2);}
 .cob-res{font-size:12.5px;line-height:1.6;color:var(--text2);max-height:220px;overflow:auto;border:1px solid var(--border);padding:8px 10px;margin-top:10px;}
+.btn-orden{display:inline-flex;align-items:center;gap:6px;}
+#ordenBox:empty{display:none;}
+#ordenBox{display:flex;align-items:center;grid-column:1/-1;}
 .cob-ver{color:var(--text2);text-decoration:underline;text-underline-offset:2px;}
 .cob-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:8px;}
 .cob-ob{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);padding:14px;text-align:left;}
@@ -406,7 +409,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.7';
+const APP_VERSION = '3.8';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -452,6 +455,7 @@ const stageOf = it => it.instalado ? 'INSTALADO' : (it.despachado ? 'DESPACHADO'
 const estaEnsamblado = it => !!it.dia_final || ['ENSAMBLADO','DESPACHADO'].includes(it.status) || !!it.despachado;
 const deriveStatus = it => it.despachado ? 'DESPACHADO' : (it.dia_final ? 'ENSAMBLADO' : ((it.ensamblador||it.dia_inicio) ? 'PRODUCCIÓN' : 'EN COLA'));
 const ICON = {
+  pdf:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>',
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>',
   back:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
@@ -568,6 +572,19 @@ const API = {
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
   async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
+  // ── Órdenes de producción en PDF (carpeta privada "ordenes", un archivo por número: ops/6235.pdf) ──
+  async ordenesLista(){
+    let out = [];
+    for(let off = 0; ; off += 1000){
+      const {data,error} = await this.sb.storage.from('ordenes').list('ops', {limit:1000, offset:off, sortBy:{column:'name', order:'asc'}});
+      if(error) throw error;
+      out = out.concat(data || []);
+      if(!data || data.length < 1000) break;
+    }
+    return out.filter(f => /\.pdf$/i.test(f.name)).map(f => f.name.replace(/\.pdf$/i, ''));
+  },
+  async ordenUrl(num){ const {data,error} = await this.sb.storage.from('ordenes').createSignedUrl('ops/' + num + '.pdf', 3600); if(error) throw error; return data.signedUrl; },
+  async ordenSubir(num, file){ const {error} = await this.sb.storage.from('ordenes').upload('ops/' + num + '.pdf', file, {upsert:true, contentType:'application/pdf', cacheControl:'3600'}); if(error) throw error; },
   async ensambladores(){ const {data,error} = await this.sb.from('ensambladores').select('nombre').eq('activo',true).order('nombre'); if(error) throw error; return data.map(r=>r.nombre); },
   async update(ids, patch){
     if(rolEs('cobros')) return this.instalacion(ids, patch);
@@ -749,6 +766,7 @@ async function afterLogin(ses){
   if(!puedeSeleccionar()) document.body.classList.add('ro');
   if(rolEs('cobros')) document.body.classList.add('rol-cobros');
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
+  loadOrdenes();
   if(isGerente()) loadRespaldo();
   if(rolEs('cobros')) S.homeTab = 'cobros';
   if(registraInst()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
@@ -1178,7 +1196,7 @@ function renderCobrosBox(){
         <span class="o"><span class="cob-ck">${on ? ICON.check : ''}</span><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
         ${cobItemsHTML(obra, r.op)}
         <span class="d" style="padding-left:30px">${fmtN(r.m2,1)} m²${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}
-          · <a href="#" class="cob-ver" onclick="event.stopPropagation(); event.preventDefault(); ${plGo(obra, est, r.op, '').replace(/"/g,'&quot;')}">ver ítems ›</a></span></div>`; }).join('')}
+          · <a href="#" class="cob-ver" onclick="event.stopPropagation(); event.preventDefault(); ${plGo(obra, est, r.op, '').replace(/"/g,'&quot;')}">ver ítems ›</a>${ordenLinkHTML(r.op)}</span></div>`; }).join('')}
     </div>`;
     const marc = rows.filter(r => cobChk(obra, r.op));
     if(marc.length) h += `<div class="selbar"><div class="count"><b>${fmtN(marc.length)}</b>OP · ${fmtN(sum(marc,'n'))} ítems · ${fmtN(sum(marc,'m2'),1)} m²</div>
@@ -1498,6 +1516,7 @@ function renderObra(){
           <select id="fAnio"><option value="">Todos los años</option>${years.map(y=>`<option value="${y}" ${y===S.f.anio?'selected':''}>${y==='S/F'?'Sin fecha':'Año '+y} (${fmtN(ycount.get(y))})</option>`).join('')}</select>
           <select id="fPiso"><option value="">Todos los pisos</option>${pisos.map(p=>`<option ${p===S.f.piso?'selected':''}>${esc(p)}</option>`).join('')}</select>
           <select id="fOp"><option value="">Todas las OP</option>${ops.map(p=>`<option ${p===S.f.op?'selected':''}>${esc(p)}</option>`).join('')}</select>
+          <span id="ordenBox"></span>
         </div>
         <div class="list-head" id="listHead"></div>
         <div class="list" id="list"></div>
@@ -1507,7 +1526,8 @@ function renderObra(){
     <div id="selbar"></div>`);
   $('#qItem').oninput = e => { S.f.q = e.target.value; S.limit = 300; renderChips(); renderList(); };
   $('#fPiso').onchange = e => { S.f.piso = e.target.value; S.limit = 300; renderChips(); renderList(); };
-  $('#fOp').onchange = e => { S.f.op = e.target.value; S.limit = 300; renderChips(); renderList(); };
+  $('#fOp').onchange = e => { S.f.op = e.target.value; S.limit = 300; updOrdenBox(); renderChips(); renderList(); };
+  updOrdenBox();
   $('#fAnio').onchange = e => { S.f.anio = e.target.value; S.limit = 300; renderChips(); renderList(); };
   renderChips(); renderList(); renderDetail(); renderSelbar();
   const on = document.querySelector('#chips .chip.on'); if(on && on.offsetLeft > 0) $('#chips').scrollLeft = on.offsetLeft - 20;
@@ -1662,6 +1682,7 @@ function renderDetail(){
           <div class="full"><div class="k">Vidrio</div><div class="v">${esc(it.vidrio||'—')}</div></div>
           ${info.map(([k,v]) => `<div><div class="k">${k}</div><div class="v">${esc(v||'—')}</div></div>`).join('')}
         </div>
+        ${tieneOrden(it.op) ? `<div style="margin-top:12px">${ordenBtnHTML(it.op, 'Ver orden de producción ' + esc(opNum(it.op)))}</div>` : ''}
         ${it.notas_importacion ? `<div class="note">Nota del Excel original: ${esc(it.notas_importacion)}</div>` : ''}
       </div>
       <fieldset class="d-fs" ${puedeRegistrar() ? '' : 'disabled'}>
@@ -1969,6 +1990,8 @@ function renderCarga(){
     body = usuariosHTML();
   } else if(C.tab === 'historial'){
     body = historialHTML();
+  } else if(C.tab === 'ordenes'){
+    body = ordenesHTML();
   } else if(C.estado === 'inicio'){
     body = `
       <div class="carga-steps">
@@ -1990,17 +2013,103 @@ function renderCarga(){
   }
   $('#app').innerHTML = shell(`
     <button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : C.tab==='historial' ? 'Quién cambió qué y cuándo' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
+    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : C.tab==='historial' ? 'Quién cambió qué y cuándo' : C.tab==='ordenes' ? 'PDF de las órdenes de producción, por número de OP' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
     <div class="tabs">
       <button class="tab ${C.tab==='agregar'?'on':''}" onclick="setCargaTab('agregar')">Agregar OPs nuevas</button>
       <button class="tab ${C.tab==='reemplazar'?'on':''}" onclick="setCargaTab('reemplazar')">Reemplazar base completa</button>
       <button class="tab ${C.tab==='usuarios'?'on':''}" onclick="setCargaTab('usuarios')">Usuarios</button>
+      <button class="tab ${C.tab==='ordenes'?'on':''}" onclick="setCargaTab('ordenes')">Órdenes PDF</button>
       <button class="tab ${C.tab==='historial'?'on':''}" onclick="setCargaTab('historial')">Historial</button>
     </div>
     ${body}`);
   const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
+  const od = $('#ordDir'); if(od) od.onchange = e => ordenesLeer([...e.target.files]);
+  const of = $('#ordFiles'); if(of) of.onchange = e => ordenesLeer([...e.target.files]);
   const fb = $('#fileBase'); if(fb) fb.onchange = e => { const file = e.target.files[0]; if(file) leerBase(file); };
   const cf = $('#mConfirm'); if(cf) cf.oninput = () => { M.confirmTxt = cf.value; const b = $('#mGo'); if(b) b.disabled = !(M.backup && normH(cf.value)==='REEMPLAZAR'); };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ÓRDENES DE PRODUCCIÓN (PDF) — se buscan por el número antes del guion: OP 6235-3 → 6235.pdf
+// ════════════════════════════════════════════════════════════════
+const opNum = op => { const m = String(op || '').trim().match(/^(\d+)/); return m ? m[1] : null; };
+const tieneOrden = op => { const n = opNum(op); return !!(n && S.ordenes && S.ordenes.has(n)); };
+async function loadOrdenes(){
+  try{ S.ordenes = new Set(await API.ordenesLista()); S.ordenesErr = null; }
+  catch(e){ S.ordenes = null; S.ordenesErr = errMsg(e); }
+  if(S.view === 'obra') updOrdenBox();
+  if(S.view === 'carga' && C.tab === 'ordenes') renderCarga();
+}
+const ordenBtnHTML = (op, txt) => tieneOrden(op) ? `<button class="btn sm btn-orden" onclick="event.stopPropagation(); verOrden(decodeURIComponent('${encQ(op)}'))">${ICON.pdf} ${txt || 'Orden ' + esc(opNum(op))}</button>` : '';
+const ordenLinkHTML = op => tieneOrden(op) ? ` · <a href="#" class="cob-ver" onclick="event.stopPropagation(); event.preventDefault(); verOrden(decodeURIComponent('${encQ(op)}'))">orden PDF ›</a>` : '';
+async function verOrden(op){
+  const n = opNum(op); if(!n) return;
+  // La ventana se abre de inmediato: el iPhone bloquea las que se abren después de esperar a internet
+  let w = null; try{ w = window.open('', '_blank'); if(w) w.document.write('<p style="font:16px sans-serif;padding:24px">Abriendo orden ' + n + '…</p>'); }catch(e){}
+  try{ const url = await API.ordenUrl(n); if(w) w.location.replace(url); else window.location.href = url; }
+  catch(e){ if(w) w.close(); toast('No se pudo abrir la orden ' + n + ': ' + errMsg(e), true); }
+}
+function updOrdenBox(){ const b = $('#ordenBox'); if(b) b.innerHTML = S.f && S.f.op ? ordenBtnHTML(S.f.op, 'Orden ' + esc(opNum(S.f.op) || '')) : ''; }
+
+// ── Subir PDFs (solo gerente): se elige la carpeta principal con sus subcarpetas por obra ──
+const O = {estado:'inicio', lista:[], dup:[], sinNum:[], otros:0, reemplazar:false, prog:0, errores:[], subidos:0};
+function ordenesHTML(){
+  const n = S.ordenes ? S.ordenes.size : null;
+  const falta = S.ordenesErr && /bucket|not found|exist/i.test(S.ordenesErr);
+  let h = `<div class="carga-steps">
+    ${falta ? `<div class="warn">Falta crear la carpeta de órdenes en Supabase (SQL "12_ordenes_pdf").</div>` : ''}
+    <div class="cstep"><b>i</b><div><div class="cs-t">${n == null ? 'Órdenes PDF' : fmtN(n) + ' órdenes cargadas'}</div><div class="cs-d">Cada PDF se asocia por su número: <b>6235.pdf</b> se abre desde las OP 6235-1, 6235-2… Todos los usuarios las pueden ver; solo tú las subes.</div></div></div>`;
+  if(O.estado === 'inicio'){
+    h += `<div class="cstep"><b>1</b><div><div class="cs-t">Elige la carpeta principal</div><div class="cs-d">La que tiene las subcarpetas por obra. La app toma todos los PDF de adentro (desde el computador). Desde el iPad o iPhone puedes elegir archivos sueltos.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label class="btn primary sm" style="cursor:pointer">${ICON.up} Elegir carpeta<input type="file" id="ordDir" webkitdirectory directory multiple style="display:none"></label>
+        <label class="btn sm" style="cursor:pointer">${ICON.pdf} Elegir archivos<input type="file" id="ordFiles" accept="application/pdf,.pdf" multiple style="display:none"></label></div></div></div>
+      <div class="cstep"><b>2</b><div><div class="cs-t">Revisa y sube</div><div class="cs-d">Verás cuántas son nuevas y cuáles ya estaban. Por defecto solo se suben las nuevas, así puedes repetir el proceso cada vez que agregues órdenes.</div></div></div>`;
+  } else if(O.estado === 'revision'){
+    const nuevas = O.lista.filter(x => !(S.ordenes && S.ordenes.has(x.num)));
+    const ya = O.lista.length - nuevas.length;
+    const subir = O.reemplazar ? O.lista.length : nuevas.length;
+    h += `<div class="cstep"><b>2</b><div><div class="cs-t">${fmtN(O.lista.length)} órdenes encontradas</div>
+        <div class="cs-d"><b>${fmtN(nuevas.length)}</b> nuevas · <b>${fmtN(ya)}</b> ya estaban en la app${O.otros ? ` · ${fmtN(O.otros)} archivos que no son PDF (se ignoran)` : ''}</div>
+        ${O.dup.length ? `<div class="warn"><b>${fmtN(O.dup.length)}</b> números aparecen en más de un PDF; se usará el más reciente: ${esc(O.dup.slice(0,12).join(', '))}${O.dup.length > 12 ? '…' : ''}</div>` : ''}
+        ${O.sinNum.length ? `<div class="warn"><b>${fmtN(O.sinNum.length)}</b> PDF sin número al inicio del nombre; no se subirán: ${esc(O.sinNum.slice(0,8).join(', '))}${O.sinNum.length > 8 ? '…' : ''}</div>` : ''}
+        ${ya ? `<label class="switch" style="margin:10px 0"><span>Reemplazar también las ${fmtN(ya)} que ya estaban</span><button class="tgl ${O.reemplazar?'on':''}" onclick="O.reemplazar=!O.reemplazar; renderCarga()"></button></label>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn" onclick="O.estado='inicio'; renderCarga()">Cancelar</button>
+          <button class="btn primary" ${subir ? '' : 'disabled'} onclick="ordenesSubir()">${ICON.up} Subir ${fmtN(subir)} órdenes</button></div></div></div>`;
+  } else if(O.estado === 'subiendo'){
+    h += `<div class="loading"><div class="spin"></div>Subiendo órdenes… ${fmtN(O.prog)} de ${fmtN(O.total)}</div>`;
+  } else if(O.estado === 'listo'){
+    h += `<div class="cstep"><b>✓</b><div><div class="cs-t">${fmtN(O.subidos)} órdenes subidas</div>
+      ${O.errores.length ? `<div class="warn"><b>${fmtN(O.errores.length)}</b> no se pudieron subir: ${esc(O.errores.slice(0,10).join(' · '))}</div>` : ''}
+      <button class="btn sm" onclick="O.estado='inicio'; renderCarga()">Subir más</button></div></div>`;
+  }
+  return h + '</div>';
+}
+function ordenesLeer(files){
+  const m = new Map(); O.sinNum = []; O.otros = 0; O.dup = [];
+  for(const f of files){
+    if(!/\.pdf$/i.test(f.name)){ if(!f.name.startsWith('.')) O.otros++; continue; }
+    const base = f.name.replace(/\.pdf$/i, '').trim(), mm = base.match(/^\D{0,4}?(\d{3,6})/);
+    if(!mm){ O.sinNum.push(f.name); continue; }
+    const num = mm[1];
+    const obra = (f.webkitRelativePath || '').split('/').slice(-2, -1)[0] || '';
+    if(m.has(num)){ if(!O.dup.includes(num)) O.dup.push(num); if(f.lastModified <= m.get(num).file.lastModified) continue; }
+    m.set(num, {num, file:f, obra});
+  }
+  O.lista = [...m.values()].sort((a,b) => nat(a.num, b.num));
+  if(!O.lista.length && !O.sinNum.length){ toast('No se encontraron PDF en lo que elegiste', true); return; }
+  O.reemplazar = false; O.estado = 'revision'; renderCarga();
+}
+async function ordenesSubir(){
+  const l = O.lista.filter(x => O.reemplazar || !(S.ordenes && S.ordenes.has(x.num)));
+  O.estado = 'subiendo'; O.prog = 0; O.total = l.length; O.errores = []; O.subidos = 0; renderCarga();
+  let i = 0;
+  const worker = async () => { while(i < l.length){ const x = l[i++];
+    try{ await API.ordenSubir(x.num, x.file); O.subidos++; }catch(e){ O.errores.push(x.num + ': ' + errMsg(e)); }
+    O.prog++; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Subiendo órdenes… ${fmtN(O.prog)} de ${fmtN(O.total)}`; } };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  O.estado = 'listo'; await loadOrdenes(); renderCarga();
 }
 
 // ── Historial de cambios (solo gerente) ──
