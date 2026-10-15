@@ -168,7 +168,9 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .filters{display:grid;grid-template-columns:minmax(0,1fr) 170px 150px 160px;gap:8px;margin:10px 0 12px;}
 @media(max-width:899px){.filters{grid-template-columns:1fr 1fr 1fr;}.filters .search{grid-column:1/-1;max-width:none;}}
 @media(max-width:520px){.filters{grid-template-columns:1fr 1fr;}.filters #fAnio{grid-column:1/-1;}}
-.tabs{display:flex;gap:26px;border-bottom:1px solid var(--border);margin:-4px 0 18px;}
+.tabs{display:flex;gap:26px;border-bottom:1px solid var(--border);margin:-4px 0 18px;overflow-x:auto;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tabs .tab{flex-shrink:0;}
 .tabs .tab{font-family:var(--sans);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:12px 0;min-height:44px;border-bottom:1px solid transparent;margin-bottom:-1px;}
 .tabs .tab.on{color:var(--text);border-bottom-color:var(--text);}
 .filters .search{max-width:none;}
@@ -194,6 +196,14 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .u-mail span{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
 .u-mail span.nuevo{color:var(--cola);}
 @media(max-width:760px){.u-row{grid-template-columns:1fr 1fr;}.u-mail{grid-column:1/-1;}}
+.h-list{max-width:980px;}
+.h-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
+.h-t{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:2px;}
+.h-w{font-size:13px;}.h-w span{font-family:var(--sans);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-left:4px;}
+.h-w .h-cob{color:var(--cola);}
+.h-i{font-size:12.5px;color:var(--text2);margin:2px 0 4px;}
+.h-c{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--text2);}
+.h-c s{color:var(--dim);}.h-c b{color:var(--text);font-weight:500;}
 fieldset.d-fs{border:0;padding:0;margin:0;min-width:0;}
 fieldset.d-fs:disabled{opacity:.8;}
 fieldset.d-fs:disabled .quick{display:none;}
@@ -374,7 +384,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -506,6 +516,17 @@ const API = {
       const {data,error} = await this.sb.rpc('registrar_instalacion', {p_ids: ids.slice(i,i+150), p_instalado: !!v('instalado'), p_fecha: v('fecha_instalacion') || null, p_instalador: v('instalador') || null});
       if(error) throw error; out = out.concat(data || []);
     }
+    return out;
+  },
+  async historial(off, usuario){
+    let q = this.sb.from('historial').select('id,item_id,usuario,cuando,antes,despues').order('cuando', {ascending:false});
+    if(usuario) q = q.eq('usuario', usuario);
+    const {data,error} = await q.range(off, off + 149); if(error) throw error; return data || [];
+  },
+  async perfilesTodos(){ const {data,error} = await this.sb.from('perfiles').select('id,nombre,rol'); if(error) throw error; return data || []; },
+  async itemsBasicos(ids){
+    let out = [];
+    for(let i=0; i<ids.length; i+=150){ const {data,error} = await this.sb.from('items').select('id,obra,item,op_instalacion').in('id', ids.slice(i,i+150)); if(error) throw error; out = out.concat(data); }
     return out;
   },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
@@ -1697,6 +1718,8 @@ function renderCarga(){
     body = migracionHTML();
   } else if(C.tab === 'usuarios'){
     body = usuariosHTML();
+  } else if(C.tab === 'historial'){
+    body = historialHTML();
   } else if(C.estado === 'inicio'){
     body = `
       <div class="carga-steps">
@@ -1718,16 +1741,71 @@ function renderCarga(){
   }
   $('#app').innerHTML = shell(`
     <button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
+    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : C.tab==='historial' ? 'Quién cambió qué y cuándo' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
     <div class="tabs">
       <button class="tab ${C.tab==='agregar'?'on':''}" onclick="setCargaTab('agregar')">Agregar OPs nuevas</button>
       <button class="tab ${C.tab==='reemplazar'?'on':''}" onclick="setCargaTab('reemplazar')">Reemplazar base completa</button>
       <button class="tab ${C.tab==='usuarios'?'on':''}" onclick="setCargaTab('usuarios')">Usuarios</button>
+      <button class="tab ${C.tab==='historial'?'on':''}" onclick="setCargaTab('historial')">Historial</button>
     </div>
     ${body}`);
   const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
   const fb = $('#fileBase'); if(fb) fb.onchange = e => { const file = e.target.files[0]; if(file) leerBase(file); };
   const cf = $('#mConfirm'); if(cf) cf.oninput = () => { M.confirmTxt = cf.value; const b = $('#mGo'); if(b) b.disabled = !(M.backup && normH(cf.value)==='REEMPLAZAR'); };
+}
+
+// ── Historial de cambios (solo gerente) ──
+const HK = {cortado:'Cortado',troquelado:'Troquelado',mecanizado:'Mecanizado',programado:'Programado',vidrio_proc:'Vidrio',prealistado:'Prealistado',
+  ensamblador:'Ensamblador',dia_inicio:'Día inicio',hora_inicio:'Hora inicio',dia_final:'Día final',hora_final:'Hora final',status:'Estado',
+  despachado:'Despachado',fecha_despacho:'Fecha despacho',remision:'Remisión',instalado:'Instalado',fecha_instalacion:'Fecha instalación',instalador:'Instalador',
+  precio:'Precio',cobrado_despacho:'Cobrado despacho',fecha_corte_despacho:'Fecha corte desp.',num_corte_despacho:'# corte desp.',
+  cobrado_instalacion:'Cobrado instalación',fecha_corte_instalacion:'Fecha corte inst.',num_corte_instalacion:'# corte inst.',
+  obra:'Obra',item:'Ítem',ubicacion:'Ubicación',piso:'Piso',diseno:'Diseño',ancho:'Ancho',alto:'Alto',m2:'M²',op:'OP',op_instalacion:'OP instalación',fecha_op:'Fecha OP'};
+const H = {rows:[], fin:false, cargando:false, usuario:'', q:'', perf:null, items:new Map(), err:null};
+const hVal = (k, v) => v === null || v === undefined || v === '' ? '—' : v === true ? 'Sí' : v === false ? 'No'
+  : /^(dia_|fecha_)/.test(k) && /^\d{4}-\d{2}-\d{2}/.test(v) ? fmtD(v) : /^hora_/.test(k) ? fmtT(v) : k === 'precio' ? '$' + fmtN(v) : String(v);
+function hDiff(r){
+  const a = r.antes || {}, d = r.despues || {}, out = [];
+  for(const k of Object.keys(HK)) if(k in d && JSON.stringify(a[k] ?? null) !== JSON.stringify(d[k] ?? null)) out.push([k, a[k], d[k]]);
+  return out;
+}
+async function hCargar(reset){
+  if(H.cargando) return; H.cargando = true;
+  try{
+    if(!H.perf){ H.perf = new Map((await API.perfilesTodos()).map(p => [p.id, p])); }
+    if(reset){ H.rows = []; H.fin = false; }
+    const nuevos = await API.historial(H.rows.length, H.usuario);
+    const falta = [...new Set(nuevos.filter(r => r.despues && r.despues._tabla === 'cobros').map(r => r.item_id))].filter(id => !H.items.has(id));
+    if(falta.length) (await API.itemsBasicos(falta)).forEach(it => H.items.set(it.id, it));
+    H.rows = H.rows.concat(nuevos); H.fin = nuevos.length < 150; H.err = null;
+  }catch(e){ H.err = errMsg(e); }
+  H.cargando = false;
+  if(S.view === 'carga' && C.tab === 'historial') renderCarga();
+}
+function historialHTML(){
+  if(!H.perf && !H.err){ hCargar(true); return '<div class="loading"><div class="spin"></div>Cargando historial</div>'; }
+  const q = H.q.trim().toUpperCase();
+  const filas = H.rows.map(r => {
+    const d = r.despues || {}, info = d._tabla === 'cobros' ? (H.items.get(r.item_id) || {}) : d;
+    return {r, info, ch: hDiff(r), cob: d._tabla === 'cobros'};
+  }).filter(x => x.ch.length && (!q || [x.info.obra, x.info.item, x.info.op_instalacion].some(v => v && String(v).toUpperCase().includes(q))));
+  let dia = '', h = `<div class="filters" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);max-width:720px">
+      <select onchange="H.usuario=this.value;hCargar(true)"><option value="">Todos los usuarios</option>${[...H.perf.values()].sort((a,b)=>nat(a.nombre||'',b.nombre||'')).map(p => `<option value="${p.id}" ${p.id===H.usuario?'selected':''}>${esc(p.nombre||'Sin nombre')} · ${esc(p.rol)}</option>`).join('')}</select>
+      <div class="search">${ICON.search}<input id="hQ" placeholder="Obra, ítem u OP…" value="${esc(H.q)}" autocomplete="off" autocapitalize="characters"></div>
+    </div>${H.err ? `<div class="warn">${esc(H.err)}</div>` : ''}<div class="h-list">`;
+  for(const {r, info, ch, cob} of filas){
+    const f = new Date(r.cuando), dd = f.toLocaleDateString('es-CO', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+    if(dd !== dia){ dia = dd; h += `<div class="section-t">${esc(dd)}</div>`; }
+    const p = H.perf.get(r.usuario);
+    h += `<div class="h-row"><div class="h-t">${f.toLocaleTimeString('es-CO', {hour:'numeric', minute:'2-digit'})}</div>
+      <div class="h-b"><div class="h-w"><b>${esc(p ? (p.nombre || p.rol) : 'Sistema')}</b>${p ? ` <span>${esc(p.rol)}</span>` : ''}</div>
+        <div class="h-i">${esc(info.obra || '—')} · ${esc(info.item || '—')} · <span class="mono">${esc(info.op_instalacion || '')}</span></div>
+        <div class="h-c">${ch.map(([k,a,b]) => `<span>${HK[k]}: <s>${esc(hVal(k,a))}</s> → <b>${esc(hVal(k,b))}</b></span>`).join('')}</div></div></div>`;
+  }
+  if(!filas.length) h += `<div class="empty">${H.rows.length ? 'Ningún cambio coincide con el filtro.' : 'Todavía no hay cambios registrados.'}</div>`;
+  h += `</div>${!H.fin ? `<div class="more"><button class="btn sm" onclick="hCargar(false)">${H.cargando ? 'Cargando…' : 'Ver cambios anteriores'}</button></div>` : ''}`;
+  setTimeout(() => { const i = $('#hQ'); if(i && !i.oninput) i.oninput = () => { H.q = i.value; const pos = i.selectionStart; renderCarga(); const j = $('#hQ'); if(j){ j.focus(); j.setSelectionRange(pos,pos); } }; }, 0);
+  return h;
 }
 
 // ── Usuarios y roles (solo gerente) ──

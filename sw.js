@@ -1,6 +1,6 @@
 // Registro de producción — service worker
 // Solo guarda la "cáscara" de la app. Los datos (Supabase) siempre van por internet.
-const CACHE = 'registro-v3.8';
+const CACHE = 'registro-v3.9';
 const SHELL = ['./', './index.html', './manifest.json', './icons/logo-192.png', './icons/logo-180.png', './apple-touch-icon.png',
   './lib/supabase.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(()=>{})); self.skipWaiting(); });
