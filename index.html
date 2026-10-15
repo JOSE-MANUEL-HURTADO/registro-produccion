@@ -117,6 +117,9 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .cob-ck svg{width:14px;height:14px;}
 .cob-op.on{background:rgba(200,168,75,.08);}
 .cob-op.on .cob-ck{background:var(--cola);border-color:var(--cola);color:#181818;}
+.cob-its{color:var(--text2)!important;font-size:12px!important;line-height:1.45;white-space:normal;word-break:break-word;}
+.cob-its b{font-family:var(--mono);font-weight:400;color:var(--text);}
+.cob-its i{font-style:normal;color:var(--cola);font-family:var(--mono);}
 .cob-ver{color:var(--text2);text-decoration:underline;text-underline-offset:2px;}
 .cob-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:8px;}
 .cob-ob{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);padding:14px;text-align:left;}
@@ -392,7 +395,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.6';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1078,6 +1081,31 @@ async function loadCobPend(){
   S.cobLoading = false;
   if(S.view === 'home' && S.homeTab === 'cobros') renderCobrosBox();
 }
+// Ítems (números de ítem de la obra) pendientes por cobrar en cada OP — se leen al entrar a la obra
+async function loadCobItems(obra, tipo){
+  const pend = S.cobPend, key = tipo + '|' + obra;
+  S.cobIt = {key, pend, map:null};
+  try{
+    const k = tipo === 'D' ? 'despacho' : 'instalacion';
+    const cand = (await API.obra(obra)).filter(i => tipo === 'D' ? i.despachado : i.instalado);
+    const est = new Map((await (isGerente() ? API.comercial : API.cobros).call(API, cand.map(i => i.id))).map(c => [c.item_id, c]));
+    const map = new Map();
+    for(const i of cand){ if((est.get(i.id) || {})['cobrado_' + k]) continue; const op = i.op || ''; if(!map.has(op)) map.set(op, []); map.get(op).push(i.item || '—'); }
+    for(const l of map.values()) l.sort(nat);
+    if(S.cobIt && S.cobIt.key === key) S.cobIt.map = map;
+  }catch(e){ if(S.cobIt && S.cobIt.key === key) S.cobIt.map = 'err'; }
+  if(S.view === 'home' && S.homeTab === 'cobros' && S.cobObra === obra) renderCobrosBox();
+}
+function cobItemsHTML(obra, op){
+  const c = S.cobIt;
+  if(!c || c.key !== S.cobTipo + '|' + obra || c.pend !== S.cobPend) return '';
+  if(!c.map) return '<span class="d cob-its" style="padding-left:30px">Cargando ítems…</span>';
+  if(c.map === 'err') return '';
+  const l = c.map.get(op || '') || [];
+  if(!l.length) return '';
+  const cnt = new Map(); for(const x of l) cnt.set(x, (cnt.get(x) || 0) + 1);
+  return `<span class="d cob-its" style="padding-left:30px">Ítem${cnt.size===1?'':'s'}: ${[...cnt].map(([x, n]) => `<b>${esc(x)}</b>${n > 1 ? ` <i>×${n}</i>` : ''}`).join(', ')}</span>`;
+}
 function renderCobrosBox(){
   const tiles = $('#stTiles'), box = $('#obrasBox'); if(!box) return;
   if(!S.cobPend){ loadCobPend(); if(tiles) tiles.innerHTML = ''; box.innerHTML = '<div class="loading"><div class="spin"></div>Calculando lo pendiente por cobrar</div>'; return; }
@@ -1110,12 +1138,14 @@ function renderCobrosBox(){
     // Detalle de una obra: sus OP
     const [obra, rows] = sel;
     rows.sort((a,b) => nat(a.op, b.op));
+    if(!S.cobIt || S.cobIt.key !== S.cobTipo + '|' + obra || S.cobIt.pend !== S.cobPend) loadCobItems(obra, S.cobTipo);
     h = (S.cobErr ? `<div class="warn">${esc(S.cobErr)}</div>` : '') + `<button class="back" onclick="setCobObra(null)">${ICON.back} Todas las obras</button>
       <div class="pl-card" style="max-width:720px">
       <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(sum(rows,'n'))}</b> ítem${sum(rows,'n')===1?'':'s'} · ${fmtN(sum(rows,'m2'),1)} m²</span></div>
       <div class="cob-tools"><button class="btn sm ghost" onclick="cobChkTodas(true)">Marcar todas</button><button class="btn sm ghost" onclick="cobChkTodas(false)">Quitar marcas</button></div>
       ${rows.map(r => { const on = cobChk(obra, r.op); return `<div class="pl-row cob-op ${on?'on':''}" onclick="cobToggle(decodeURIComponent('${encQ(obra)}'), decodeURIComponent('${encQ(r.op)}'))">
         <span class="o"><span class="cob-ck">${on ? ICON.check : ''}</span><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
+        ${cobItemsHTML(obra, r.op)}
         <span class="d" style="padding-left:30px">${fmtN(r.m2,1)} m²${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}
           · <a href="#" class="cob-ver" onclick="event.stopPropagation(); event.preventDefault(); ${plGo(obra, est, r.op, '').replace(/"/g,'&quot;')}">ver ítems ›</a></span></div>`; }).join('')}
     </div>`;
