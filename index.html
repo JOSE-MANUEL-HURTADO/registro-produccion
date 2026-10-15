@@ -110,6 +110,13 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .other-list button{background:var(--surface);border:1px solid var(--border);padding:12px 14px;text-align:left;display:flex;justify-content:space-between;gap:8px;font-size:13px;}
 .other-list button span{color:var(--muted);}
 .st-tiles.cob-tiles{grid-template-columns:repeat(2,1fr);}
+.cob-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:8px;}
+.cob-ob{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);padding:14px;text-align:left;}
+.cob-ob:hover{border-color:var(--border2);}
+.cob-ob .cn{font-family:var(--sans);font-weight:500;font-size:14px;letter-spacing:.1em;text-transform:uppercase;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cob-ob .cv{display:flex;flex-direction:column;align-items:flex-end;min-width:44px;}
+.cob-ob .cv b{font-size:18px;font-weight:500;line-height:1.1;}
+.cob-ob .cv small{font-family:var(--sans);font-size:9.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
 .st-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:18px;}
 @media(max-width:900px){.st-tiles{grid-template-columns:1fr 1fr;}.st-tiles .st-tile:last-child{grid-column:1/-1;}}
 @media(max-width:900px){.st-tiles.cob-tiles .st-tile:last-child{grid-column:auto;}}
@@ -367,7 +374,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.9';
+const APP_VERSION = '3.0';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -980,7 +987,8 @@ function renderCobros(){
   inp.oninput = () => { S.q = inp.value; renderCobrosBox(); };
   renderCobrosBox();
 }
-function setCobTipo(t){ S.cobTipo = t; renderCobrosBox(); }
+function setCobTipo(t){ S.cobTipo = t; S.cobObra = null; renderCobrosBox(); }
+function setCobObra(o){ S.cobObra = o; renderCobrosBox(); window.scrollTo(0, o ? ($('#obrasBox').offsetTop - 70) : 0); }
 async function loadCobPend(){
   if(S.cobLoading) return; S.cobLoading = true;
   try{ S.cobPend = await API.pendientesCobro(); S.cobErr = null; }
@@ -1007,14 +1015,27 @@ function renderCobrosBox(){
   if(!list.length){ box.innerHTML = h + `<div class="empty">No hay nada ${S.cobTipo==='D'?'despachado':'instalado'} pendiente por cobrar${q ? ' que coincida con “'+esc(S.q)+'”' : ''}.</div>`; return; }
   const g = [...grp(list, r => r.obra).entries()].sort((a,b) => nat(a[0], b[0]));
   const est = S.cobTipo === 'D' ? 'COB_D' : 'COB_I';
-  h += `<div class="pl-grid">${g.map(([obra, rows]) => {
+  const sel = S.cobObra && g.find(x => x[0] === S.cobObra);
+  if(!sel){
+    // Vista general: solo obra, cantidad y m²
+    S.cobObra = null;
+    h += `<div class="cob-grid">${g.map(([obra, rows]) => `<button class="cob-ob" onclick="setCobObra(decodeURIComponent('${encQ(obra)}'))">
+        <span class="cn">${esc(obra)}</span>
+        <span class="cv"><b>${fmtN(sum(rows,'n'))}</b><small>${sum(rows,'n')===1?'ítem':'ítems'}</small></span>
+        <span class="cv"><b>${fmtN(sum(rows,'m2'),1)}</b><small>m²</small></span>
+      </button>`).join('')}</div>`;
+  } else {
+    // Detalle de una obra: sus OP
+    const [obra, rows] = sel;
     rows.sort((a,b) => nat(a.op, b.op));
-    return `<div class="pl-card">
-      <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(sum(rows,'n'))}</b> ítem${sum(rows,'n')===1?'':'s'}${vePrecio() ? ' · $' + fmtN(sum(rows,'valor')) : ' · ' + fmtN(sum(rows,'m2'),1) + ' m²'}</span></div>
+    h = (S.cobErr ? `<div class="warn">${esc(S.cobErr)}</div>` : '') + `<button class="back" onclick="setCobObra(null)">${ICON.back} Todas las obras</button>
+      <div class="pl-card" style="max-width:720px">
+      <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(sum(rows,'n'))}</b> ítem${sum(rows,'n')===1?'':'s'} · ${fmtN(sum(rows,'m2'),1)} m²</span></div>
       ${rows.map(r => `<button class="pl-row" onclick="${plGo(obra, est, r.op, '')}">
         <span class="o"><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
-        <span class="d">${fmtN(r.m2,1)} m²${vePrecio() && r.valor ? ' · $' + fmtN(r.valor) : ''}${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}</span></button>`).join('')}
-    </div>`; }).join('')}</div>`;
+        <span class="d">${fmtN(r.m2,1)} m²${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}</span></button>`).join('')}
+    </div>`;
+  }
   box.innerHTML = h;
 }
 
