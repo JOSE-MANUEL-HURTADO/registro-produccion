@@ -367,7 +367,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.8';
+const APP_VERSION = '2.9';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -475,7 +475,19 @@ const API = {
   async registrarRespaldo(origen, filas){ const {error} = await this.sb.rpc('registrar_respaldo', {p_origen:origen, p_filas:filas}); if(error) throw error; },
   async usuarios(){ const {data,error} = await this.sb.rpc('usuarios_lista'); if(error) throw error; return data || []; },
   async asignarRol(id, rol, nombre){ const {error} = await this.sb.rpc('asignar_rol', {p_id:id, p_rol:rol, p_nombre:nombre||null}); if(error) throw error; },
-  async pendientesCobro(){ const {data,error} = await this.sb.rpc('pendientes_cobro'); if(error) throw error; return data || []; },
+  // La base devuelve máximo 1000 filas por consulta: se pide por tipo y por páginas
+  async pendientesCobro(){
+    let out = [];
+    for(const t of ['D','I']){
+      for(let off = 0; ; off += 1000){
+        const {data,error} = await this.sb.rpc('pendientes_cobro').eq('tipo', t).order('obra').order('op').range(off, off + 999);
+        if(error) throw error;
+        out = out.concat(data || []);
+        if(!data || data.length < 1000) break;
+      }
+    }
+    return out;
+  },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
