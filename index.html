@@ -110,6 +110,14 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .other-list button{background:var(--surface);border:1px solid var(--border);padding:12px 14px;text-align:left;display:flex;justify-content:space-between;gap:8px;font-size:13px;}
 .other-list button span{color:var(--muted);}
 .st-tiles.cob-tiles{grid-template-columns:repeat(2,1fr);}
+.cob-tools{display:flex;gap:6px;justify-content:flex-end;padding:6px 10px;border-bottom:1px solid var(--border);}
+.cob-op{cursor:pointer;}
+.cob-op .o{display:flex;align-items:center;gap:10px;}
+.cob-ck{width:20px;height:20px;border:1px solid var(--border2);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cob-ck svg{width:14px;height:14px;}
+.cob-op.on{background:rgba(200,168,75,.08);}
+.cob-op.on .cob-ck{background:var(--cola);border-color:var(--cola);color:#181818;}
+.cob-ver{color:var(--text2);text-decoration:underline;text-underline-offset:2px;}
 .cob-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:8px;}
 .cob-ob{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);padding:14px;text-align:left;}
 .cob-ob:hover{border-color:var(--border2);}
@@ -384,7 +392,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1024,6 +1032,43 @@ function renderCobros(){
   inp.oninput = () => { S.q = inp.value; renderCobrosBox(); };
   renderCobrosBox();
 }
+// Marcas (chulos) de OP durante un corte: se guardan en este equipo hasta registrar el cobro
+const COBK = 'cob_marcas_v1';
+function cobMarcas(){ try{ return JSON.parse(localStorage.getItem(COBK) || '{}'); }catch(e){ return S._cobMem || (S._cobMem = {}); } }
+function cobGuardar(m){ try{ localStorage.setItem(COBK, JSON.stringify(m)); }catch(e){ S._cobMem = m; } }
+const cobKey = (obra, op) => S.cobTipo + '|' + obra + '|' + (op||'');
+const cobChk = (obra, op) => !!cobMarcas()[cobKey(obra, op)];
+function cobToggle(obra, op){ const m = cobMarcas(), k = cobKey(obra, op); if(m[k]) delete m[k]; else m[k] = 1; cobGuardar(m); renderCobrosBox(); }
+function cobChkTodas(on){
+  const m = cobMarcas();
+  (S.cobPend||[]).filter(r => r.tipo === S.cobTipo && r.obra === S.cobObra).forEach(r => { const k = cobKey(r.obra, r.op); if(on) m[k] = 1; else delete m[k]; });
+  cobGuardar(m); renderCobrosBox();
+}
+function cobRegistrar(){
+  const obra = S.cobObra, tipo = S.cobTipo, k = tipo === 'D' ? 'despacho' : 'instalacion';
+  const rows = S.cobPend.filter(r => r.tipo === tipo && r.obra === obra && cobChk(obra, r.op));
+  if(!rows.length) return;
+  const n = rows.reduce((a,r) => a + r.n, 0);
+  const body = `<div class="summary">${fmtN(rows.length)} OP · <b>${fmtN(n)} ítems</b> · OP ${esc(rows.map(r => r.op).join(', '))}</div>
+    <div class="fgrid"><div class="field"><span class="lbl">Fecha corte</span><input type="date" id="cFecha" value="${today()}"></div>
+      <div class="field"><span class="lbl"># Corte</span><input id="cNum" placeholder="Ej. 5"></div></div>`;
+  openSheet('Marcar cobrado ' + (tipo === 'D' ? 'despacho' : 'instalación'), esc(obra), body, `Marcar ${fmtN(n)} ítems`, async () => {
+    const f = $('#cFecha').value, num = $('#cNum').value.trim();
+    if(!f){ toast('Falta la fecha de corte', true); return false; }
+    if(!num){ toast('Falta el número de corte', true); return false; }
+    const items = await API.obra(obra);
+    const ops = new Set(rows.map(r => r.op || ''));
+    const cand = items.filter(i => ops.has(i.op || '') && (tipo === 'D' ? i.despachado : i.instalado));
+    const est = new Map((await (isGerente() ? API.comercial : API.cobros).call(API, cand.map(i => i.id))).map(c => [c.item_id, c]));
+    const ids = cand.filter(i => !(est.get(i.id) || {})['cobrado_' + k]).map(i => i.id);
+    if(!ids.length){ toast('Esas OP ya no tienen ítems pendientes', true); return false; }
+    if(isGerente()) await API.upsertComercial(ids.map(id => ({item_id:id, ['cobrado_'+k]:true, ['fecha_corte_'+k]:f, ['num_corte_'+k]:num})));
+    else await API.marcarCobros(ids, k, true, f, num);
+    const m = cobMarcas(); rows.forEach(r => delete m[cobKey(obra, r.op)]); cobGuardar(m);
+    toast(`✓ ${fmtN(ids.length)} ítems marcados como cobrados · corte ${num}`);
+    S.cobPend = null; renderCobrosBox();
+  });
+}
 function setCobTipo(t){ S.cobTipo = t; S.cobObra = null; renderCobrosBox(); }
 function setCobObra(o){ S.cobObra = o; renderCobrosBox(); window.scrollTo(0, o ? ($('#obrasBox').offsetTop - 70) : 0); }
 async function loadCobPend(){
@@ -1068,10 +1113,16 @@ function renderCobrosBox(){
     h = (S.cobErr ? `<div class="warn">${esc(S.cobErr)}</div>` : '') + `<button class="back" onclick="setCobObra(null)">${ICON.back} Todas las obras</button>
       <div class="pl-card" style="max-width:720px">
       <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(sum(rows,'n'))}</b> ítem${sum(rows,'n')===1?'':'s'} · ${fmtN(sum(rows,'m2'),1)} m²</span></div>
-      ${rows.map(r => `<button class="pl-row" onclick="${plGo(obra, est, r.op, '')}">
-        <span class="o"><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
-        <span class="d">${fmtN(r.m2,1)} m²${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}</span></button>`).join('')}
+      <div class="cob-tools"><button class="btn sm ghost" onclick="cobChkTodas(true)">Marcar todas</button><button class="btn sm ghost" onclick="cobChkTodas(false)">Quitar marcas</button></div>
+      ${rows.map(r => { const on = cobChk(obra, r.op); return `<div class="pl-row cob-op ${on?'on':''}" onclick="cobToggle(decodeURIComponent('${encQ(obra)}'), decodeURIComponent('${encQ(r.op)}'))">
+        <span class="o"><span class="cob-ck">${on ? ICON.check : ''}</span><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
+        <span class="d" style="padding-left:30px">${fmtN(r.m2,1)} m²${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}
+          · <a href="#" class="cob-ver" onclick="event.stopPropagation(); event.preventDefault(); ${plGo(obra, est, r.op, '').replace(/"/g,'&quot;')}">ver ítems ›</a></span></div>`; }).join('')}
     </div>`;
+    const marc = rows.filter(r => cobChk(obra, r.op));
+    if(marc.length) h += `<div class="selbar"><div class="count"><b>${fmtN(marc.length)}</b>OP · ${fmtN(sum(marc,'n'))} ítems · ${fmtN(sum(marc,'m2'),1)} m²</div>
+      <div class="acts"><button class="btn sm btn-cob" onclick="cobRegistrar()">$ Marcar cobrado</button></div>
+      <button class="icon-btn" title="Quitar marcas" onclick="cobChkTodas(false)">${ICON.close}</button></div>`;
   }
   box.innerHTML = h;
 }
