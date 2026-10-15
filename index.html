@@ -178,6 +178,12 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .resp.ok{color:var(--inst);}
 .resp.warn{border:1px solid var(--cola);background:rgba(200,168,75,.08);padding:12px 14px;color:var(--text2);}
 .resp.warn b{color:var(--cola);font-weight:500;}
+.u-list{display:flex;flex-direction:column;gap:8px;max-width:980px;}
+.u-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) auto;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);padding:10px 12px;}
+.u-mail{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;}
+.u-mail span{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
+.u-mail span.nuevo{color:var(--cola);}
+@media(max-width:760px){.u-row{grid-template-columns:1fr 1fr;}.u-mail{grid-column:1/-1;}}
 fieldset.d-fs{border:0;padding:0;margin:0;min-width:0;}
 fieldset.d-fs:disabled{opacity:.8;}
 fieldset.d-fs:disabled .quick{display:none;}
@@ -358,7 +364,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.4';
+const APP_VERSION = '2.5';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -464,6 +470,8 @@ const API = {
     if(error) throw error; return data[0] || null;
   },
   async registrarRespaldo(origen, filas){ const {error} = await this.sb.rpc('registrar_respaldo', {p_origen:origen, p_filas:filas}); if(error) throw error; },
+  async usuarios(){ const {data,error} = await this.sb.rpc('usuarios_lista'); if(error) throw error; return data || []; },
+  async asignarRol(id, rol, nombre){ const {error} = await this.sb.rpc('asignar_rol', {p_id:id, p_rol:rol, p_nombre:nombre||null}); if(error) throw error; },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -1571,6 +1579,8 @@ function renderCarga(){
   let body = '';
   if(C.tab === 'reemplazar'){
     body = migracionHTML();
+  } else if(C.tab === 'usuarios'){
+    body = usuariosHTML();
   } else if(C.estado === 'inicio'){
     body = `
       <div class="carga-steps">
@@ -1592,15 +1602,46 @@ function renderCarga(){
   }
   $('#app').innerHTML = shell(`
     <button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
+    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
     <div class="tabs">
       <button class="tab ${C.tab==='agregar'?'on':''}" onclick="setCargaTab('agregar')">Agregar OPs nuevas</button>
       <button class="tab ${C.tab==='reemplazar'?'on':''}" onclick="setCargaTab('reemplazar')">Reemplazar base completa</button>
+      <button class="tab ${C.tab==='usuarios'?'on':''}" onclick="setCargaTab('usuarios')">Usuarios</button>
     </div>
     ${body}`);
   const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
   const fb = $('#fileBase'); if(fb) fb.onchange = e => { const file = e.target.files[0]; if(file) leerBase(file); };
   const cf = $('#mConfirm'); if(cf) cf.oninput = () => { M.confirmTxt = cf.value; const b = $('#mGo'); if(b) b.disabled = !(M.backup && normH(cf.value)==='REEMPLAZAR'); };
+}
+
+// ── Usuarios y roles (solo gerente) ──
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Gerente']];
+const U = {list:null, err:null};
+async function loadUsuarios(){
+  U.err = null;
+  try{ U.list = await API.usuarios(); }
+  catch(e){ U.list = []; U.err = /usuarios_lista|schema cache|PGRST/i.test(errMsg(e)) ? 'Falta correr el SQL "TODO EN UNO" en Supabase.' : errMsg(e); }
+  if(S.view === 'carga' && C.tab === 'usuarios') renderCarga();
+}
+function usuariosHTML(){
+  if(!U.list){ loadUsuarios(); return '<div class="loading"><div class="spin"></div>Cargando usuarios</div>'; }
+  const yo = S.user && S.user.id;
+  return `<div class="cstep" style="margin-bottom:16px"><b>?</b><div><div class="cs-t">Para agregar a alguien</div><div class="cs-d">1. En Supabase → Authentication → Users → <b>Add user</b> → <b>Create new user</b>: escribe su correo y una contraseña, y marca <b>Auto Confirm User</b>.<br>2. Vuelve aquí, toca <b>Actualizar lista</b> y asígnale el rol.<br><br><b>Asistente:</b> registra procesos, ensamble, despacho e instalación. <b>Consulta:</b> ve todo, incluidos precios y dashboard, sin modificar nada. <b>Cobros:</b> solo marca cobros, sin ver precios. <b>Gerente:</b> acceso total.</div>
+      <button class="btn sm" onclick="U.list=null;renderCarga()">${ICON.ref} Actualizar lista</button></div></div>
+    ${U.err ? `<div class="warn">${esc(U.err)}</div>` : ''}
+    <div class="u-list">${U.list.map(u => `<div class="u-row" data-u="${u.id}">
+      <div class="u-mail"><b>${esc(u.email)}</b>${u.id===yo ? '<span>Tú</span>' : !u.rol ? '<span class="nuevo">Sin rol: no puede entrar</span>' : ''}</div>
+      <input placeholder="Nombre" value="${esc(u.nombre||'')}" ${u.id===yo?'disabled':''}>
+      <select ${u.id===yo?'disabled':''}>${ROLES.map(([v,t]) => `<option value="${v}" ${(u.rol||'')===v?'selected':''}>${t}</option>`).join('')}</select>
+      <button class="btn sm primary" ${u.id===yo?'disabled':''} onclick="guardarRol('${u.id}')">Guardar</button>
+    </div>`).join('')}</div>`;
+}
+async function guardarRol(id){
+  const row = document.querySelector(`.u-row[data-u="${id}"]`);
+  const rol = row.querySelector('select').value, nombre = row.querySelector('input').value.trim();
+  if(rol === 'gerente' && !confirm('El rol Gerente da acceso total, incluido borrar y reemplazar la base. ¿Continuar?')) return;
+  try{ await API.asignarRol(id, rol, nombre); toast('✓ Rol guardado'); U.list = null; renderCarga(); }
+  catch(e){ toast(errMsg(e), true); }
 }
 
 async function descargarPlantilla(){
