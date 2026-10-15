@@ -173,6 +173,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .row.sel{background:rgba(200,168,75,.07);}
 .row.open{background:rgba(255,255,255,.05);}
 .row.open::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--text);}
+.pf input{text-transform:uppercase;}
 fieldset.d-fs{border:0;padding:0;margin:0;min-width:0;}
 fieldset.d-fs:disabled{opacity:.8;}
 fieldset.d-fs:disabled .quick{display:none;}
@@ -353,7 +354,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -443,6 +444,17 @@ const API = {
     return out;
   },
   porFecha(campo, d1, d2){ return this.all(o => this.sb.from('items').select('id,obra,op,item,m2,ensamblador,instalador,dia_final,fecha_instalacion,remision',o).gte(campo,d1).lte(campo,d2).order('id')); },
+  // Personas que ensamblaron o instalaron en los últimos 2 años (para las listas desplegables)
+  async personasRecientes(){
+    const d = new Date(); d.setFullYear(d.getFullYear()-2);
+    const desde = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+    const [e1, e2, i1] = await Promise.all([
+      this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_inicio',desde).not('ensamblador','is',null).order('id')),
+      this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_final',desde).not('ensamblador','is',null).order('id')),
+      this.all(o => this.sb.from('items').select('instalador',o).gte('fecha_instalacion',desde).not('instalador','is',null).order('id'))
+    ]);
+    return [...new Set([...e1, ...e2].map(r => normNom(r.ensamblador)).concat(i1.map(r => normNom(r.instalador))).filter(Boolean))].sort(nat);
+  },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -555,6 +567,31 @@ const vePrecio = () => rolEs('gerente','consulta');          // precios y export
 const veDash = vePrecio;                                     // dashboard
 const puedeSeleccionar = () => puedeRegistrar() || rolEs('cobros');
 
+// ── Lista desplegable de personas (ensambladores / instaladores) con opción de escribir un nombre nuevo ──
+const normNom = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
+function personas(){ return S.personas || [...new Set((S.ensambladores||[]).map(normNom))].filter(Boolean).sort(nat); }
+function personaField(id, val, key, ph){
+  const L = personas(), v = val ? normNom(val) : '';
+  const opts = (v && !L.includes(v) ? [v] : []).concat(L);
+  return `<div class="pf" id="${id}">
+    <select onchange="pfSel(this,'${key||''}')"><option value="">— ${ph||'Elegir'} —</option>${opts.map(n => `<option ${n===v?'selected':''}>${esc(n)}</option>`).join('')}<option value="__otro__">✎ Otro / persona nueva…</option></select>
+    <input style="display:none" placeholder="Escribe el nombre completo" autocapitalize="characters" autocomplete="off" onchange="pfTxt(this,'${key||''}')">
+  </div>`;
+}
+function pfSel(sel, key){
+  if(sel.value === '__otro__'){ sel.style.display = 'none'; const i = sel.nextElementSibling; i.style.display = ''; i.focus(); return; }
+  if(key) dSet(key, sel.value || null);
+}
+function pfTxt(inp, key){
+  const v = normNom(inp.value);
+  if(v && S.personas && !S.personas.includes(v)){ S.personas.push(v); S.personas.sort(nat); }
+  if(key) dSetQ(key, v || null);
+}
+function pfVal(id){
+  const w = document.getElementById(id), i = w.querySelector('input');
+  return i.style.display === 'none' ? w.querySelector('select').value : normNom(i.value);
+}
+
 // ════════════════════════════════════════════════════════════════
 //  ARRANQUE Y SESIÓN
 // ════════════════════════════════════════════════════════════════
@@ -601,6 +638,7 @@ async function afterLogin(ses){
   if(!puedeSeleccionar()) document.body.classList.add('ro');
   if(rolEs('cobros')) document.body.classList.add('rol-cobros');
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
+  if(puedeRegistrar()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
   window.addEventListener('popstate', onPop);
   history.replaceState({v:'home'}, '');
@@ -1216,8 +1254,6 @@ function renderDetail(){
   const info = [['Obra',it.obra],['OP',it.op],['OP instalación',it.op_instalacion],['Piso',it.piso],['Sistema',it.sistema],['Serie',it.serie],
     ['Ancho × alto',`${fmtN(it.ancho)} × ${fmtN(it.alto)}`],['M²',fmtN(it.m2,2)],['Fecha OP',fmtD(it.fecha_op)],['Cant.',fmtN(it.cant)]];
   const seg3 = (k) => `<div class="seg">${[['','—'],['+','+'],['X','X']].map(([v,t]) => `<button class="${(d[k]||'')===v?'on':''} ${v==='+'?'p':''}" onclick="dSet('${k}',${v?`'${v}'`:'null'})">${t}</button>`).join('')}</div>`;
-  const ensOpts = [...new Set([...(S.ensambladores||[]), ...(d.ensamblador?[d.ensamblador]:[])])].sort(nat);
-  const instList = [...new Set(S.items.map(i=>i.instalador).filter(Boolean))].sort(nat);
   const st = stageOf({...it, ...d, status:deriveStatus(d)});
   box.innerHTML = `<div class="detail">
     <div class="d-head">
@@ -1240,8 +1276,7 @@ function renderDetail(){
       </div>
       <div class="d-sec"><div class="lbl">Ensamble</div>
         <div class="fgrid">
-          <div class="field full"><span class="lbl">Ensamblador</span>
-            <select onchange="dSet('ensamblador',this.value||null)"><option value="">— Sin asignar —</option>${ensOpts.map(n=>`<option ${n===d.ensamblador?'selected':''}>${esc(n)}</option>`).join('')}</select></div>
+          <div class="field full"><span class="lbl">Ensamblador</span>${personaField('pfEns', d.ensamblador, 'ensamblador', 'Sin asignar')}</div>
           <div class="field"><span class="lbl">Día inicio</span><input type="date" value="${esc(d.dia_inicio||'')}" onchange="dSet('dia_inicio',this.value||null)"></div>
           <div class="field"><span class="lbl">Hora inicio</span><input type="time" value="${esc(d.hora_inicio||'')}" onchange="dSet('hora_inicio',this.value||null)"></div>
           <div class="field"><span class="lbl">Día final</span><input type="date" value="${esc(d.dia_final||'')}" onchange="dSet('dia_final',this.value||null)"></div>
@@ -1256,14 +1291,14 @@ function renderDetail(){
         <div class="switch"><span>${d.despachado ? 'Despachado' : 'No despachado'}</span><button class="tgl ${d.despachado?'on':''}" onclick="dToggle('despachado')"></button></div>
         ${d.despachado ? `<div class="fgrid">
           <div class="field"><span class="lbl">Fecha despacho</span><input type="date" value="${esc(d.fecha_despacho||'')}" onchange="dSet('fecha_despacho',this.value||null)"></div>
-          <div class="field"><span class="lbl">Remisión</span><input value="${esc(d.remision||'')}" inputmode="numeric" onchange="dSet('remision',this.value.trim()||null)"></div>
+          <div class="field"><span class="lbl">Remisión</span><input value="${esc(d.remision||'')}" inputmode="numeric" onchange="dSetQ('remision',this.value.trim()||null)"></div>
         </div>` : ''}
       </div>
       <div class="d-sec"><div class="lbl">Instalación</div>
         <div class="switch"><span>${d.instalado ? 'Instalado' : 'No instalado'}</span><button class="tgl ${d.instalado?'on':''}" onclick="dToggle('instalado')"></button></div>
         ${d.instalado ? `<div class="fgrid">
           <div class="field"><span class="lbl">Fecha instalación</span><input type="date" value="${esc(d.fecha_instalacion||'')}" onchange="dSet('fecha_instalacion',this.value||null)"></div>
-          <div class="field"><span class="lbl">Instalador</span><input list="dlInst" value="${esc(d.instalador||'')}" autocapitalize="characters" onchange="dSet('instalador',this.value.trim().toUpperCase()||null)"><datalist id="dlInst">${instList.map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
+          <div class="field"><span class="lbl">Instalador</span>${personaField('pfInst', d.instalador, 'instalador', 'Elegir')}</div>
         </div>` : ''}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
@@ -1274,7 +1309,7 @@ function renderDetail(){
           <div class="switch"><span>Cobrado ${t.toLowerCase()}${!hecho ? ' <span style="color:var(--dim)">(aún no '+(k==='despacho'?'despachado':'instalado')+')</span>' : ''}</span><button class="tgl ${d.c['cobrado_'+k]?'on':''}" onclick="cToggle('${k}')"></button></div>
           ${d.c['cobrado_'+k] ? `<div class="fgrid" style="margin-bottom:10px">
             <div class="field"><span class="lbl">Fecha corte</span><input type="date" value="${esc(d.c['fecha_corte_'+k]||'')}" onchange="cSet('fecha_corte_${k}',this.value||null)"></div>
-            <div class="field"><span class="lbl"># Corte</span><input value="${esc(d.c['num_corte_'+k]||'')}" onchange="cSet('num_corte_${k}',this.value.trim()||null)"></div>
+            <div class="field"><span class="lbl"># Corte</span><input value="${esc(d.c['num_corte_'+k]||'')}" onchange="cSetQ('num_corte_${k}',this.value.trim()||null)"></div>
           </div>` : ''}`).join('')}
       </div></fieldset>` : ''}
     </div>
@@ -1287,6 +1322,10 @@ function renderDetail(){
 }
 
 function dSet(k, v){ S.draft[k] = v; S.draft._dirty = true; renderDetail(); }
+// Para campos de texto: guarda sin redibujar (evita perder el toque en "Guardar" al salir del campo)
+function dirtyFoot(){ S.draft._dirty = true; document.querySelectorAll('.d-foot .btn').forEach(b => { b.disabled = false; b.style.opacity = ''; }); }
+function dSetQ(k, v){ S.draft[k] = v; dirtyFoot(); }
+function cSetQ(k, v){ S.draft.c[k] = v; dirtyFoot(); }
 function cSet(k, v){ S.draft.c[k] = v; S.draft._dirty = true; renderDetail(); }
 function cToggle(k){
   const c = S.draft.c;
@@ -1426,14 +1465,13 @@ function sheetEnsamblador(){
   const items = selItems();
   const yaAsig = items.filter(i => i.ensamblador).length;
   const desp = items.filter(i => i.despachado).length;
-  const body = `<div class="field"><span class="lbl">Ensamblador</span>
-      <select id="gEns"><option value="">— Elegir —</option>${(S.ensambladores||[]).map(n=>`<option>${esc(n)}</option>`).join('')}</select></div>
+  const body = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('gEns', '', '', 'Elegir')}</div>
     <div class="fgrid"><div class="field"><span class="lbl">Día inicio</span><input type="date" id="gDia" value="${today()}"></div>
       <div class="field"><span class="lbl">Hora inicio</span><input type="time" id="gHora" value="${nowTime()}"></div></div>
     ${warn(yaAsig, 'ya tienen ensamblador; se les reemplazará por el nuevo.')}
     ${warn(desp, 'ya están despachados.')}`;
   openSheet('Asignar ensamblador', subSel(items.length), body, `Asignar a ${fmtN(items.length)}`, async () => {
-    const ens = $('#gEns').value, dia = $('#gDia').value, hora = $('#gHora').value;
+    const ens = pfVal('gEns'), dia = $('#gDia').value, hora = $('#gHora').value;
     if(!ens){ toast('Elige el ensamblador', true); return false; }
     if(!dia){ toast('Falta el día de inicio', true); return false; }
     await applyGroup(items, () => ({ensamblador:ens, dia_inicio:dia, hora_inicio:nz(hora)}));
@@ -1483,13 +1521,12 @@ function sheetInstalacion(){
   const items = selItems();
   const noDesp = items.filter(i => !i.despachado).length;
   const ya = items.filter(i => i.instalado).length;
-  const instList = [...new Set(S.items.map(i=>i.instalador).filter(Boolean))].sort(nat);
   const body = `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="gFecha" value="${today()}"></div>
-      <div class="field"><span class="lbl">Instalador</span><input id="gInst" list="dlInst2" autocapitalize="characters"><datalist id="dlInst2">${instList.map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div></div>
+      <div class="field"><span class="lbl">Instalador</span>${personaField('gInst', '', '', 'Elegir')}</div></div>
     ${warn(noDesp, 'no figuran como despachados. ¿Seguro que ya están en obra?')}
     ${warn(ya, 'ya estaban instalados; se reemplazará su fecha e instalador.')}`;
   openSheet('Registrar instalación', subSel(items.length), body, `Instalar ${fmtN(items.length)}`, async () => {
-    const f = $('#gFecha').value, ins = $('#gInst').value.trim().toUpperCase();
+    const f = $('#gFecha').value, ins = pfVal('gInst');
     if(!f){ toast('Falta la fecha de instalación', true); return false; }
     await applyGroup(items, () => ({instalado:true, fecha_instalacion:f, instalador:nz(ins)}));
   });
