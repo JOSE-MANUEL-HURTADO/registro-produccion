@@ -409,7 +409,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2086,10 +2086,16 @@ function ordenesHTML(){
   }
   return h + '</div>';
 }
-function ordenesLeer(files){
+// ¿Es un PDF? Por la extensión, por el tipo o, si el archivo no tiene extensión, por su contenido (empieza con %PDF)
+async function esPDF(f){
+  if(/\.pdf$/i.test(f.name) || f.type === 'application/pdf') return true;
+  if(f.name.startsWith('.') || /\.[a-z0-9]{2,5}$/i.test(f.name)) return false;
+  try{ return (await f.slice(0, 5).text()) === '%PDF-'; }catch(e){ return false; }
+}
+async function ordenesLeer(files){
   const m = new Map(); O.sinNum = []; O.otros = 0; O.dup = [];
   for(const f of files){
-    if(!/\.pdf$/i.test(f.name)){ if(!f.name.startsWith('.')) O.otros++; continue; }
+    if(!(await esPDF(f))){ if(!f.name.startsWith('.')) O.otros++; continue; }
     const base = f.name.replace(/\.pdf$/i, '').trim(), mm = base.match(/^\D{0,4}?(\d{3,6})/);
     if(!mm){ O.sinNum.push(f.name); continue; }
     const num = mm[1];
