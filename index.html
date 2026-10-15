@@ -374,7 +374,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1994,7 +1994,7 @@ function bHora(v, campo, notas){
   notas && notas.push(campo+': '+v); return null;
 }
 function bProc(v){ const s = (bTxt(v)||'').toUpperCase(); return s.startsWith('X') ? 'X' : (s==='+' ? '+' : null); }
-function bSiNo(v){ const s = (bTxt(v)||'').toUpperCase(); return s==='SI' ? true : (s==='NO' ? false : null); }
+function bSiNo(v){ const s = normH(bTxt(v)||''); return (s==='SI'||s==='X') ? true : (s==='NO' ? false : null); }   // acepta SI, Sí, si, X
 function bCorte(v){ if(typeof v === 'number' && v > 30000 && v < 60000 && !Number.isInteger(v)) return String(Math.floor(v)); return v==null ? null : (bTxt(v)); }
 
 function migracionHTML(){
