@@ -174,6 +174,10 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .row.open{background:rgba(255,255,255,.05);}
 .row.open::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--text);}
 .pf input{text-transform:uppercase;}
+.resp{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:-4px 0 16px;font-size:12.5px;color:var(--muted);}
+.resp.ok{color:var(--inst);}
+.resp.warn{border:1px solid var(--cola);background:rgba(200,168,75,.08);padding:12px 14px;color:var(--text2);}
+.resp.warn b{color:var(--cola);font-weight:500;}
 fieldset.d-fs{border:0;padding:0;margin:0;min-width:0;}
 fieldset.d-fs:disabled{opacity:.8;}
 fieldset.d-fs:disabled .quick{display:none;}
@@ -354,7 +358,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.3';
+const APP_VERSION = '2.4';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -455,6 +459,11 @@ const API = {
     ]);
     return [...new Set([...e1, ...e2].map(r => normNom(r.ensamblador)).concat(i1.map(r => normNom(r.instalador))).filter(Boolean))].sort(nat);
   },
+  async ultimoRespaldo(){
+    const {data,error} = await this.sb.from('respaldos').select('cuando,origen,filas').order('cuando',{ascending:false}).limit(1);
+    if(error) throw error; return data[0] || null;
+  },
+  async registrarRespaldo(origen, filas){ const {error} = await this.sb.rpc('registrar_respaldo', {p_origen:origen, p_filas:filas}); if(error) throw error; },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -638,6 +647,7 @@ async function afterLogin(ses){
   if(!puedeSeleccionar()) document.body.classList.add('ro');
   if(rolEs('cobros')) document.body.classList.add('rol-cobros');
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
+  if(isGerente()) loadRespaldo();
   if(puedeRegistrar()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
   window.addEventListener('popstate', onPop);
@@ -733,7 +743,7 @@ function renderHome(){
   const legend = anual
     ? [['var(--cola)','En cola'],['var(--ens)','En planta'],['var(--desp)','Despachado sin instalar'],['var(--inst)','Instalado']]
     : ['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'].map(k => [STAGES[k].c, k==='DESPACHADO' ? 'Despachado sin instalar' : STAGES[k].t]);
-  $('#app').innerHTML = shell(`
+  $('#app').innerHTML = shell(`${respaldoHTML()}
     <div class="tabs">${homeTabs()}
     </div>
     <div class="home-head">
@@ -810,7 +820,7 @@ const diasTxt = d => d == null ? '' : d <= 0 ? 'hoy' : d === 1 ? 'hace 1 día' :
 
 function renderPlanta(){
   if(!S.plSt) S.plSt = 'PRODUCCIÓN';
-  $('#app').innerHTML = shell(`
+  $('#app').innerHTML = shell(`${respaldoHTML()}
     <div class="tabs">${homeTabs()}</div>
     <div class="home-head">
       <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div></div>
@@ -2142,8 +2152,32 @@ async function exportar(prefijo){
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
     XLSX.writeFile(wb, `${prefijo}_${today()}.xlsx`);
     toast(`✓ Exportados ${fmtN(rows.length)} registros`);
+    if(isGerente()){
+      try{ localStorage.setItem('ult_respaldo', new Date().toISOString()); }catch(e){}
+      API.registrarRespaldo('app', rows.length).catch(()=>{}).finally(() => loadRespaldo());
+    }
     return true;
   }catch(e){ toast('Error al exportar: '+errMsg(e), true); return false; }
+}
+
+// ── Copia de seguridad: aviso solo para el gerente ──
+async function loadRespaldo(){
+  if(!isGerente()) return;
+  let r = null;
+  try{ r = await API.ultimoRespaldo(); }
+  catch(e){ try{ const t = localStorage.getItem('ult_respaldo'); r = t ? {cuando:t, origen:'app'} : null; }catch(_){ } }
+  S.resp = r || {cuando:null};
+  if(S.view === 'home') renderHome();
+}
+function respaldoHTML(){
+  if(!isGerente() || !S.resp) return '';
+  const c = S.resp.cuando ? new Date(S.resp.cuando) : null;
+  const horas = c ? (Date.now() - c) / 36e5 : Infinity;
+  const cuando = c ? c.toLocaleString('es-CO', {day:'2-digit', month:'2-digit', year:'numeric', hour:'numeric', minute:'2-digit'}) : '';
+  const origen = S.resp.origen === 'mac' ? 'automática en el Mac' : 'manual desde la app';
+  if(horas < 26) return `<div class="resp ok">✓ Copia de seguridad ${cuando} · ${origen}</div>`;
+  return `<div class="resp warn"><div><b>Copia de seguridad pendiente.</b> ${c ? `La última fue el ${cuando} (${origen}).` : 'Aún no hay ninguna copia registrada.'}</div>
+    <button class="btn sm primary" onclick="exportar('COPIA_SEGURIDAD')">${ICON.down} Hacer copia ahora</button></div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
