@@ -144,18 +144,33 @@ function run(argv){
     const d = new Date(), pad = n => String(n).padStart(2, '0');
     const nombre = `COPIA_SEGURIDAD_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.xlsx`;
     sh(`cd ${q(dir)} && /usr/bin/zip -q -X -r ../out.xlsx '[Content_Types].xml' _rels xl`);
-    sh(`mkdir -p ${q(cfg.carpeta)} && mv ${q(tmp + '/out.xlsx')} ${q(cfg.carpeta + '/' + nombre)}`);
+    // Copiar (no mover): las carpetas de Google Drive / iCloud no aceptan "mover" desde /tmp
+    const src = tmp + '/out.xlsx';
+    let destino = cfg.carpeta, aviso = '';
+    const copiar = dir => {
+      sh(`mkdir -p ${q(dir)}`);
+      try{ sh(`/bin/cp -X ${q(src)} ${q(dir + '/' + nombre)}`); }
+      catch(e){ sh(`/bin/cat ${q(src)} > ${q(dir + '/' + nombre)}`); }
+      const a = sh(`/usr/bin/stat -f %z ${q(src)}`).trim(), b = sh(`/usr/bin/stat -f %z ${q(dir + '/' + nombre)}`).trim();
+      if(a !== b) throw new Error('El archivo copiado quedó incompleto');
+    };
+    try{ copiar(destino); }
+    catch(e){
+      destino = HOME + '/Respaldos Eliptica';
+      aviso = ' (no se pudo escribir en ' + cfg.carpeta + ': ' + e.message + ' — se guardó en ' + destino + ')';
+      copiar(destino);
+    }
 
     // 4. Borrar copias más viejas que N días (por defecto 60)
-    sh(`find ${q(cfg.carpeta)} -maxdepth 1 -name 'COPIA_SEGURIDAD_*.xlsx' -mtime +${Number(cfg.dias) || 60} -delete`);
+    try{ sh(`find ${q(destino)} -maxdepth 1 -name 'COPIA_SEGURIDAD_*.xlsx' -mtime +${Number(cfg.dias) || 60} -delete`); }catch(e){}
 
     // 5. Anotar la copia en la app (aparece en el aviso del gerente)
     writeText(tmp + '/r.json', JSON.stringify({p_origen: 'mac', p_filas: rows.length}));
     sh(`/usr/bin/curl -sS --max-time 60 -o /dev/null -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/r.json')} ${q(cfg.url + '/rest/v1/rpc/registrar_respaldo')}`);
 
-    log('OK ' + rows.length + ' filas -> ' + nombre);
-    notify(rows.length.toLocaleString('es-CO') + ' registros guardados', nombre);
-    return 'OK ' + rows.length + ' filas -> ' + cfg.carpeta + '/' + nombre;
+    log('OK ' + rows.length + ' filas -> ' + destino + '/' + nombre + aviso);
+    notify(rows.length.toLocaleString('es-CO') + ' registros guardados' + (aviso ? ' en Respaldos Eliptica' : ''), nombre);
+    return 'OK ' + rows.length + ' filas -> ' + destino + '/' + nombre + aviso;
   }catch(e){
     log('ERROR ' + e.message);
     notify('No se pudo hacer la copia: ' + e.message, 'Revisa el registro en Consola');
@@ -191,7 +206,7 @@ printf "✓ Programada todos los días a las %02d:%02d\n" $H $M
 # 5. Primera copia de prueba (corre igual que la automática)
 echo ""
 echo "Haciendo la primera copia de prueba… (puede tardar 1 o 2 minutos)"
-ANTES=$(wc -l < "$LOG" 2>/dev/null || echo 0)
+touch "$LOG"; ANTES=$(wc -l < "$LOG")
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 for i in {1..90}; do
   sleep 2
