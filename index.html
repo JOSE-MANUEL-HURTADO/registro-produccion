@@ -374,7 +374,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -495,12 +495,26 @@ const API = {
     }
     return out;
   },
+  // Usuario de cobros: solo puede registrar instalación (función de la base que no toca nada más)
+  async instalacion(ids, patch){
+    const extra = Object.keys(patch).filter(k => !['instalado','fecha_instalacion','instalador','status'].includes(k));
+    if(extra.length) throw new Error('Sin permiso para modificar ' + extra.join(', '));
+    const base = ids.length === 1 ? (byId(ids[0]) || {}) : {};
+    const v = k => (k in patch) ? patch[k] : base[k];
+    let out = [];
+    for(let i=0; i<ids.length; i+=150){
+      const {data,error} = await this.sb.rpc('registrar_instalacion', {p_ids: ids.slice(i,i+150), p_instalado: !!v('instalado'), p_fecha: v('fecha_instalacion') || null, p_instalador: v('instalador') || null});
+      if(error) throw error; out = out.concat(data || []);
+    }
+    return out;
+  },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
   async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
   async ensambladores(){ const {data,error} = await this.sb.from('ensambladores').select('nombre').eq('activo',true).order('nombre'); if(error) throw error; return data.map(r=>r.nombre); },
   async update(ids, patch){
+    if(rolEs('cobros')) return this.instalacion(ids, patch);
     let out = [];
     for(let i=0; i<ids.length; i+=150){
       const {data,error} = await this.sb.from('items').update(patch).in('id', ids.slice(i,i+150)).select('*');
@@ -606,6 +620,7 @@ const registraCobros = () => rolEs('gerente','cobros');      // marca / quita co
 const vePrecio = () => rolEs('gerente','consulta');          // precios y exportar
 const veDash = vePrecio;                                     // dashboard
 const puedeSeleccionar = () => puedeRegistrar() || rolEs('cobros');
+const registraInst = () => rolEs('gerente','asistente','cobros');     // cobros también registra instalación
 
 // ── Lista desplegable de personas (ensambladores / instaladores) con opción de escribir un nombre nuevo ──
 const normNom = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
@@ -680,7 +695,7 @@ async function afterLogin(ses){
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
   if(isGerente()) loadRespaldo();
   if(rolEs('cobros')) S.homeTab = 'cobros';
-  if(puedeRegistrar()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
+  if(registraInst()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
   window.addEventListener('popstate', onPop);
   history.replaceState({v:'home'}, '');
@@ -1315,7 +1330,7 @@ function renderSelbar(){
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
       <button class="btn sm" onclick="sheetDespacho()">Despacho</button>
-      <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
+      <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
       ${registraCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
       <button class="btn sm btn-cob" onclick="sheetCobro('i')">$ Cobro instalación</button>` : ''}
     </div>
@@ -1410,6 +1425,8 @@ function renderDetail(){
           <div class="field"><span class="lbl">Remisión</span><input value="${esc(d.remision||'')}" inputmode="numeric" onchange="dSetQ('remision',this.value.trim()||null)"></div>
         </div>` : ''}
       </div>
+      </fieldset>
+      <fieldset class="d-fs" ${registraInst() ? '' : 'disabled'}>
       <div class="d-sec"><div class="lbl">Instalación</div>
         <div class="switch"><span>${d.instalado ? 'Instalado' : 'No instalado'}</span><button class="tgl ${d.instalado?'on':''}" onclick="dToggle('instalado')"></button></div>
         ${d.instalado ? `<div class="fgrid">
@@ -1429,7 +1446,7 @@ function renderDetail(){
           </div>` : ''}`).join('')}
       </div></fieldset>` : ''}
     </div>
-    <div class="d-foot" ${puedeRegistrar() || registraCobros() ? '' : 'style="display:none"'}>
+    <div class="d-foot" ${puedeRegistrar() || registraCobros() || registraInst() ? '' : 'style="display:none"'}>
       <button class="btn" onclick="dDiscard()" ${d._dirty?'':'disabled style="opacity:.4"'}>Descartar</button>
       <button class="btn primary" onclick="dSave()" ${d._dirty?'':'disabled'}>Guardar</button>
     </div>
@@ -1469,6 +1486,7 @@ function dDiscard(){ S.draft = draftOf(byId(S.detailId)); renderDetail(); }
 
 async function dSave(){
   const it = byId(S.detailId), d = S.draft;
+  if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
   if(puedeRegistrar()){
   if(d.despachado && !d.fecha_despacho) return toast('Falta la fecha de despacho', true);
   if(d.despachado && !d.remision) return toast('Falta el número de remisión', true);
