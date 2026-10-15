@@ -109,8 +109,10 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .other-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px;}
 .other-list button{background:var(--surface);border:1px solid var(--border);padding:12px 14px;text-align:left;display:flex;justify-content:space-between;gap:8px;font-size:13px;}
 .other-list button span{color:var(--muted);}
+.st-tiles.cob-tiles{grid-template-columns:repeat(2,1fr);}
 .st-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:18px;}
 @media(max-width:900px){.st-tiles{grid-template-columns:1fr 1fr;}.st-tiles .st-tile:last-child{grid-column:1/-1;}}
+@media(max-width:900px){.st-tiles.cob-tiles .st-tile:last-child{grid-column:auto;}}
 .seg-modo{display:inline-flex;border:1px solid var(--border);margin:0 0 12px;}
 .seg-modo button{min-height:40px;padding:0 16px;font-family:var(--sans);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
 .seg-modo button.on{background:var(--text);color:#181818;}
@@ -123,13 +125,14 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .st-tile span{font-size:12px;color:var(--muted);}
 .st-tile.on{background:var(--surface3);border-color:var(--text2);}
 .st-tile.on .t{color:var(--text);}
-.pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;align-items:start;}
+.pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:10px;align-items:start;}
 @media(max-width:520px){.pl-grid{grid-template-columns:1fr;}}
 .pl-card{background:var(--surface);border:1px solid var(--border);}
 .pl-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);}
 .pl-head .n{font-family:var(--sans);font-weight:500;font-size:15px;letter-spacing:.12em;text-transform:uppercase;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pl-head .n.sin{color:var(--cola);}
-.pl-head .m{font-size:12px;color:var(--muted);white-space:nowrap;}
+.pl-head .m{font-size:12px;color:var(--muted);text-align:right;flex-shrink:0;max-width:55%;}
+.pl-card{min-width:0;}
 .pl-head .m b{color:var(--text);font-weight:500;font-size:15px;}
 .pl-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;width:100%;text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);}
 .pl-row:last-child{border-bottom:0;}
@@ -364,7 +367,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.7';
+const APP_VERSION = '2.8';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -472,6 +475,7 @@ const API = {
   async registrarRespaldo(origen, filas){ const {error} = await this.sb.rpc('registrar_respaldo', {p_origen:origen, p_filas:filas}); if(error) throw error; },
   async usuarios(){ const {data,error} = await this.sb.rpc('usuarios_lista'); if(error) throw error; return data || []; },
   async asignarRol(id, rol, nombre){ const {error} = await this.sb.rpc('asignar_rol', {p_id:id, p_rol:rol, p_nombre:nombre||null}); if(error) throw error; },
+  async pendientesCobro(){ const {data,error} = await this.sb.rpc('pendientes_cobro'); if(error) throw error; return data || []; },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -656,6 +660,7 @@ async function afterLogin(ses){
   if(rolEs('cobros')) document.body.classList.add('rol-cobros');
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
   if(isGerente()) loadRespaldo();
+  if(rolEs('cobros')) S.homeTab = 'cobros';
   if(puedeRegistrar()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
   window.addEventListener('popstate', onPop);
@@ -742,6 +747,7 @@ function setHomeTab(t){ S.homeTab = t; renderHome(); }
 
 function renderHome(){
   if(S.homeTab === 'planta') return renderPlanta();
+  if(S.homeTab === 'cobros') return renderCobros();
   const anual = S.homeTab === 'anio';
   const res = resumenObras();
   const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a), {d:0,i:0});
@@ -773,12 +779,14 @@ function homeTabs(){
   const t = S.homeTab;
   return `<button class="tab ${t==='activas'?'on':''}" onclick="setHomeTab('activas')">Obras activas</button>
       <button class="tab ${t==='planta'?'on':''}" onclick="setHomeTab('planta')">Planta</button>
-      <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>`;
+      <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>
+      ${veCobros() ? `<button class="tab ${t==='cobros'?'on':''}" onclick="setHomeTab('cobros')">Cobros</button>` : ''}`;
 }
 function refreshHomeBox(){
   S.plCache = null;
   if(S.homeTab === 'anio') renderAnualBox();
   else if(S.homeTab === 'planta') renderPlantaBox();
+  else if(S.homeTab === 'cobros') renderCobrosBox();
   else renderObrasBox(resumenObras());
 }
 const PL_ST = [
@@ -941,6 +949,61 @@ function plPorObra(list, st){
         <span class="o"><em>OP ${esc(f.op||'—')}</em>${st==='ENSAMBLADO' && f.ens.length ? ' · '+esc(f.ens.join(', ')) : ''}</span><span class="k">${fmtN(f.n)}</span>
         <span class="d">${fmtN(f.m2,1)} m²${f.f ? ` · ${campo[1]} ${fmtD(f.f)} · <span class="${st==='EN COLA'&&d>30 || st!=='EN COLA'&&d>7 ?'old':''}">${diasTxt(d)}</span>` : ''}</span></button>`; }).join('')}
     </div>`; }).join('')}</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  COBROS — pendiente por cobrar de despacho e instalación (todas las obras)
+// ════════════════════════════════════════════════════════════════
+function renderCobros(){
+  if(!S.cobTipo) S.cobTipo = 'D';
+  $('#app').innerHTML = shell(`${respaldoHTML()}
+    <div class="tabs">${homeTabs()}</div>
+    <div class="home-head">
+      <div><div class="h1">Por cobrar</div><div class="h1-sub">Todas las obras · lo despachado o instalado que aún no se ha cobrado · ${liveHTML()}</div></div>
+      <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP o remisión…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
+    </div>
+    <div class="st-tiles cob-tiles" id="stTiles"></div>
+    <div id="obrasBox"></div>`);
+  const inp = $('#qObra');
+  inp.oninput = () => { S.q = inp.value; renderCobrosBox(); };
+  renderCobrosBox();
+}
+function setCobTipo(t){ S.cobTipo = t; renderCobrosBox(); }
+async function loadCobPend(){
+  if(S.cobLoading) return; S.cobLoading = true;
+  try{ S.cobPend = await API.pendientesCobro(); S.cobErr = null; }
+  catch(e){ S.cobPend = []; S.cobErr = /pendientes_cobro|schema cache|PGRST/i.test(errMsg(e)) ? 'Falta crear la consulta de cobros en Supabase (SQL "pendientes_cobro").' : errMsg(e); }
+  S.cobLoading = false;
+  if(S.view === 'home' && S.homeTab === 'cobros') renderCobrosBox();
+}
+function renderCobrosBox(){
+  const tiles = $('#stTiles'), box = $('#obrasBox'); if(!box) return;
+  if(!S.cobPend){ loadCobPend(); if(tiles) tiles.innerHTML = ''; box.innerHTML = '<div class="loading"><div class="spin"></div>Calculando lo pendiente por cobrar</div>'; return; }
+  const sum = (l, k) => l.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+  const T = [['D','Por cobrar despacho','Despachado sin cobrar','var(--desp)'],['I','Por cobrar instalación','Instalado sin cobrar','var(--inst)']];
+  if(tiles) tiles.innerHTML = T.map(([k,t,d,c]) => {
+    const l = S.cobPend.filter(r => r.tipo === k), ob = new Set(l.map(r => r.obra)).size;
+    return `<button class="st-tile ${S.cobTipo===k?'on':''}" style="--c:${c}" onclick="setCobTipo('${k}')">
+      <span class="t">$ ${t}</span><b>${fmtN(sum(l,'n'))}</b>
+      <span>${fmtN(ob)} obra${ob===1?'':'s'} · ${fmtN(sum(l,'m2'),1)} m²${vePrecio() ? ' · $' + fmtN(sum(l,'valor')) : ''}</span></button>`;
+  }).join('');
+  const q = S.q.trim().toUpperCase();
+  const list = S.cobPend.filter(r => r.tipo === S.cobTipo && (!q || [r.obra, r.op, r.remisiones].some(v => v && String(v).toUpperCase().includes(q))));
+  const desc = T.find(x => x[0] === S.cobTipo);
+  let h = S.cobErr ? `<div class="warn">${esc(S.cobErr)}</div>` : '';
+  h += `<div class="section-t">${desc[1]} · ${fmtN(sum(list,'n'))} ítems</div>`;
+  if(!list.length){ box.innerHTML = h + `<div class="empty">No hay nada ${S.cobTipo==='D'?'despachado':'instalado'} pendiente por cobrar${q ? ' que coincida con “'+esc(S.q)+'”' : ''}.</div>`; return; }
+  const g = [...grp(list, r => r.obra).entries()].sort((a,b) => nat(a[0], b[0]));
+  const est = S.cobTipo === 'D' ? 'COB_D' : 'COB_I';
+  h += `<div class="pl-grid">${g.map(([obra, rows]) => {
+    rows.sort((a,b) => nat(a.op, b.op));
+    return `<div class="pl-card">
+      <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(sum(rows,'n'))}</b> ítem${sum(rows,'n')===1?'':'s'}${vePrecio() ? ' · $' + fmtN(sum(rows,'valor')) : ' · ' + fmtN(sum(rows,'m2'),1) + ' m²'}</span></div>
+      ${rows.map(r => `<button class="pl-row" onclick="${plGo(obra, est, r.op, '')}">
+        <span class="o"><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
+        <span class="d">${fmtN(r.m2,1)} m²${vePrecio() && r.valor ? ' · $' + fmtN(r.valor) : ''}${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}</span></button>`).join('')}
+    </div>`; }).join('')}</div>`;
+  box.innerHTML = h;
 }
 
 async function loadAnual(){
@@ -2124,7 +2187,7 @@ function sheetCobro(tipo){
 //  SINCRONIZACIÓN
 // ════════════════════════════════════════════════════════════════
 function mergeRows(rows){
-  S.plCache = null;
+  S.plCache = null; S.cobPend = null;
   for(const r of rows){
     const i = S.items.findIndex(x => x.id === r.id);
     if(i >= 0) S.items[i] = {...S.items[i], ...r};
@@ -2145,6 +2208,7 @@ function mergeRows(rows){
 const pick = r => ({id:r.id, obra:r.obra, status:r.status, despachado:r.despachado, instalado:r.instalado, m2:r.m2, fecha_op:r.fecha_op, dia_inicio:r.dia_inicio, hora_inicio:r.hora_inicio, dia_final:r.dia_final, ensamblador:r.ensamblador, op:r.op, fecha_despacho:r.fecha_despacho});
 
 function refreshAfterChange(){
+  S.cobPend = null;
   if(S.view === 'obra'){
     const y = window.scrollY;
     renderChips(); renderList(); renderSelbar();
