@@ -364,7 +364,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.5';
+const APP_VERSION = '2.6';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -381,7 +381,7 @@ const STAGES = {
   'DESPACHADO':{c:'var(--desp)', t:'Despachado'},
   'INSTALADO': {c:'var(--inst)', t:'Instalado'}
 };
-const MIN_COLS = 'id,obra,status,despachado,instalado,m2,fecha_op,dia_inicio,dia_final,ensamblador,op,fecha_despacho';
+const MIN_COLS = 'id,obra,status,despachado,instalado,m2,fecha_op,dia_inicio,hora_inicio,dia_final,ensamblador,op,fecha_despacho';
 const ANUAL_COLS = 'id,obra,fecha_op,dia_inicio,fecha_despacho,status,despachado,instalado';
 const EDITABLE = ['cortado','troquelado','mecanizado','programado','vidrio_proc','prealistado','ensamblador','dia_inicio','hora_inicio','dia_final','hora_final','despachado','fecha_despacho','remision','instalado','fecha_instalacion','instalador'];
 
@@ -906,6 +906,7 @@ const plGoF = (obra, op, q, campo, d1, d2, label) => `openObra(decodeURIComponen
 function grp(list, fk){ const m = new Map(); for(const it of list){ const k = fk(it); if(!m.has(k)) m.set(k, []); m.get(k).push(it); } return m; }
 const minF = (l, k) => l.reduce((a,i) => i[k] && (!a || i[k] < a) ? i[k] : a, null);
 const maxF = (l, k) => l.reduce((a,i) => i[k] && (!a || i[k] > a) ? i[k] : a, null);
+const hora12 = h => { const [H,M] = String(h).split(':').map(Number); return `${H%12||12}:${pad(M||0)} ${H<12?'a. m.':'p. m.'}`; };
 const encQ = v => encodeURIComponent(v||'').replace(/'/g,'%27');
 const plGo = (obra, estado, op, q) => `openObra(decodeURIComponent('${encQ(obra)}'), false, '', {estado:'${estado}', op:decodeURIComponent('${encQ(op)}'), q:decodeURIComponent('${encQ(q)}')})`;
 
@@ -914,7 +915,7 @@ function plPorEnsamblador(list){
     .sort((a,b) => (a[0]==='') - (b[0]==='') || nat(a[0], b[0]));
   return `<div class="pl-grid">${g.map(([ens, items]) => {
     const filas = [...grp(items, it => it.obra + '\u0001' + (it.op||'')).values()]
-      .map(l => ({obra:l[0].obra, op:l[0].op, n:l.length, desde:minF(l,'dia_inicio')}))
+      .map(l => { const p = l.filter(i => i.dia_inicio).sort((a,b) => (a.dia_inicio + (a.hora_inicio||'99')).localeCompare(b.dia_inicio + (b.hora_inicio||'99')))[0]; return {obra:l[0].obra, op:l[0].op, n:l.length, desde:p ? p.dia_inicio : null, hora:p && p.hora_inicio ? hora12(p.hora_inicio) : ''}; })
       .sort((a,b) => nat(a.desde||'9999', b.desde||'9999') || nat(a.obra,b.obra) || nat(a.op,b.op));
     const nob = new Set(items.map(i=>i.obra)).size;
     return `<div class="pl-card">
@@ -922,7 +923,7 @@ function plPorEnsamblador(list){
         <span class="m"><b>${fmtN(items.length)}</b> ítem${items.length===1?'':'s'} · ${fmtN(nob)} obra${nob===1?'':'s'}</span></div>
       ${filas.map(f => { const d = diasDesde(f.desde); return `<button class="pl-row" onclick="${plGo(f.obra,'PRODUCCIÓN',f.op,ens)}">
         <span class="o">${esc(f.obra)} · <em>OP ${esc(f.op||'—')}</em></span><span class="k">${fmtN(f.n)}</span>
-        <span class="d">${f.desde ? `Inició ${fmtD(f.desde)} · <span class="${d>7?'old':''}">${diasTxt(d)}</span>` : 'Sin fecha de inicio'}</span></button>`; }).join('')}
+        <span class="d">${f.desde ? `Inició ${fmtD(f.desde)}${f.hora ? ' a las ' + f.hora : ''} · <span class="${d>7?'old':''}">${diasTxt(d)}</span>` : 'Sin fecha de inicio'}</span></button>`; }).join('')}
     </div>`; }).join('')}</div>`;
 }
 
@@ -2141,7 +2142,7 @@ function mergeRows(rows){
     }
   }
 }
-const pick = r => ({id:r.id, obra:r.obra, status:r.status, despachado:r.despachado, instalado:r.instalado, m2:r.m2, fecha_op:r.fecha_op, dia_inicio:r.dia_inicio, dia_final:r.dia_final, ensamblador:r.ensamblador, op:r.op, fecha_despacho:r.fecha_despacho});
+const pick = r => ({id:r.id, obra:r.obra, status:r.status, despachado:r.despachado, instalado:r.instalado, m2:r.m2, fecha_op:r.fecha_op, dia_inicio:r.dia_inicio, hora_inicio:r.hora_inicio, dia_final:r.dia_final, ensamblador:r.ensamblador, op:r.op, fecha_despacho:r.fecha_despacho});
 
 function refreshAfterChange(){
   if(S.view === 'obra'){
