@@ -120,6 +120,17 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .cob-its{color:var(--text2)!important;font-size:12px!important;line-height:1.45;white-space:normal;word-break:break-word;}
 .cob-its b{font-family:var(--mono);font-weight:400;color:var(--text);}
 .cob-its i{font-style:normal;color:var(--cola);font-family:var(--mono);}
+.cob-cortes{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);}
+.cob-cortes .lbl{font-family:var(--sans);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+.cob-cortes select{flex:1;min-width:0;min-height:44px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:0 10px;font:inherit;font-size:14px;}
+.cob-hq{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border);}
+.cob-hq .search{flex:1 1 220px;min-width:0;}
+.cob-opH{background:var(--surface2);}
+.cob-it{padding-left:28px;}
+.cob-it .ci{font-family:var(--mono);font-weight:400;color:var(--text);}
+.cob-it .o{white-space:normal;}
+.pl-row .k.sm{font-size:12px;color:var(--text2);}
+.cob-res{font-size:12.5px;line-height:1.6;color:var(--text2);max-height:220px;overflow:auto;border:1px solid var(--border);padding:8px 10px;margin-top:10px;}
 .cob-ver{color:var(--text2);text-decoration:underline;text-underline-offset:2px;}
 .cob-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:8px;}
 .cob-ob{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);padding:14px;text-align:left;}
@@ -395,7 +406,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -438,6 +449,7 @@ const yearOf = it => {
 };
 const yearsTxt = set => { const ys = [...set].filter(y => y !== 'S/F').sort(); if(!ys.length) return ''; return ys.length === 1 ? ys[0] : ys[0]+'–'+ys[ys.length-1]; };
 const stageOf = it => it.instalado ? 'INSTALADO' : (it.despachado ? 'DESPACHADO' : (it.status||'EN COLA'));
+const estaEnsamblado = it => !!it.dia_final || ['ENSAMBLADO','DESPACHADO'].includes(it.status) || !!it.despachado;
 const deriveStatus = it => it.despachado ? 'DESPACHADO' : (it.dia_final ? 'ENSAMBLADO' : ((it.ensamblador||it.dia_inicio) ? 'PRODUCCIÓN' : 'EN COLA'));
 const ICON = {
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -509,6 +521,18 @@ const API = {
     for(const t of ['D','I']){
       for(let off = 0; ; off += 1000){
         const {data,error} = await this.sb.rpc('pendientes_cobro').eq('tipo', t).order('obra').order('op').range(off, off + 999);
+        if(error) throw error;
+        out = out.concat(data || []);
+        if(!data || data.length < 1000) break;
+      }
+    }
+    return out;
+  },
+  async cortesCobro(){
+    let out = [];
+    for(const t of ['D','I']){
+      for(let off = 0; ; off += 1000){
+        const {data,error} = await this.sb.rpc('cortes_cobro').eq('tipo', t).order('obra').order('num').range(off, off + 999);
         if(error) throw error;
         out = out.concat(data || []);
         if(!data || data.length < 1000) break;
@@ -1026,9 +1050,10 @@ function renderCobros(){
   $('#app').innerHTML = shell(`${respaldoHTML()}
     <div class="tabs">${homeTabs()}</div>
     <div class="home-head">
-      <div><div class="h1">Por cobrar</div><div class="h1-sub">Todas las obras · lo despachado o instalado que aún no se ha cobrado · ${liveHTML()}</div></div>
+      <div><div class="h1" id="cobH1">Por cobrar</div><div class="h1-sub"><span id="cobSub">Todas las obras · lo despachado o instalado que aún no se ha cobrado</span> · ${liveHTML()}</div></div>
       <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP o remisión…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
+    <div class="seg-modo" id="cobSeg"></div>
     <div class="st-tiles cob-tiles" id="stTiles"></div>
     <div id="obrasBox"></div>`);
   const inp = $('#qObra');
@@ -1069,11 +1094,11 @@ function cobRegistrar(){
     else await API.marcarCobros(ids, k, true, f, num);
     const m = cobMarcas(); rows.forEach(r => delete m[cobKey(obra, r.op)]); cobGuardar(m);
     toast(`✓ ${fmtN(ids.length)} ítems marcados como cobrados · corte ${num}`);
-    S.cobPend = null; renderCobrosBox();
+    S.cobPend = null; S.cobCortes = null; S.cobH = null; renderCobrosBox();
   });
 }
-function setCobTipo(t){ S.cobTipo = t; S.cobObra = null; renderCobrosBox(); }
-function setCobObra(o){ S.cobObra = o; renderCobrosBox(); window.scrollTo(0, o ? ($('#obrasBox').offsetTop - 70) : 0); }
+function setCobTipo(t){ S.cobTipo = t; S.cobObra = null; S.cobCorte = null; S.cobHSel = new Set(); renderCobrosBox(); }
+function setCobObra(o){ S.cobObra = o; S.cobCorte = null; S.cobHq = ''; S.cobHSel = new Set(); renderCobrosBox(); window.scrollTo(0, o ? ($('#obrasBox').offsetTop - 70) : 0); }
 async function loadCobPend(){
   if(S.cobLoading) return; S.cobLoading = true;
   try{ S.cobPend = await API.pendientesCobro(); S.cobErr = null; }
@@ -1108,6 +1133,12 @@ function cobItemsHTML(obra, op){
 }
 function renderCobrosBox(){
   const tiles = $('#stTiles'), box = $('#obrasBox'); if(!box) return;
+  const hecho = S.cobModo === 'hecho';
+  const seg = $('#cobSeg');
+  if(seg) seg.innerHTML = `<button class="${hecho?'':'on'}" onclick="setCobModo('pend')">Por cobrar</button><button class="${hecho?'on':''}" onclick="setCobModo('hecho')">Cobrados · cortes</button>`;
+  if($('#cobH1')) $('#cobH1').textContent = hecho ? 'Cobrados' : 'Por cobrar';
+  if($('#cobSub')) $('#cobSub').textContent = hecho ? 'Cortes cobrados por obra · revisa o quita el cobro de ítems' : 'Todas las obras · lo despachado o instalado que aún no se ha cobrado';
+  if(hecho) return renderCobradosBox();
   if(!S.cobPend){ loadCobPend(); if(tiles) tiles.innerHTML = ''; box.innerHTML = '<div class="loading"><div class="spin"></div>Calculando lo pendiente por cobrar</div>'; return; }
   const sum = (l, k) => l.reduce((a, r) => a + (Number(r[k]) || 0), 0);
   const T = [['D','Por cobrar despacho','Despachado sin cobrar','var(--desp)'],['I','Por cobrar instalación','Instalado sin cobrar','var(--inst)']];
@@ -1142,7 +1173,7 @@ function renderCobrosBox(){
     h = (S.cobErr ? `<div class="warn">${esc(S.cobErr)}</div>` : '') + `<button class="back" onclick="setCobObra(null)">${ICON.back} Todas las obras</button>
       <div class="pl-card" style="max-width:720px">
       <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(sum(rows,'n'))}</b> ítem${sum(rows,'n')===1?'':'s'} · ${fmtN(sum(rows,'m2'),1)} m²</span></div>
-      <div class="cob-tools"><button class="btn sm ghost" onclick="cobChkTodas(true)">Marcar todas</button><button class="btn sm ghost" onclick="cobChkTodas(false)">Quitar marcas</button></div>
+      <div class="cob-tools"><button class="btn sm ghost" onclick="setCobModo('hecho', decodeURIComponent('${encQ(obra)}'))">Ver cobrados ›</button><button class="btn sm ghost" onclick="cobChkTodas(true)">Marcar todas</button><button class="btn sm ghost" onclick="cobChkTodas(false)">Quitar marcas</button></div>
       ${rows.map(r => { const on = cobChk(obra, r.op); return `<div class="pl-row cob-op ${on?'on':''}" onclick="cobToggle(decodeURIComponent('${encQ(obra)}'), decodeURIComponent('${encQ(r.op)}'))">
         <span class="o"><span class="cob-ck">${on ? ICON.check : ''}</span><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
         ${cobItemsHTML(obra, r.op)}
@@ -1155,6 +1186,136 @@ function renderCobrosBox(){
       <button class="icon-btn" title="Quitar marcas" onclick="cobChkTodas(false)">${ICON.close}</button></div>`;
   }
   box.innerHTML = h;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  COBRADOS — cortes por obra, ítems cobrados y quitar cobro
+// ════════════════════════════════════════════════════════════════
+function setCobModo(m, obra){ S.cobModo = m; S.cobObra = obra || null; S.cobCorte = null; S.cobHq = ''; S.cobHSel = new Set(); renderCobrosBox(); window.scrollTo(0, 0); }
+async function loadCobCortes(){
+  if(S.cobCLoading) return; S.cobCLoading = true;
+  try{ S.cobCortes = await API.cortesCobro(); S.cobCErr = null; }
+  catch(e){ S.cobCortes = []; S.cobCErr = /cortes_cobro|schema cache|PGRST/i.test(errMsg(e)) ? 'Falta crear la consulta de cortes en Supabase (SQL "11_secuencia_y_cortes").' : errMsg(e); }
+  S.cobCLoading = false;
+  if(S.view === 'home' && S.homeTab === 'cobros') renderCobrosBox();
+}
+async function loadCobH(obra, tipo){
+  const key = tipo + '|' + obra, k = tipo === 'D' ? 'despacho' : 'instalacion';
+  S.cobH = {key, items:null};
+  try{
+    const items = await API.obra(obra);
+    const est = new Map((await (isGerente() ? API.comercial : API.cobros).call(API, items.map(i => i.id))).map(c => [c.item_id, c]));
+    const out = [];
+    for(const i of items){ const c = est.get(i.id); if(!c || !c['cobrado_' + k]) continue;
+      out.push({id:i.id, op:i.op || '', item:i.item || '—', ubicacion:i.ubicacion, piso:i.piso, m2:i.m2, num:c['num_corte_' + k] || '', fecha:c['fecha_corte_' + k]}); }
+    if(S.cobH && S.cobH.key === key) S.cobH.items = out;
+  }catch(e){ if(S.cobH && S.cobH.key === key){ S.cobH.items = []; S.cobH.err = errMsg(e); } }
+  if(S.view === 'home' && S.homeTab === 'cobros' && S.cobModo === 'hecho' && S.cobObra === obra) renderCobrosBox();
+}
+const corteLbl = n => n ? 'Corte ' + n : 'Sin # de corte';
+function renderCobradosBox(){
+  const tiles = $('#stTiles'), box = $('#obrasBox');
+  if(!S.cobCortes){ loadCobCortes(); if(tiles) tiles.innerHTML = ''; box.innerHTML = '<div class="loading"><div class="spin"></div>Buscando los cortes cobrados</div>'; return; }
+  const sum = (l, k) => l.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+  const T = [['D','Cobrado despacho','var(--desp)'],['I','Cobrado instalación','var(--inst)']];
+  if(tiles) tiles.innerHTML = T.map(([k,t,c]) => {
+    const l = S.cobCortes.filter(r => r.tipo === k), ob = new Set(l.map(r => r.obra)).size;
+    return `<button class="st-tile ${S.cobTipo===k?'on':''}" style="--c:${c}" onclick="setCobTipo('${k}')">
+      <span class="t">$ ${t}</span><b>${fmtN(l.length)}</b>
+      <span>corte${l.length===1?'':'s'} · ${fmtN(ob)} obra${ob===1?'':'s'} · ${fmtN(sum(l,'n'))} ítems</span></button>`;
+  }).join('');
+  const err = S.cobCErr ? `<div class="warn">${esc(S.cobCErr)}</div>` : '';
+  const q = S.q.trim().toUpperCase();
+  const all = S.cobCortes.filter(r => r.tipo === S.cobTipo);
+  if(!S.cobObra || !all.some(r => r.obra === S.cobObra)){
+    S.cobObra = null;
+    const list = all.filter(r => !q || [r.obra, r.num].some(v => v && String(v).toUpperCase().includes(q)));
+    let h = err + `<div class="section-t">${T.find(x => x[0] === S.cobTipo)[1]} · ${fmtN(new Set(list.map(r => r.obra)).size)} obras</div>`;
+    if(!list.length){ box.innerHTML = h + `<div class="empty">No hay cortes cobrados${q ? ' que coincidan con “'+esc(S.q)+'”' : ''}.</div>`; return; }
+    const g = [...grp(list, r => r.obra).entries()].sort((a,b) => nat(a[0], b[0]));
+    h += `<div class="cob-grid">${g.map(([obra, rows]) => `<button class="cob-ob" onclick="setCobObra(decodeURIComponent('${encQ(obra)}'))">
+        <span class="cn">${esc(obra)}</span>
+        <span class="cv"><b>${fmtN(rows.length)}</b><small>${rows.length===1?'corte':'cortes'}</small></span>
+        <span class="cv"><b>${fmtN(sum(rows,'n'))}</b><small>ítems</small></span>
+      </button>`).join('')}</div>`;
+    box.innerHTML = h; return;
+  }
+  // Detalle de una obra: elegir corte y ver sus ítems
+  const obra = S.cobObra, key = S.cobTipo + '|' + obra;
+  if(!S.cobH || S.cobH.key !== key){ loadCobH(obra, S.cobTipo); }
+  let h = err + `<button class="back" onclick="setCobObra(null)">${ICON.back} Todas las obras</button>`;
+  if(!S.cobH.items){ box.innerHTML = h + '<div class="loading"><div class="spin"></div>Cargando los ítems cobrados</div>'; return; }
+  if(S.cobH.err) h += `<div class="warn">${esc(S.cobH.err)}</div>`;
+  const its = S.cobH.items;
+  const cortes = [...grp(its, i => i.num).entries()].map(([num, l]) => ({num, n:l.length, m2:sum(l,'m2'), fecha:l.map(i => i.fecha).filter(Boolean).sort().pop()}))
+    .sort((a,b) => (b.fecha||'').localeCompare(a.fecha||'') || nat(b.num, a.num));
+  if(S.cobCorte != null && !cortes.some(c => c.num === S.cobCorte)) S.cobCorte = null;
+  const hq = (S.cobHq || '').trim().toUpperCase();
+  const vis = its.filter(i => (S.cobCorte == null || i.num === S.cobCorte) && (!hq || [i.item, i.op, i.ubicacion, i.piso].some(v => v != null && String(v).toUpperCase().includes(hq))));
+  const sel = S.cobHSel || (S.cobHSel = new Set());
+  for(const id of [...sel]) if(!its.some(i => i.id === id)) sel.delete(id);
+  h += `<div class="pl-card" style="max-width:820px">
+    <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(its.length)}</b> ítems cobrados · ${fmtN(cortes.length)} corte${cortes.length===1?'':'s'}</span></div>
+    <div class="cob-cortes"><span class="lbl">Corte</span>
+      <select id="cobCorteSel" onchange="setCobCorte(this.value === '__todos' ? null : this.value)">
+        <option value="__todos">Todos los cortes · ${fmtN(its.length)} ítems</option>
+        ${cortes.map(c => `<option value="${esc(c.num)}" ${S.cobCorte===c.num?'selected':''}>${esc(corteLbl(c.num))}${c.fecha ? ' · '+fmtD(c.fecha) : ''} · ${fmtN(c.n)} ítems · ${fmtN(c.m2,1)} m²</option>`).join('')}
+      </select></div>
+    <div class="cob-hq"><div class="search">${ICON.search}<input id="cobHq" placeholder="Buscar ítem, OP, ubicación o piso…" value="${esc(S.cobHq||'')}" autocomplete="off" autocapitalize="characters"></div>
+      <button class="btn sm ghost" onclick="cobHTodos(true)">Seleccionar visibles</button></div>
+    <div id="cobHList">${cobHListHTML(vis)}</div>
+  </div>`;
+  box.innerHTML = h;
+  const inp = $('#cobHq');
+  inp.oninput = () => { S.cobHq = inp.value; const v2 = S.cobH.items.filter(i => (S.cobCorte == null || i.num === S.cobCorte) && (!inp.value.trim() || [i.item, i.op, i.ubicacion, i.piso].some(v => v != null && String(v).toUpperCase().includes(inp.value.trim().toUpperCase())))); $('#cobHList').innerHTML = cobHListHTML(v2); };
+  cobHSelbar();
+}
+function cobHListHTML(vis){
+  if(!vis.length) return '<div class="empty" style="border:0">No hay ítems con ese filtro.</div>';
+  const sel = S.cobHSel;
+  const g = [...grp(vis, i => i.op).entries()].sort((a,b) => nat(a[0], b[0]));
+  return g.map(([op, l]) => { l.sort((a,b) => nat(a.item, b.item) || a.id - b.id);
+    const todos = l.every(i => sel.has(i.id));
+    return `<div class="pl-row cob-op cob-opH ${todos?'on':''}" onclick="cobHOp(decodeURIComponent('${encQ(op)}'))">
+      <span class="o"><span class="cob-ck">${todos ? ICON.check : ''}</span><em>OP ${esc(op||'—')}</em></span><span class="k">${fmtN(l.length)}</span></div>
+      ${l.map(i => `<div class="pl-row cob-op cob-it ${sel.has(i.id)?'on':''}" onclick="cobHTog(${i.id})">
+        <span class="o"><span class="cob-ck">${sel.has(i.id) ? ICON.check : ''}</span><b class="ci">${esc(i.item)}</b>${i.ubicacion ? ' · '+esc(i.ubicacion) : ''}${i.piso != null && i.piso !== '' ? ' · '+esc(i.piso) : ''}</span>
+        <span class="k sm">${fmtN(i.m2,2)} m²</span>
+        ${S.cobCorte == null ? `<span class="d" style="padding-left:30px">${esc(corteLbl(i.num))}${i.fecha ? ' · '+fmtD(i.fecha) : ''}</span>` : ''}</div>`).join('')}`; }).join('');
+}
+function cobHVis(){ const hq = (S.cobHq||'').trim().toUpperCase(); return S.cobH.items.filter(i => (S.cobCorte == null || i.num === S.cobCorte) && (!hq || [i.item, i.op, i.ubicacion, i.piso].some(v => v != null && String(v).toUpperCase().includes(hq)))); }
+function cobHRefresh(){ $('#cobHList').innerHTML = cobHListHTML(cobHVis()); cobHSelbar(); }
+function setCobCorte(n){ S.cobCorte = n; S.cobHSel = new Set(); renderCobrosBox(); }
+function cobHTog(id){ const s = S.cobHSel; if(s.has(id)) s.delete(id); else s.add(id); cobHRefresh(); }
+function cobHOp(op){ const l = cobHVis().filter(i => i.op === op), s = S.cobHSel, todos = l.every(i => s.has(i.id)); l.forEach(i => todos ? s.delete(i.id) : s.add(i.id)); cobHRefresh(); }
+function cobHTodos(on){ cobHVis().forEach(i => on ? S.cobHSel.add(i.id) : S.cobHSel.delete(i.id)); cobHRefresh(); }
+function cobHSelbar(){
+  let bar = $('#cobHBar'); const n = S.cobHSel ? S.cobHSel.size : 0;
+  if(!n){ if(bar) bar.remove(); return; }
+  if(!bar){ bar = document.createElement('div'); bar.id = 'cobHBar'; bar.className = 'selbar'; $('#obrasBox').appendChild(bar); }
+  const l = S.cobH.items.filter(i => S.cobHSel.has(i.id)), m2 = l.reduce((a,i) => a + (Number(i.m2)||0), 0);
+  bar.innerHTML = `<div class="count"><b>${fmtN(n)}</b>ítem${n===1?'':'s'} · ${fmtN(m2,1)} m²</div>
+    <div class="acts"><button class="btn sm btn-cob" onclick="cobQuitar()">Quitar cobro</button></div>
+    <button class="icon-btn" title="Quitar selección" onclick="S.cobHSel.clear(); cobHRefresh()">${ICON.close}</button>`;
+}
+function cobQuitar(){
+  const tipo = S.cobTipo, k = tipo === 'D' ? 'despacho' : 'instalacion', obra = S.cobObra;
+  const l = S.cobH.items.filter(i => S.cobHSel.has(i.id)); if(!l.length) return;
+  const cs = [...new Set(l.map(i => corteLbl(i.num)))];
+  const res = [...grp(l, i => i.op).entries()].sort((a,b) => nat(a[0], b[0])).map(([op, x]) => {
+    const c = new Map(); x.forEach(i => c.set(i.item, (c.get(i.item)||0) + 1));
+    return `<div><b>OP ${esc(op||'—')}</b> · ${[...c].map(([it, n]) => esc(it) + (n > 1 ? ' ×'+n : '')).join(', ')}</div>`; }).join('');
+  const body = `<div class="summary">Vas a quitar el cobro de ${tipo==='D'?'despacho':'instalación'} a <b>${fmtN(l.length)} ítem${l.length===1?'':'s'}</b> (${esc(cs.join(', '))}).
+    Volverán a <b>Por cobrar</b> para incluirlos en un corte futuro. El cambio queda en el Historial con tu nombre.</div>
+    <div class="cob-res">${res}</div>`;
+  openSheet('Quitar cobro', esc(obra), body, `Quitar cobro a ${fmtN(l.length)}`, async () => {
+    const ids = l.map(i => i.id);
+    if(isGerente()) await API.upsertComercial(ids.map(id => ({item_id:id, ['cobrado_'+k]:false, ['fecha_corte_'+k]:null, ['num_corte_'+k]:null})));
+    else await API.marcarCobros(ids, k, false, null, null);
+    toast(`✓ Cobro quitado a ${fmtN(ids.length)} ítem${ids.length===1?'':'s'}; vuelven a Por cobrar`);
+    S.cobH = null; S.cobCortes = null; S.cobPend = null; S.cobCortes = null; S.cobH = null; S.cobHSel = new Set();
+    renderCobrosBox();
+  });
 }
 
 async function loadAnual(){
@@ -1576,11 +1737,13 @@ function dNow(which){
 function dToggle(k){
   const d = S.draft;
   if(k==='despachado'){
-    if(d.despachado){ if(!confirm('¿Quitar el despacho de este ítem? Se borrarán la fecha y la remisión.')) return; d.despachado=false; d.fecha_despacho=null; d.remision=null; }
-    else { d.despachado=true; d.fecha_despacho = d.fecha_despacho || today(); }
+    if(d.despachado){ if(d.instalado) return toast('Este ítem está instalado: primero quita la instalación', true); if(!confirm('¿Quitar el despacho de este ítem? Se borrarán la fecha y la remisión.')) return; d.despachado=false; d.fecha_despacho=null; d.remision=null; }
+    else { if(!estaEnsamblado({...byId(S.detailId), ...d, despachado:false})) return toast('No se puede despachar: este ítem no está ensamblado. Primero registra el día final del ensamble.', true);
+      d.despachado=true; d.fecha_despacho = d.fecha_despacho || today(); }
   } else {
     if(d.instalado){ if(!confirm('¿Quitar la instalación de este ítem? Se borrarán la fecha y el instalador.')) return; d.instalado=false; d.fecha_instalacion=null; d.instalador=null; }
-    else { d.instalado=true; d.fecha_instalacion = d.fecha_instalacion || today(); }
+    else { if(!d.despachado) return toast('No se puede instalar: este ítem no está despachado. Primero registra el despacho.', true);
+      d.instalado=true; d.fecha_instalacion = d.fecha_instalacion || today(); }
   }
   d._dirty = true; renderDetail();
 }
@@ -1589,12 +1752,15 @@ function dDiscard(){ S.draft = draftOf(byId(S.detailId)); renderDetail(); }
 async function dSave(){
   const it = byId(S.detailId), d = S.draft;
   if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
+  if(d.instalado && !it.instalado && !d.despachado) return toast('No se puede instalar: el ítem no está despachado', true);
   if(puedeRegistrar()){
   if(d.despachado && !d.fecha_despacho) return toast('Falta la fecha de despacho', true);
   if(d.despachado && !d.remision) return toast('Falta el número de remisión', true);
   if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
   if((d.dia_inicio||d.dia_final) && !d.ensamblador) return toast('Falta el ensamblador', true);
   if(d.dia_final && !d.dia_inicio) return toast('Falta el día de inicio', true);
+  if(d.despachado && !it.despachado && !estaEnsamblado({...it, ...d, despachado:false})) return toast('No se puede despachar: el ítem no está ensamblado', true);
+  if(it.despachado && d.despachado && it.dia_final && !d.dia_final) return toast('El ítem está despachado: no se puede quitar el día final del ensamble', true);
   if(d.dia_final && d.dia_inicio && d.dia_final < d.dia_inicio) return toast('El día final es anterior al de inicio', true);
   }
   // Solo se envían los campos que esta persona cambió (comparado con lo que había al abrir el ítem),
@@ -1735,15 +1901,16 @@ function sheetTerminado(){
 }
 
 function sheetDespacho(){
-  const items = selItems();
-  const noEns = items.filter(i => !i.despachado && i.status !== 'ENSAMBLADO').length;
+  const sel = selItems(), items = sel.filter(estaEnsamblado);
+  const noEns = sel.length - items.length;
+  if(!items.length) return toast('Ninguno de los ítems seleccionados está ensamblado; no se pueden despachar', true);
   const ya = items.filter(i => i.despachado).length;
   const body = `<div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="gFecha" value="${today()}"></div>
       <div class="field"><span class="lbl">Remisión</span><input id="gRem" inputmode="numeric" placeholder="Número"></div></div>
-    ${warn(noEns, 'todavía no figuran como ensamblados.')}
+    ${warn(noEns, 'no están ensamblados y se omitirán (no se puede despachar sin ensamblar).')}
     ${warn(ya, 'ya estaban despachados; se reemplazará su fecha y remisión.')}
     <div class="summary" id="gSum">Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>.</div>`;
-  openSheet('Registrar despacho', subSel(items.length), body, `Despachar ${fmtN(items.length)}`, async () => {
+  openSheet('Registrar despacho', subSel(sel.length), body, `Despachar ${fmtN(items.length)}`, async () => {
     const f = $('#gFecha').value, r = $('#gRem').value.trim();
     if(!f){ toast('Falta la fecha de despacho', true); return false; }
     if(!r){ toast('Falta el número de remisión', true); return false; }
@@ -1754,14 +1921,15 @@ function sheetDespacho(){
 }
 
 function sheetInstalacion(){
-  const items = selItems();
-  const noDesp = items.filter(i => !i.despachado).length;
+  const sel = selItems(), items = sel.filter(i => i.despachado);
+  const noDesp = sel.length - items.length;
+  if(!items.length) return toast('Ninguno de los ítems seleccionados está despachado; no se pueden instalar', true);
   const ya = items.filter(i => i.instalado).length;
   const body = `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="gFecha" value="${today()}"></div>
       <div class="field"><span class="lbl">Instalador</span>${personaField('gInst', '', '', 'Elegir')}</div></div>
-    ${warn(noDesp, 'no figuran como despachados. ¿Seguro que ya están en obra?')}
+    ${warn(noDesp, 'no están despachados y se omitirán (no se puede instalar sin despachar).')}
     ${warn(ya, 'ya estaban instalados; se reemplazará su fecha e instalador.')}`;
-  openSheet('Registrar instalación', subSel(items.length), body, `Instalar ${fmtN(items.length)}`, async () => {
+  openSheet('Registrar instalación', subSel(sel.length), body, `Instalar ${fmtN(items.length)}`, async () => {
     const f = $('#gFecha').value, ins = pfVal('gInst');
     if(!f){ toast('Falta la fecha de instalación', true); return false; }
     await applyGroup(items, () => ({instalado:true, fecha_instalacion:f, instalador:nz(ins)}));
@@ -2398,7 +2566,7 @@ function sheetCobro(tipo){
 //  SINCRONIZACIÓN
 // ════════════════════════════════════════════════════════════════
 function mergeRows(rows){
-  S.plCache = null; S.cobPend = null;
+  S.plCache = null; S.cobPend = null; S.cobCortes = null; S.cobH = null;
   for(const r of rows){
     const i = S.items.findIndex(x => x.id === r.id);
     if(i >= 0) S.items[i] = {...S.items[i], ...r};
@@ -2419,7 +2587,7 @@ function mergeRows(rows){
 const pick = r => ({id:r.id, obra:r.obra, status:r.status, despachado:r.despachado, instalado:r.instalado, m2:r.m2, fecha_op:r.fecha_op, dia_inicio:r.dia_inicio, hora_inicio:r.hora_inicio, dia_final:r.dia_final, ensamblador:r.ensamblador, op:r.op, fecha_despacho:r.fecha_despacho});
 
 function refreshAfterChange(){
-  S.cobPend = null;
+  S.cobPend = null; S.cobCortes = null; S.cobH = null;
   if(S.view === 'obra'){
     const y = window.scrollY;
     renderChips(); renderList(); renderSelbar();
