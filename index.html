@@ -364,7 +364,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -706,7 +706,7 @@ function resumenObras(){
     if(!it.despachado) o.porDesp++;
     if(!it.instalado) o.porInst++;
   }
-  return [...m.values()].sort((a,b) => b.porDesp-a.porDesp || b.n-a.n || nat(a.obra,b.obra));
+  return [...m.values()].sort((a,b) => nat(a.obra,b.obra));
 }
 
 // Resumen por año (de la FECHA OP) de TODA la base
@@ -929,7 +929,7 @@ function plPorEnsamblador(list){
 
 function plPorObra(list, st){
   const campo = st === 'EN COLA' ? ['fecha_op','OP del','min'] : st === 'ENSAMBLADO' ? ['dia_final','Último terminado','max'] : ['fecha_despacho','Último despacho','max'];
-  const g = [...grp(list, it => it.obra).entries()].sort((a,b) => b[1].length - a[1].length || nat(a[0], b[0]));
+  const g = [...grp(list, it => it.obra).entries()].sort((a,b) => nat(a[0], b[0]));
   return `<div class="pl-grid">${g.map(([obra, items]) => {
     const filas = [...grp(items, it => it.op||'').values()]
       .map(l => ({op:l[0].op, n:l.length, m2:l.reduce((a,i)=>a+(Number(i.m2)||0),0), f: campo[2]==='min' ? minF(l,campo[0]) : maxF(l,campo[0]), ens:[...new Set(l.map(i=>i.ensamblador).filter(Boolean))]}))
@@ -964,7 +964,7 @@ function renderAnualBox(){
     `<button class="chip ${y===S.anio?'on':''}" onclick="setAnio('${y}')">${y==='S/F'?'Sin fecha':y} <b>${fmtN(n)}</b></button>`).join('')}</div>`;
   const q = S.q.trim().toUpperCase();
   const m = idx.byYear.get(S.anio) || new Map();
-  const list = [...m.values()].filter(o => !q || o.obra.toUpperCase().includes(q)).sort((a,b) => b.n-a.n || nat(a.obra,b.obra));
+  const list = [...m.values()].filter(o => !q || o.obra.toUpperCase().includes(q)).sort((a,b) => nat(a.obra,b.obra));
   const all = [...m.values()];
   const soloCola = all.filter(o => o.cola === o.n).length;
   const resumen = S.anio === 'S/F'
