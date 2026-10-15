@@ -374,7 +374,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -766,6 +766,7 @@ function setHomeTab(t){ S.homeTab = t; renderHome(); }
 
 function renderHome(){
   if(S.homeTab === 'planta') return renderPlanta();
+  if(S.homeTab === 'cobros' && !registraCobros()) S.homeTab = 'activas';
   if(S.homeTab === 'cobros') return renderCobros();
   const anual = S.homeTab === 'anio';
   const res = resumenObras();
@@ -799,7 +800,7 @@ function homeTabs(){
   return `<button class="tab ${t==='activas'?'on':''}" onclick="setHomeTab('activas')">Obras activas</button>
       <button class="tab ${t==='planta'?'on':''}" onclick="setHomeTab('planta')">Planta</button>
       <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>
-      ${veCobros() ? `<button class="tab ${t==='cobros'?'on':''}" onclick="setHomeTab('cobros')">Cobros</button>` : ''}`;
+      ${registraCobros() ? `<button class="tab ${t==='cobros'?'on':''}" onclick="setHomeTab('cobros')">Cobros</button>` : ''}`;
 }
 function refreshHomeBox(){
   S.plCache = null;
