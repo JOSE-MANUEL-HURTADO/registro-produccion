@@ -247,7 +247,8 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .sc-hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;letter-spacing:.1em;color:#fff;text-transform:uppercase;}
 .sc-man{display:flex;gap:6px;}.sc-man input{flex:1;min-width:0;}
 .sc-log{display:flex;flex-direction:column;}
-.sc-li{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.sc-li.des{opacity:.5;}
+.sc-li{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .sc-li .t{font-family:var(--mono);color:var(--muted);font-size:12px;}.sc-li small{display:block;color:var(--muted);font-size:11px;}
 .sc-cant{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px;}
 .sc-cant b{min-width:70px;text-align:center;font-family:var(--mono);}
@@ -450,7 +451,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.3';
+const APP_VERSION = '4.4';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2132,7 +2133,7 @@ function renderScanParams(){
 }
 function renderScanLog(){
   const b = $('#scLog'); if(!b) return;
-  b.innerHTML = SC.log.length ? SC.log.map(l => `<div class="sc-li"><span class="t">${l.hora}</span><div><b>OP ${esc(l.op)}</b> · ${esc(l.est)} · ${fmtN(l.n)} de ${fmtN(l.tot)}<small>${esc(l.obra)}</small></div></div>`).join('')
+  b.innerHTML = SC.log.length ? SC.log.map((l, i) => `<div class="sc-li ${l.deshecho?'des':''}"><span class="t">${l.hora}</span><div><b>${esc(l.op)}</b> · ${esc(l.est)} · ${fmtN(l.n)} de ${fmtN(l.tot)}<small>${esc(l.obra)}${l.deshecho ? ' · DESHECHO' : ''}</small></div>${l.prev && !l.deshecho ? `<button class="btn sm ghost" onclick="scDeshacer(${i})">Deshacer</button>` : '<span></span>'}</div>`).join('')
     : '<div class="empty" style="padding:14px 0">Aún no has registrado nada.</div>';
 }
 
@@ -2194,8 +2195,19 @@ async function scCodigo(txt, manual){
     const {data, error} = await API.sb.from('items').select('*').eq('op', p.op).order('id');
     if(error) throw error;
     if(!data || !data.length){ scBeep(false); toast('No encontré la OP ' + p.op, true); return; }
+    const items = data.sort((a,b) => nat(a.op_instalacion, b.op_instalacion));
+    if(p.sub){
+      // Etiqueta de un ítem (sub-OP): se registra de una vez, sin preguntar
+      const it = items.find(x => x.op_instalacion === p.sub);
+      if(!it){ scBeep(false); toast('No encontré la sub-OP ' + p.sub, true); return; }
+      const m = scMotivo(it, e);
+      if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
+      await scAplicar([it], items.length, e);
+      scBeep(true); toast(`✓ ${p.sub} · ${e.t}`);
+      return;
+    }
     scBeep(true);
-    scHoja(p, data.sort((a,b) => nat(a.op_instalacion, b.op_instalacion)), e);
+    scHoja(p, items, e);
   }catch(err){ scBeep(false); toast(errMsg(err), true); }
   finally{ SC.busy = false; }
 }
@@ -2211,11 +2223,28 @@ function scHoja(p, items, e){
   openSheet(`OP ${esc(p.op)}`, esc(obras.join(' · ')), body, 'Registrar', async () => {
     const l = items.filter(it => det.sel.has(it.id));
     if(!l.length){ toast('No hay sub-OP seleccionadas', true); return false; }
-    await applyGroup(l, () => scPatch(e));
-    SC.log.unshift({hora: nowTime(), op: p.op, est: e.proc ? e.t + (SC.parcial ? ' +' : '') : e.t, n: l.length, tot: items.length, obra: obras.join(' · ')});
-    renderScanLog();
+    await scAplicar(l, items.length, e);
   });
   scPintar();
+}
+// Registra y guarda lo que había antes, para poder deshacer desde la lista de la sesión
+async function scAplicar(l, tot, e){
+  const prev = l.map(it => { const pt = scPatch(e); const ns = deriveStatus({...it, ...pt}); if(ns !== it.status) pt.status = ns;
+    const pv = {}; for(const k of Object.keys(pt)) pv[k] = it[k] ?? null; return {id:it.id, pv}; });
+  await applyGroup(l, () => scPatch(e));
+  const op = l[0].op || '', sub = l.length === 1 ? l[0].op_instalacion : null;
+  SC.log.unshift({hora: nowTime(), op: sub || op, est: e.proc ? e.t + (SC.parcial ? ' +' : '') : e.t, n: l.length, tot: sub ? 1 : tot, obra: l[0].obra, prev});
+  renderScanLog();
+}
+async function scDeshacer(i){
+  const l = SC.log[i]; if(!l || !l.prev || l.deshecho) return;
+  if(!confirm(`¿Deshacer ${l.est} de ${l.op} (${l.n} ítem${l.n===1?'':'s'})?`)) return;
+  try{
+    const g = new Map();
+    for(const {id, pv} of l.prev){ const k = JSON.stringify(pv); if(!g.has(k)) g.set(k, {pv, ids:[]}); g.get(k).ids.push(id); }
+    for(const {pv, ids} of g.values()){ const rows = await API.update(ids, pv); mergeRows(rows); }
+    l.deshecho = true; renderScanLog(); toast('✓ Deshecho');
+  }catch(e){ toast(errMsg(e), true); }
 }
 function scPintar(){
   const d = SC.det, box = $('#scItems'); if(!d || !box) return;
@@ -2233,47 +2262,92 @@ function scCant(delta){
   d.sel = new Set(d.ok.slice(0, n).map(it => it.id)); scPintar();
 }
 
-// ── Etiquetas QR por OP (para pegar en la orden impresa) ──
-// Se genera un PDF (hoja A4, 3 × 8 etiquetas) que se abre, comparte o descarga para imprimir.
-// Así funciona igual en el Mac, el iPad y el iPhone (la app instalada no permite imprimir directo).
-async function etiquetasQR(){
-  const items = typeof filtered === 'function' ? filtered() : S.items;
-  const g = [...grp(items.filter(it => it.op), it => it.op).entries()].sort((a,b) => nat(a[0], b[0]));
-  if(!g.length) return toast('No hay OP en la lista', true);
+// ── Etiquetas QR ──
+// · Por OP: para pegar en la orden impresa (procesos). Hoja A4 de 3 × 8.
+// · Por ítem (cada OP INSTALACION): para pegar en la pieza (ensamble, despacho, instalación). Hoja A4 de 2 × 7.
+// Se genera un PDF que se comparte, abre o descarga para imprimir (funciona en Mac, iPad y iPhone).
+function etiquetasQR(){
+  const items = (typeof filtered === 'function' ? filtered() : S.items).filter(it => it.op);
+  if(!items.length) return toast('No hay ítems en la lista', true);
+  const nOp = new Set(items.map(it => it.op)).size, nIt = items.filter(it => it.op_instalacion).length;
+  const body = `<div class="summary">Se imprimen las de la lista que estás viendo. Filtra antes por OP, piso o estado si quieres solo una parte.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <button class="btn primary" onclick="etqPDF('op')">Una por OP · ${fmtN(nOp)} etiqueta${nOp===1?'':'s'}<small style="display:block;font-size:11px;opacity:.7;letter-spacing:.04em;text-transform:none">Para la orden impresa · procesos</small></button>
+      <button class="btn" onclick="etqPDF('item')">Una por ítem · ${fmtN(nIt)} etiqueta${nIt===1?'':'s'}<small style="display:block;font-size:11px;opacity:.7;letter-spacing:.04em;text-transform:none">Para pegar en cada pieza · ensamble, despacho e instalación</small></button>
+    </div>`;
+  openSheet('Etiquetas QR', esc(S.obra || ''), body, 'Cerrar', async () => {});
+}
+async function etqLogo(){
+  if(window._etqLogo) return window._etqLogo;
+  try{
+    const b = await (await fetch('icons/logo-etiqueta.png')).blob();
+    const url = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(b); });
+    const im = new Image(); im.src = url; await im.decode();
+    return window._etqLogo = {url, r: im.width / im.height};
+  }catch(e){ return null; }
+}
+async function etqPDF(tipo){
+  const items = (typeof filtered === 'function' ? filtered() : S.items).filter(it => it.op);
+  let lista;
+  if(tipo === 'op') lista = [...grp(items, it => it.op).entries()].sort((a,b) => nat(a[0], b[0])).map(([op, l]) => ({op, l}));
+  else lista = items.filter(it => it.op_instalacion).sort((a,b) => nat(a.op_instalacion, b.op_instalacion));
+  if(!lista.length) return toast('No hay nada para imprimir', true);
   toast('Preparando las etiquetas…');
   try{
     if(!window.qrcode) await loadScript('lib/qrcode.js');
     if(!window.jspdf) await loadScript('lib/jspdf.js');
   }catch(e){ return toast(errMsg(e), true); }
+  const logo = await etqLogo();
   const doc = new jspdf.jsPDF({unit:'mm', format:'a4'});
-  const COLS = 3, ROWS = 8, MX = 7, MY = 12, W = (210 - 2*MX) / COLS, H = (297 - 2*MY) / ROWS, QR = 24;
+  const [COLS, ROWS] = tipo === 'op' ? [3, 8] : [2, 7];
+  const MX = 7, MY = 10, W = (210 - 2*MX) / COLS, H = (297 - 2*MY) / ROWS, QR = tipo === 'op' ? 23 : 29;
   const corta = (t, max) => { t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
-  g.forEach(([op, l], n) => {
+  const qr = (txt, x, y, size) => {
+    const q = qrcode(0, 'M'); q.addData(txt); q.make();
+    const n = q.getModuleCount(), cs = size / n; doc.setFillColor(0, 0, 0);
+    for(let r = 0; r < n; r++) for(let c = 0; c < n; c++) if(q.isDark(r, c)) doc.rect(x + c*cs, y + r*cs, cs + 0.02, cs + 0.02, 'F');
+  };
+  lista.forEach((e, n) => {
     const k = n % (COLS*ROWS); if(n && !k) doc.addPage();
     const x = MX + (k % COLS) * W, y = MY + Math.floor(k / COLS) * H;
     doc.setDrawColor(170); doc.setLineDashPattern([1, 1], 0); doc.rect(x, y, W, H);
-    const q = qrcode(0, 'M'); q.addData(qrTexto(op)); q.make();
-    const nm = q.getModuleCount(), cs = QR / nm, qx = x + 3, qy = y + (H - QR) / 2;
-    doc.setFillColor(0, 0, 0);
-    for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c)) doc.rect(qx + c*cs, qy + r*cs, cs + 0.02, cs + 0.02, 'F');
-    const tx = qx + QR + 3, tw = x + W - tx - 2;
-    const pisos = [...new Set(l.map(i => i.piso).filter(Boolean))].sort(nat);
-    const dis = [...new Set(l.map(i => i.diseno).filter(Boolean))];
-    doc.setTextColor(0); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
-    doc.text(corta(String(l[0].obra).toUpperCase(), tw), tx, y + 9);
-    doc.setFontSize(14); doc.text(corta('OP ' + op, tw), tx, y + 16);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(60);
-    doc.text(corta(l.length + ' sub-OP' + (pisos.length ? ' · Piso ' + pisos.join(', ') : ''), tw), tx, y + 21);
-    doc.text(corta(dis.join(' / '), tw), tx, y + 25);
+    const qx = x + 3, qy = y + (H - QR) / 2, tx = qx + QR + 3, tw = x + W - tx - 2.5;
+    let ty = y + 4;
+    if(logo){ const lw = Math.min(tw, tipo === 'op' ? 24 : 32), lh = lw / logo.r; doc.addImage(logo.url, 'PNG', tx, ty, lw, lh, 'logoEtq'); ty += lh + 3.2; }
+    else ty += 3;
+    doc.setTextColor(0);
+    if(tipo === 'op'){
+      const {op, l} = e;
+      qr(qrTexto(op), qx, qy, QR);
+      const pisos = [...new Set(l.map(i => i.piso).filter(Boolean))].sort(nat);
+      const dis = [...new Set(l.map(i => i.diseno).filter(Boolean))];
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.text(corta(String(l[0].obra).toUpperCase(), tw), tx, ty);
+      doc.setFontSize(13); doc.text(corta('OP ' + op, tw), tx, ty + 5.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.3); doc.setTextColor(60);
+      doc.text(corta(l.length + ' ítem' + (l.length===1?'':'s') + (pisos.length ? ' · Piso ' + pisos.join(', ') : ''), tw), tx, ty + 9.5);
+      doc.text(corta(dis.join(' / '), tw), tx, ty + 12.5);
+    } else {
+      const it = e;
+      qr(qrTexto(it.op_instalacion), qx, qy, QR);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.text(corta(String(it.obra).toUpperCase(), tw), tx, ty);
+      doc.setFontSize(15); doc.text(corta(it.op_instalacion, tw), tx, ty + 6.5);
+      doc.setFontSize(8.5); doc.text(corta([it.item, it.ubicacion].filter(Boolean).join(' · '), tw), tx, ty + 11);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(50);
+      const med = it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '';
+      doc.text(corta([it.piso ? 'Piso ' + it.piso : '', med].filter(Boolean).join(' · '), tw), tx, ty + 14.8);
+      doc.text(corta(it.diseno || '', tw), tx, ty + 18.2);
+      if(it.vidrio) doc.text(corta('Vidrio: ' + it.vidrio, tw), tx, ty + 21.6);
+    }
   });
   const obra = (S.obra || 'obra').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
-  const nombre = `Etiquetas_QR_${obra}.pdf`;
+  const nombre = `Etiquetas_${tipo === 'op' ? 'OP' : 'items'}_${obra}.pdf`;
   const blob = doc.output('blob');
   const file = new File([blob], nombre, {type:'application/pdf'});
   const url = URL.createObjectURL(blob);
   const puedeCompartir = !!(navigator.canShare && navigator.canShare({files:[file]}));
   window._etq = {file, url, nombre};
-  const body = `<div class="summary"><b>${fmtN(g.length)} etiqueta${g.length===1?'':'s'}</b> en ${Math.ceil(g.length / (COLS*ROWS))} hoja${g.length > COLS*ROWS ? 's' : ''} A4 (3 × 8). Recórtalas por la línea punteada y pégalas en la orden impresa.</div>
+  const hojas = Math.ceil(lista.length / (COLS*ROWS));
+  const body = `<div class="summary"><b>${fmtN(lista.length)} etiqueta${lista.length===1?'':'s'} ${tipo === 'op' ? 'por OP' : 'por ítem'}</b> en ${hojas} hoja${hojas===1?'':'s'} A4 (${COLS} × ${ROWS}). Recórtalas por la línea punteada.</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
       ${puedeCompartir ? `<button class="btn primary" onclick="navigator.share({files:[_etq.file], title:_etq.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
       <a class="btn ${puedeCompartir ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
