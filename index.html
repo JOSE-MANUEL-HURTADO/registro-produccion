@@ -451,7 +451,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.7';
+const APP_VERSION = '4.8';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2274,13 +2274,76 @@ function etiquetasQR(){
   const items = (typeof filtered === 'function' ? filtered() : S.items).filter(it => it.op);
   if(!items.length) return toast('No hay ítems en la lista', true);
   const nOp = new Set(items.map(it => it.op)).size, nIt = items.filter(it => it.op_instalacion).length;
+  const r = etqRollo();
   const body = `<div class="summary">Se imprimen las de la lista que estás viendo. Filtra antes por OP, piso o estado si quieres solo una parte.</div>
+    <div class="field" style="margin-top:10px"><span class="lbl">Imprimir en</span>
+      <div class="seg wide" id="etqMedio">
+        <button class="${r.medio==='rollo'?'on':''}" onclick="etqMedio('rollo')">Impresora de etiquetas</button>
+        <button class="${r.medio!=='rollo'?'on':''}" onclick="etqMedio('hoja')">Hoja carta (Avery)</button></div></div>
+    <div class="fgrid" id="etqTam" style="${r.medio==='rollo'?'':'display:none'}">
+      <div class="field"><span class="lbl">Ancho etiqueta (mm)</span><input id="etqW" type="number" inputmode="decimal" value="${r.w}"></div>
+      <div class="field"><span class="lbl">Alto etiqueta (mm)</span><input id="etqH" type="number" inputmode="decimal" value="${r.h}"></div></div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
       <button class="btn primary" onclick="etqPDF('op')">Una por OP · ${fmtN(nOp)} etiqueta${nOp===1?'':'s'}<small style="display:block;font-size:11px;opacity:.7;letter-spacing:.04em;text-transform:none">Para la orden impresa · procesos</small></button>
       <button class="btn" onclick="etqPDF('item')">Una por ítem · ${fmtN(nIt)} etiqueta${nIt===1?'':'s'}<small style="display:block;font-size:11px;opacity:.7;letter-spacing:.04em;text-transform:none">Para pegar en cada pieza · ensamble, despacho e instalación</small></button>
     </div>`;
   openSheet('Etiquetas QR', esc(S.obra || ''), body, 'Cerrar', async () => {});
 }
+// Una etiqueta por página, del tamaño exacto del rollo. Se acomoda sola a cualquier tamaño (horizontal o vertical).
+async function etqRolloPDF(tipo, lista, W, H, logo){
+  const doc = new jspdf.jsPDF({unit:'mm', format:[W, H], orientation: W >= H ? 'landscape' : 'portrait'});
+  const corta = (t, max) => { t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
+  const qr = (txt, x, y, size) => { const q = qrcode(0, 'M'); q.addData(txt); q.make();
+    const n = q.getModuleCount(), cs = size / n; doc.setFillColor(0, 0, 0);
+    for(let r = 0; r < n; r++) for(let c = 0; c < n; c++) if(q.isDark(r, c)) doc.rect(x + c*cs, y + r*cs, cs + 0.02, cs + 0.02, 'F'); };
+  const vertical = H > W * 1.15, pad = Math.max(1.5, Math.min(W, H) * 0.06);
+  lista.forEach((e, n) => {
+    if(n) doc.addPage([W, H], W >= H ? 'landscape' : 'portrait');
+    const esOp = tipo === 'op', code = esOp ? e.op : e.op_instalacion, base = esOp ? e.l[0] : e;
+    const lineas = esOp
+      ? (() => { const pisos = [...new Set(e.l.map(i => i.piso).filter(Boolean))].sort(nat), dis = [...new Set(e.l.map(i => i.diseno).filter(Boolean))];
+          return [e.l.length + ' ítem' + (e.l.length===1?'':'s') + (pisos.length ? ' · Piso ' + pisos.join(', ') : ''), dis.join(' / ')]; })()
+      : [[e.item, e.ubicacion].filter(Boolean).join(' · '), [e.piso ? 'Piso ' + e.piso : '', e.ancho ? fmtN(e.ancho) + ' × ' + fmtN(e.alto) : ''].filter(Boolean).join(' · '), e.diseno || '', e.vidrio ? 'Vidrio: ' + e.vidrio : ''].filter(Boolean);
+    let Q, qx, qy, tx, ty, tw, th;
+    if(vertical){ Q = Math.min(W - 2*pad, H * 0.5); qx = (W - Q) / 2; qy = pad; tx = pad; ty = qy + Q + pad; tw = W - 2*pad; th = H - ty - pad; }
+    else { Q = Math.min(H - 2*pad, W * 0.45); qx = pad; qy = (H - Q) / 2; tx = qx + Q + pad; ty = pad; tw = W - tx - pad; th = H - 2*pad; }
+    qr(qrTexto(code), qx, qy, Q);
+    // tamaño de letra según el espacio disponible (1 pt ≈ 0,353 mm)
+    const k = Math.max(0.55, Math.min(1.6, Math.min(th / 26, tw / 34)));
+    const fs = {ob: 6.5*k, cod: 13*k, l1: 7.5*k, ln: 6*k};
+    let y = ty;
+    if(logo && th > 14){ const lw = Math.min(tw, 30*k), lh = lw / logo.r; doc.addImage(logo.url, 'PNG', tx, y, lw, lh, 'logoEtq'); y += lh + 1.2*k; }
+    doc.setTextColor(0); doc.setFont('helvetica', 'bold');
+    doc.setFontSize(fs.ob); y += fs.ob*0.36; doc.text(corta(String(base.obra).toUpperCase(), tw), tx, y);
+    doc.setFontSize(fs.cod); y += fs.cod*0.38 + 0.4; doc.text(corta((esOp ? 'OP ' : '') + code, tw), tx, y);
+    lineas.forEach((t, i) => {
+      const f = i === 0 && !esOp ? fs.l1 : fs.ln; if(y + f*0.4 > ty + th) return;
+      doc.setFont('helvetica', i === 0 && !esOp ? 'bold' : 'normal'); doc.setTextColor(i === 0 && !esOp ? 0 : 50);
+      doc.setFontSize(f); y += f*0.42 + 0.3; doc.text(corta(t, tw), tx, y);
+    });
+  });
+  etqEntregar(doc, tipo, lista.length, `una por página de <b>${fmtN(W)} × ${fmtN(H)} mm</b>`,
+    `En la impresora elige el tamaño de papel <b>${fmtN(W)} × ${fmtN(H)} mm</b> (o la etiqueta del rollo) y escala <b>100 % / tamaño real</b>.`);
+}
+function etqEntregar(doc, tipo, n, como, aviso){
+  const obra = (S.obra || 'obra').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
+  const nombre = `Etiquetas_${tipo === 'op' ? 'OP' : 'items'}_${obra}.pdf`;
+  const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
+  const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  window._etq = {file, url, nombre};
+  openSheet('Etiquetas QR', esc(S.obra || ''), `<div class="summary"><b>${fmtN(n)} etiqueta${n===1?'':'s'} ${tipo === 'op' ? 'por OP' : 'por ítem'}</b>, ${como}.</div>
+    <div class="warn">${aviso}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_etq.file], title:_etq.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>
+    <div class="sc-note" style="margin-top:10px">En el iPhone o iPad: <b>Compartir / Imprimir</b> → <b>Imprimir</b>. En el Mac: <b>Abrir PDF</b> → Cmd + P.</div>`, 'Listo', async () => {});
+}
+
+// Tamaño de la impresora de etiquetas (rollo): se guarda en este equipo
+function etqRollo(){ try{ return Object.assign({medio:'rollo', w:50, h:30}, JSON.parse(localStorage.getItem('etq_rollo') || '{}')); }catch(e){ return {medio:'rollo', w:50, h:30}; } }
+function etqGuardar(v){ try{ localStorage.setItem('etq_rollo', JSON.stringify(Object.assign(etqRollo(), v))); }catch(e){} }
+function etqMedio(m){ etqGuardar({medio:m}); document.querySelectorAll('#etqMedio button').forEach((b,i) => b.classList.toggle('on', (i===0) === (m==='rollo'))); $('#etqTam').style.display = m==='rollo' ? '' : 'none'; }
 async function etqLogo(){
   if(window._etqLogo) return window._etqLogo;
   try{
@@ -2307,6 +2370,13 @@ async function etqPDF(tipo){
   //  · Por ítem → Avery 5163 / 8163: 2" × 4" (50,8 × 101,6 mm), 10 por hoja (2 × 5)
   //  · Por OP   → Avery 5160 / 8160: 1" × 2⅝" (25,4 × 66,7 mm), 30 por hoja (3 × 10)
   const IN = 25.4;
+  const R = etqRollo();
+  if(R.medio === 'rollo'){
+    const w = parseFloat(String(($('#etqW') || {}).value || R.w).replace(',', '.')), h = parseFloat(String(($('#etqH') || {}).value || R.h).replace(',', '.'));
+    if(!(w >= 20 && w <= 150 && h >= 15 && h <= 200)) return toast('Revisa el tamaño de la etiqueta (ancho 20–150 mm, alto 15–200 mm)', true);
+    etqGuardar({w, h});
+    return etqRolloPDF(tipo, lista, w, h, logo);
+  }
   const F = tipo === 'op'
     ? {ref:'Avery 5160 / 8160', COLS:3, ROWS:10, W:2.625*IN, H:1*IN, MX:0.1875*IN, MY:0.5*IN, GX:0.125*IN, QR:21}
     : {ref:'Avery 5163 / 8163', COLS:2, ROWS:5, W:4*IN, H:2*IN, MX:0.15625*IN, MY:0.5*IN, GX:0.1875*IN, QR:38};
