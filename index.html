@@ -449,7 +449,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2223,25 +2223,53 @@ function scCant(delta){
 }
 
 // ── Etiquetas QR por OP (para pegar en la orden impresa) ──
+// Se genera un PDF (hoja A4, 3 × 8 etiquetas) que se abre, comparte o descarga para imprimir.
+// Así funciona igual en el Mac, el iPad y el iPhone (la app instalada no permite imprimir directo).
 async function etiquetasQR(){
   const items = typeof filtered === 'function' ? filtered() : S.items;
   const g = [...grp(items.filter(it => it.op), it => it.op).entries()].sort((a,b) => nat(a[0], b[0]));
   if(!g.length) return toast('No hay OP en la lista', true);
-  if(g.length > 60 && !confirm(`Vas a imprimir ${g.length} etiquetas. ¿Continuar?`)) return;
-  try{ if(!window.qrcode) await loadScript('lib/qrcode.js'); }catch(e){ return toast(errMsg(e), true); }
-  const svg = t => { const q = qrcode(0, 'M'); q.addData(t); q.make(); return q.createSvgTag({cellSize:4, margin:0, scalable:true}); };
-  let pa = $('#printArea'); if(!pa){ pa = document.createElement('div'); pa.id = 'printArea'; document.body.appendChild(pa); }
-  pa.innerHTML = `<div class="et-grid">${g.map(([op, l]) => {
+  toast('Preparando las etiquetas…');
+  try{
+    if(!window.qrcode) await loadScript('lib/qrcode.js');
+    if(!window.jspdf) await loadScript('lib/jspdf.js');
+  }catch(e){ return toast(errMsg(e), true); }
+  const doc = new jspdf.jsPDF({unit:'mm', format:'a4'});
+  const COLS = 3, ROWS = 8, MX = 7, MY = 12, W = (210 - 2*MX) / COLS, H = (297 - 2*MY) / ROWS, QR = 24;
+  const corta = (t, max) => { t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
+  g.forEach(([op, l], n) => {
+    const k = n % (COLS*ROWS); if(n && !k) doc.addPage();
+    const x = MX + (k % COLS) * W, y = MY + Math.floor(k / COLS) * H;
+    doc.setDrawColor(170); doc.setLineDashPattern([1, 1], 0); doc.rect(x, y, W, H);
+    const q = qrcode(0, 'M'); q.addData(qrTexto(op)); q.make();
+    const nm = q.getModuleCount(), cs = QR / nm, qx = x + 3, qy = y + (H - QR) / 2;
+    doc.setFillColor(0, 0, 0);
+    for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c)) doc.rect(qx + c*cs, qy + r*cs, cs + 0.02, cs + 0.02, 'F');
+    const tx = qx + QR + 3, tw = x + W - tx - 2;
     const pisos = [...new Set(l.map(i => i.piso).filter(Boolean))].sort(nat);
     const dis = [...new Set(l.map(i => i.diseno).filter(Boolean))];
-    return `<div class="et"><div class="et-qr">${svg(qrTexto(op))}</div><div class="et-tx">
-      <div class="et-ob">${esc(l[0].obra)}</div><div class="et-op">OP ${esc(op)}</div>
-      <div class="et-d">${fmtN(l.length)} sub-OP${pisos.length ? ' · Piso ' + esc(pisos.slice(0,4).join(', ')) + (pisos.length > 4 ? '…' : '') : ''}</div>
-      <div class="et-d">${esc(dis.slice(0,2).join(' / '))}${dis.length > 2 ? '…' : ''}</div></div></div>`; }).join('')}</div>`;
-  document.body.classList.add('printing');
-  const fin = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', fin); };
-  window.addEventListener('afterprint', fin);
-  setTimeout(() => { window.print(); setTimeout(fin, 1500); }, 150);
+    doc.setTextColor(0); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.text(corta(String(l[0].obra).toUpperCase(), tw), tx, y + 9);
+    doc.setFontSize(14); doc.text(corta('OP ' + op, tw), tx, y + 16);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(60);
+    doc.text(corta(l.length + ' sub-OP' + (pisos.length ? ' · Piso ' + pisos.join(', ') : ''), tw), tx, y + 21);
+    doc.text(corta(dis.join(' / '), tw), tx, y + 25);
+  });
+  const obra = (S.obra || 'obra').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
+  const nombre = `Etiquetas_QR_${obra}.pdf`;
+  const blob = doc.output('blob');
+  const file = new File([blob], nombre, {type:'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const puedeCompartir = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  window._etq = {file, url, nombre};
+  const body = `<div class="summary"><b>${fmtN(g.length)} etiqueta${g.length===1?'':'s'}</b> en ${Math.ceil(g.length / (COLS*ROWS))} hoja${g.length > COLS*ROWS ? 's' : ''} A4 (3 × 8). Recórtalas por la línea punteada y pégalas en la orden impresa.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      ${puedeCompartir ? `<button class="btn primary" onclick="navigator.share({files:[_etq.file], title:_etq.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puedeCompartir ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
+    </div>
+    <div class="sc-note" style="margin-top:10px">En el iPhone o iPad: <b>Compartir / Imprimir</b> → <b>Imprimir</b>. En el Mac: <b>Abrir PDF</b> → Cmd + P.</div>`;
+  openSheet('Etiquetas QR', esc(S.obra || ''), body, 'Listo', async () => {});
 }
 
 // ════════════════════════════════════════════════════════════════
