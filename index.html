@@ -134,6 +134,9 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .btn-orden{display:inline-flex;align-items:center;gap:6px;}
 #ordenBox:empty{display:none;}
 #ordenBox{display:flex;align-items:center;grid-column:1/-1;}
+.cob-nuevo{color:var(--cola);}
+.cob-det{display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--text2);margin:10px 0;max-height:38vh;overflow:auto;}
+.cob-det .cob-nuevo{margin-top:2px;}
 .cob-ver{color:var(--text2);text-decoration:underline;text-underline-offset:2px;}
 .cob-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:8px;}
 .cob-ob{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);padding:14px;text-align:left;}
@@ -409,7 +412,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '3.9';
+const APP_VERSION = '4.0';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1079,35 +1082,63 @@ function renderCobros(){
   renderCobrosBox();
 }
 // Marcas (chulos) de OP durante un corte: se guardan en este equipo hasta registrar el cobro
-const COBK = 'cob_marcas_v1';
+// Al chulear una OP se guarda la lista EXACTA de ítems pendientes en ese momento.
+// Lo que se registre después (p. ej. una instalación nueva) no entra en el corte.
+const COBK = 'cob_marcas_v2';
 function cobMarcas(){ try{ return JSON.parse(localStorage.getItem(COBK) || '{}'); }catch(e){ return S._cobMem || (S._cobMem = {}); } }
 function cobGuardar(m){ try{ localStorage.setItem(COBK, JSON.stringify(m)); }catch(e){ S._cobMem = m; } }
 const cobKey = (obra, op) => S.cobTipo + '|' + obra + '|' + (op||'');
-const cobChk = (obra, op) => !!cobMarcas()[cobKey(obra, op)];
-function cobToggle(obra, op){ const m = cobMarcas(), k = cobKey(obra, op); if(m[k]) delete m[k]; else m[k] = 1; cobGuardar(m); renderCobrosBox(); }
-function cobChkTodas(on){
-  const m = cobMarcas();
-  (S.cobPend||[]).filter(r => r.tipo === S.cobTipo && r.obra === S.cobObra).forEach(r => { const k = cobKey(r.obra, r.op); if(on) m[k] = 1; else delete m[k]; });
+const cobSnap = (obra, op) => { const v = cobMarcas()[cobKey(obra, op)]; return Array.isArray(v) ? v : null; };
+const cobChk = (obra, op) => !!cobSnap(obra, op);
+const cobItemsOp = op => { const c = S.cobIt; return c && c.map && c.map !== 'err' && c.key === S.cobTipo + '|' + S.cobObra ? (c.map.get(op || '') || []) : null; };
+function cobToggle(obra, op){
+  const m = cobMarcas(), k = cobKey(obra, op);
+  if(m[k]){ delete m[k]; }
+  else {
+    const l = cobItemsOp(op);
+    if(!l){ toast('Espera un momento: cargando los ítems de la obra', true); return; }
+    m[k] = l.map(x => x.id);
+  }
   cobGuardar(m); renderCobrosBox();
 }
-function cobRegistrar(){
+function cobChkTodas(on){
+  const m = cobMarcas();
+  const rows = (S.cobPend||[]).filter(r => r.tipo === S.cobTipo && r.obra === S.cobObra);
+  if(on && rows.some(r => !cobItemsOp(r.op))){ toast('Espera un momento: cargando los ítems de la obra', true); return; }
+  rows.forEach(r => { const k = cobKey(r.obra, r.op); if(on){ if(!m[k]) m[k] = cobItemsOp(r.op).map(x => x.id); } else delete m[k]; });
+  cobGuardar(m); renderCobrosBox();
+}
+async function cobRegistrar(){
   const obra = S.cobObra, tipo = S.cobTipo, k = tipo === 'D' ? 'despacho' : 'instalacion';
-  const rows = S.cobPend.filter(r => r.tipo === tipo && r.obra === obra && cobChk(obra, r.op));
+  const rows = S.cobPend.filter(r => r.tipo === tipo && r.obra === obra && cobChk(obra, r.op)).sort((a,b) => nat(a.op, b.op));
   if(!rows.length) return;
-  const n = rows.reduce((a,r) => a + r.n, 0);
-  const body = `<div class="summary">${fmtN(rows.length)} OP · <b>${fmtN(n)} ítems</b> · OP ${esc(rows.map(r => r.op).join(', '))}</div>
+  toast('Revisando los ítems marcados…');
+  let items, est;
+  try{
+    items = await API.obra(obra);
+    est = new Map((await (isGerente() ? API.comercial : API.cobros).call(API, items.map(i => i.id))).map(c => [c.item_id, c]));
+  }catch(e){ return toast(errMsg(e), true); }
+  const byIdO = new Map(items.map(i => [i.id, i]));
+  const ok = it => it && (tipo === 'D' ? it.despachado : it.instalado) && !(est.get(it.id) || {})['cobrado_' + k];
+  const det = rows.map(r => {
+    const snap = new Set(cobSnap(obra, r.op));
+    const incl = [...snap].map(id => byIdO.get(id)).filter(ok);
+    const nuevos = items.filter(it => (it.op || '') === (r.op || '') && ok(it) && !snap.has(it.id));
+    return {op:r.op, incl, nuevos};
+  });
+  const ids = det.flatMap(d => d.incl.map(it => it.id));
+  const nNuevos = det.reduce((a,d) => a + d.nuevos.length, 0);
+  if(!ids.length){ toast('Los ítems marcados ya no están pendientes', true); return; }
+  const lst = l => { const c = new Map(); l.forEach(it => c.set(it.item || '—', (c.get(it.item || '—') || 0) + 1)); return [...c].sort((a,b) => nat(a[0], b[0])).map(([x,n]) => esc(x) + (n > 1 ? ' ×' + n : '')).join(', '); };
+  const body = `<div class="summary"><b>${fmtN(ids.length)} ítems</b> en ${fmtN(det.length)} OP — solo los que estaban pendientes cuando chuleaste cada OP.</div>
+    <div class="cob-det">${det.map(d => `<div><b>OP ${esc(d.op||'—')}</b> · ${fmtN(d.incl.length)}: ${lst(d.incl)}${d.nuevos.length ? `<div class="cob-nuevo">+ ${fmtN(d.nuevos.length)} registrado${d.nuevos.length===1?'':'s'} después, NO se incluye${d.nuevos.length===1?'':'n'}: ${lst(d.nuevos)}</div>` : ''}</div>`).join('')}</div>
+    ${nNuevos ? `<div class="warn"><b>${fmtN(nNuevos)}</b> ítem${nNuevos===1?'':'s'} de estas OP se registr${nNuevos===1?'ó':'aron'} después de chulear y quedan pendientes para el próximo corte. Si sí van en este corte, cancela, quita la marca de la OP y vuelve a chulearla.</div>` : ''}
     <div class="fgrid"><div class="field"><span class="lbl">Fecha corte</span><input type="date" id="cFecha" value="${today()}"></div>
       <div class="field"><span class="lbl"># Corte</span><input id="cNum" placeholder="Ej. 5"></div></div>`;
-  openSheet('Marcar cobrado ' + (tipo === 'D' ? 'despacho' : 'instalación'), esc(obra), body, `Marcar ${fmtN(n)} ítems`, async () => {
+  openSheet('Marcar cobrado ' + (tipo === 'D' ? 'despacho' : 'instalación'), esc(obra), body, `Marcar ${fmtN(ids.length)} ítems`, async () => {
     const f = $('#cFecha').value, num = $('#cNum').value.trim();
     if(!f){ toast('Falta la fecha de corte', true); return false; }
     if(!num){ toast('Falta el número de corte', true); return false; }
-    const items = await API.obra(obra);
-    const ops = new Set(rows.map(r => r.op || ''));
-    const cand = items.filter(i => ops.has(i.op || '') && (tipo === 'D' ? i.despachado : i.instalado));
-    const est = new Map((await (isGerente() ? API.comercial : API.cobros).call(API, cand.map(i => i.id))).map(c => [c.item_id, c]));
-    const ids = cand.filter(i => !(est.get(i.id) || {})['cobrado_' + k]).map(i => i.id);
-    if(!ids.length){ toast('Esas OP ya no tienen ítems pendientes', true); return false; }
     if(isGerente()) await API.upsertComercial(ids.map(id => ({item_id:id, ['cobrado_'+k]:true, ['fecha_corte_'+k]:f, ['num_corte_'+k]:num})));
     else await API.marcarCobros(ids, k, true, f, num);
     const m = cobMarcas(); rows.forEach(r => delete m[cobKey(obra, r.op)]); cobGuardar(m);
@@ -1133,8 +1164,8 @@ async function loadCobItems(obra, tipo){
     const cand = (await API.obra(obra)).filter(i => tipo === 'D' ? i.despachado : i.instalado);
     const est = new Map((await (isGerente() ? API.comercial : API.cobros).call(API, cand.map(i => i.id))).map(c => [c.item_id, c]));
     const map = new Map();
-    for(const i of cand){ if((est.get(i.id) || {})['cobrado_' + k]) continue; const op = i.op || ''; if(!map.has(op)) map.set(op, []); map.get(op).push(i.item || '—'); }
-    for(const l of map.values()) l.sort(nat);
+    for(const i of cand){ if((est.get(i.id) || {})['cobrado_' + k]) continue; const op = i.op || ''; if(!map.has(op)) map.set(op, []); map.get(op).push({id:i.id, item:i.item || '—'}); }
+    for(const l of map.values()) l.sort((a,b) => nat(a.item, b.item));
     if(S.cobIt && S.cobIt.key === key) S.cobIt.map = map;
   }catch(e){ if(S.cobIt && S.cobIt.key === key) S.cobIt.map = 'err'; }
   if(S.view === 'home' && S.homeTab === 'cobros' && S.cobObra === obra) renderCobrosBox();
@@ -1146,7 +1177,7 @@ function cobItemsHTML(obra, op){
   if(c.map === 'err') return '';
   const l = c.map.get(op || '') || [];
   if(!l.length) return '';
-  const cnt = new Map(); for(const x of l) cnt.set(x, (cnt.get(x) || 0) + 1);
+  const cnt = new Map(); for(const x of l) cnt.set(x.item, (cnt.get(x.item) || 0) + 1);
   return `<span class="d cob-its" style="padding-left:30px">Ítem${cnt.size===1?'':'s'}: ${[...cnt].map(([x, n]) => `<b>${esc(x)}</b>${n > 1 ? ` <i>×${n}</i>` : ''}`).join(', ')}</span>`;
 }
 function renderCobrosBox(){
@@ -1194,12 +1225,14 @@ function renderCobrosBox(){
       <div class="cob-tools"><button class="btn sm ghost" onclick="setCobModo('hecho', decodeURIComponent('${encQ(obra)}'))">Ver cobrados ›</button><button class="btn sm ghost" onclick="cobChkTodas(true)">Marcar todas</button><button class="btn sm ghost" onclick="cobChkTodas(false)">Quitar marcas</button></div>
       ${rows.map(r => { const on = cobChk(obra, r.op); return `<div class="pl-row cob-op ${on?'on':''}" onclick="cobToggle(decodeURIComponent('${encQ(obra)}'), decodeURIComponent('${encQ(r.op)}'))">
         <span class="o"><span class="cob-ck">${on ? ICON.check : ''}</span><em>OP ${esc(r.op||'—')}</em></span><span class="k">${fmtN(r.n)}</span>
+        ${on && r.n > cobSnap(obra, r.op).length ? `<span class="d cob-nuevo" style="padding-left:30px">Marcaste ${fmtN(cobSnap(obra, r.op).length)} · ${fmtN(r.n - cobSnap(obra, r.op).length)} nuevo${r.n - cobSnap(obra, r.op).length===1?'':'s'} sin marcar (no entra${r.n - cobSnap(obra, r.op).length===1?'':'n'} en este corte)</span>` : ''}
         ${cobItemsHTML(obra, r.op)}
         <span class="d" style="padding-left:30px">${fmtN(r.m2,1)} m²${r.fecha ? ` · ${S.cobTipo==='D' ? 'Despacho' : 'Instalación'} ${fmtD(r.fecha)}` : ''}${r.remisiones ? ` · ${S.cobTipo==='D' ? 'Rem.' : 'Inst.'} ${esc(String(r.remisiones).split(', ').slice(0,3).join(', '))}${String(r.remisiones).split(', ').length > 3 ? '…' : ''}` : ''}
           · <a href="#" class="cob-ver" onclick="event.stopPropagation(); event.preventDefault(); ${plGo(obra, est, r.op, '').replace(/"/g,'&quot;')}">ver ítems ›</a>${ordenLinkHTML(r.op)}</span></div>`; }).join('')}
     </div>`;
     const marc = rows.filter(r => cobChk(obra, r.op));
-    if(marc.length) h += `<div class="selbar"><div class="count"><b>${fmtN(marc.length)}</b>OP · ${fmtN(sum(marc,'n'))} ítems · ${fmtN(sum(marc,'m2'),1)} m²</div>
+    const nMarc = marc.reduce((a, r) => a + Math.min(r.n, cobSnap(obra, r.op).length), 0);
+    if(marc.length) h += `<div class="selbar"><div class="count"><b>${fmtN(marc.length)}</b>OP · ${fmtN(nMarc)} ítems</div>
       <div class="acts"><button class="btn sm btn-cob" onclick="cobRegistrar()">$ Marcar cobrado</button></div>
       <button class="icon-btn" title="Quitar marcas" onclick="cobChkTodas(false)">${ICON.close}</button></div>`;
   }
