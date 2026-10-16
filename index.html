@@ -451,7 +451,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.0';
+const APP_VERSION = '5.1';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -461,6 +461,9 @@ const PROCS = [
   ['cortado','Cortado','COR'],['troquelado','Troquelado','TRO'],['mecanizado','Mecanizado','MEC'],
   ['programado','Programado','PRG'],['vidrio_proc','Vidrio','VID'],['prealistado','Prealistado','PRE']
 ];
+// Para iniciar ensamble deben estar completos (X) estos procesos; vidrio y prealistado pueden ir después
+const PROC_ENS = ['cortado','troquelado','mecanizado','programado'];
+const faltaProc = it => PROCS.filter(([k]) => PROC_ENS.includes(k) && it[k] !== 'X').map(([,,c]) => c);
 const STAGES = {
   'EN COLA':   {c:'var(--cola)', t:'En cola'},
   'PRODUCCIÓN':{c:'var(--prod)', t:'Producción'},
@@ -1828,7 +1831,8 @@ function cToggle(k){
   S.draft._dirty = true; renderDetail();
 }
 function dNow(which){
-  if(which==='inicio'){ if(!S.draft.ensamblador) return toast('Primero elige el ensamblador', true); S.draft.dia_inicio = today(); S.draft.hora_inicio = nowTime(); }
+  if(which==='inicio'){ if(!S.draft.ensamblador) return toast('Primero elige el ensamblador', true);
+    if(!ensambleOk(byId(S.detailId), S.draft)) return; S.draft.dia_inicio = today(); S.draft.hora_inicio = nowTime(); }
   else { S.draft.dia_final = today(); S.draft.hora_final = nowTime(); }
   S.draft._dirty = true; renderDetail();
 }
@@ -1847,6 +1851,16 @@ function dToggle(k){
 }
 function dDiscard(){ S.draft = draftOf(byId(S.detailId)); renderDetail(); }
 
+// ¿Puede este ítem iniciar ensamble con los cambios del borrador? Asistente: bloqueo; gerente: confirma
+function ensambleOk(it, d){
+  if(it.ensamblador || it.dia_inicio) return true;              // ya estaba en ensamble
+  if(!(d.ensamblador || d.dia_inicio)) return true;             // no está iniciando
+  const f = faltaProc({...it, ...d});
+  if(!f.length) return true;
+  if(!isGerente()){ toast('No se puede iniciar el ensamble: falta completar ' + f.join(', '), true); return false; }
+  if(d._procOk) return true;                                    // el gerente ya confirmó
+  return d._procOk = confirm(`Faltan procesos por completar: ${f.join(', ')}.\n\n¿Iniciar el ensamble de todas formas?`);
+}
 async function dSave(){
   const it = byId(S.detailId), d = S.draft;
   if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
@@ -1857,6 +1871,7 @@ async function dSave(){
   if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
   if((d.dia_inicio||d.dia_final) && !d.ensamblador) return toast('Falta el ensamblador', true);
   if(d.dia_final && !d.dia_inicio) return toast('Falta el día de inicio', true);
+  if(!ensambleOk(it, d)) return;
   if(d.despachado && !it.despachado && !estaEnsamblado({...it, ...d, despachado:false})) return toast('No se puede despachar: el ítem no está ensamblado', true);
   if(it.despachado && d.despachado && it.dia_final && !d.dia_final) return toast('El ítem está despachado: no se puede quitar el día final del ensamble', true);
   if(d.dia_final && d.dia_inicio && d.dia_final < d.dia_inicio) return toast('El día final es anterior al de inicio', true);
@@ -1965,7 +1980,12 @@ function sheetEnsamblador(){
   const items = selItems();
   const yaAsig = items.filter(i => i.ensamblador).length;
   const desp = items.filter(i => i.despachado).length;
-  const body = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('gEns', '', '', 'Elegir')}</div>
+  const noListos = items.filter(i => !i.ensamblador && !i.dia_inicio && faltaProc(i).length);
+  const procMsg = noListos.length ? `<div class="warn" style="margin-bottom:10px">
+      <b>${fmtN(noListos.length)} ítem${noListos.length===1?'':'s'} sin procesos completos</b> (deben estar en X: cortado, troquelado, mecanizado y programado):<br>
+      ${noListos.slice(0, 8).map(i => `${esc(i.op_instalacion || i.op)} · falta ${faltaProc(i).join(', ')}`).join('<br>')}${noListos.length > 8 ? '<br>…' : ''}<br>
+      ${isGerente() ? 'Como gerente puedes iniciarlos de todas formas; se te pedirá confirmar.' : 'No se les iniciará el ensamble; se asignará solo a los demás.'}</div>` : '';
+  const body = procMsg + `<div class="field"><span class="lbl">Ensamblador</span>${personaField('gEns', '', '', 'Elegir')}</div>
     <div class="fgrid"><div class="field"><span class="lbl">Día inicio</span><input type="date" id="gDia" value="${today()}"></div>
       <div class="field"><span class="lbl">Hora inicio</span><input type="time" id="gHora" value="${nowTime()}"></div></div>
     ${warn(yaAsig, 'ya tienen ensamblador; se les reemplazará por el nuevo.')}
@@ -1976,7 +1996,13 @@ function sheetEnsamblador(){
     const ens = pfVal('gEns'), dia = $('#gDia').value, hora = $('#gHora').value;
     if(!ens){ toast('Elige el ensamblador', true); return false; }
     if(!dia){ toast('Falta el día de inicio', true); return false; }
-    await applyGroup(items, () => ({ensamblador:ens, dia_inicio:dia, hora_inicio:nz(hora)}));
+    let l = items;
+    if(noListos.length){
+      if(isGerente()){ if(!confirm(`${noListos.length} ítem(s) no tienen completos cortado, troquelado, mecanizado y programado.\n\n¿Iniciar el ensamble de todas formas?`)) return false; }
+      else { const fuera = new Set(noListos.map(i => i.id)); l = items.filter(i => !fuera.has(i.id));
+        if(!l.length){ toast('Ninguno de los ítems tiene los procesos completos: no se puede iniciar el ensamble', true); return false; } }
+    }
+    await applyGroup(l, () => ({ensamblador:ens, dia_inicio:dia, hora_inicio:nz(hora)}));
   });
 }
 
@@ -2069,7 +2095,8 @@ function scParse(txt){
 // ¿Se puede registrar esta estación en el ítem? null = sí; texto = por qué no
 function scMotivo(it, e){
   if(e.proc){ if(it[e.k] === 'X') return 'ya completo'; if(SC.parcial && it[e.k] === '+') return 'ya parcial'; return null; }
-  if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador; return null; }
+  if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
+    const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', '); return null; }
   if(e.k === 'fin'){ if(!it.ensamblador) return 'sin ensamblador'; if(it.dia_final) return 'ya terminado'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
@@ -2205,7 +2232,7 @@ async function scCodigo(txt, manual){
       if(!it){ scBeep(false); toast('No encontré la sub-OP ' + p.sub, true); return; }
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
-      await scAplicar([it], items.length, e);
+      if(await scAplicar([it], items.length, e) === false) return;
       scBeep(true); toast(`✓ ${p.sub} · ${e.t}`);
       return;
     }
@@ -2226,12 +2253,16 @@ function scHoja(p, items, e){
   openSheet(`OP ${esc(p.op)}`, esc(obras.join(' · ')), body, 'Registrar', async () => {
     const l = items.filter(it => det.sel.has(it.id));
     if(!l.length){ toast('No hay sub-OP seleccionadas', true); return false; }
-    await scAplicar(l, items.length, e);
+    if(await scAplicar(l, items.length, e) === false) return false;
   });
   scPintar();
 }
 // Registra y guarda lo que había antes, para poder deshacer desde la lista de la sesión
 async function scAplicar(l, tot, e){
+  if(e.k === 'ini' && isGerente()){
+    const f = l.filter(it => faltaProc(it).length);
+    if(f.length && !confirm(`${f.length === 1 ? 'La sub-OP ' + f[0].op_instalacion : f.length + ' sub-OP'} no tiene${f.length === 1 ? '' : 'n'} completos los procesos (${[...new Set(f.flatMap(faltaProc))].join(', ')}).\n\n¿Iniciar el ensamble de todas formas?`)) return false;
+  }
   const prev = l.map(it => { const pt = scPatch(e); const ns = deriveStatus({...it, ...pt}); if(ns !== it.status) pt.status = ns;
     const pv = {}; for(const k of Object.keys(pt)) pv[k] = it[k] ?? null; return {id:it.id, pv}; });
   await applyGroup(l, () => scPatch(e));
