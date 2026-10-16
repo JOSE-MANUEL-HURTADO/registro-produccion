@@ -232,6 +232,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .h-i{font-size:12.5px;color:var(--text2);margin:2px 0 4px;}
 .h-c{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--text2);}
 .h-c s{color:var(--dim);}.h-c b{color:var(--text);font-weight:500;}
+.anular{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border);padding:10px 12px;margin-top:12px;font-size:12.5px;color:var(--text2);}
 .sc-est{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
 .sc-params{max-width:720px;margin-bottom:14px;}
 .sc-params:empty{display:none;}
@@ -449,7 +450,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.3';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1966,13 +1967,23 @@ function sheetEnsamblador(){
     <div class="fgrid"><div class="field"><span class="lbl">Día inicio</span><input type="date" id="gDia" value="${today()}"></div>
       <div class="field"><span class="lbl">Hora inicio</span><input type="time" id="gHora" value="${nowTime()}"></div></div>
     ${warn(yaAsig, 'ya tienen ensamblador; se les reemplazará por el nuevo.')}
-    ${warn(desp, 'ya están despachados.')}`;
+    ${warn(desp, 'ya están despachados.')}
+    ${yaAsig ? `<div class="anular"><div><b>¿Fue un error?</b> Quita el ensamblador y las fechas de ensamble de los ${fmtN(items.filter(i => i.ensamblador && !i.despachado).length)} ítems seleccionados que lo tienen; vuelven a <b>En cola</b>.</div>
+      <button class="btn sm" onclick="quitarEnsamble()">Anular ensamble</button></div>` : ''}`;
   openSheet('Asignar ensamblador', subSel(items.length), body, `Asignar a ${fmtN(items.length)}`, async () => {
     const ens = pfVal('gEns'), dia = $('#gDia').value, hora = $('#gHora').value;
     if(!ens){ toast('Elige el ensamblador', true); return false; }
     if(!dia){ toast('Falta el día de inicio', true); return false; }
     await applyGroup(items, () => ({ensamblador:ens, dia_inicio:dia, hora_inicio:nz(hora)}));
   });
+}
+
+async function quitarEnsamble(){
+  const l = selItems().filter(i => (i.ensamblador || i.dia_inicio || i.dia_final) && !i.despachado);
+  if(!l.length) return toast('Ninguno de los ítems seleccionados tiene ensamble para anular (o ya están despachados)', true);
+  if(!confirm(`Se quitará el ensamblador y las fechas de ensamble de ${l.length} ítem${l.length===1?'':'s'}. Vuelven a En cola. ¿Continuar?`)) return;
+  try{ await applyGroup(l, () => ({ensamblador:null, dia_inicio:null, hora_inicio:null, dia_final:null, hora_final:null})); closeSheet(); }
+  catch(e){ toast(errMsg(e), true); }
 }
 
 function sheetTerminado(){
