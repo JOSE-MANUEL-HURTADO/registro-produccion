@@ -451,7 +451,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.8';
+const APP_VERSION = '4.9';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2306,21 +2306,25 @@ async function etqRolloPDF(tipo, lista, W, H, logo){
       : [[e.item, e.ubicacion].filter(Boolean).join(' · '), [e.piso ? 'Piso ' + e.piso : '', e.ancho ? fmtN(e.ancho) + ' × ' + fmtN(e.alto) : ''].filter(Boolean).join(' · '), e.diseno || '', e.vidrio ? 'Vidrio: ' + e.vidrio : ''].filter(Boolean);
     let Q, qx, qy, tx, ty, tw, th;
     if(vertical){ Q = Math.min(W - 2*pad, H * 0.5); qx = (W - Q) / 2; qy = pad; tx = pad; ty = qy + Q + pad; tw = W - 2*pad; th = H - ty - pad; }
-    else { Q = Math.min(H - 2*pad, W * 0.45); qx = pad; qy = (H - Q) / 2; tx = qx + Q + pad; ty = pad; tw = W - tx - pad; th = H - 2*pad; }
+    else { Q = Math.min(H - 2*pad, W * 0.40); qx = pad; qy = (H - Q) / 2; tx = qx + Q + pad; ty = pad; tw = W - tx - pad; th = H - 2*pad; }
     qr(qrTexto(code), qx, qy, Q);
-    // tamaño de letra según el espacio disponible (1 pt ≈ 0,353 mm)
-    const k = Math.max(0.55, Math.min(1.6, Math.min(th / 26, tw / 34)));
-    const fs = {ob: 6.5*k, cod: 13*k, l1: 7.5*k, ln: 6*k};
-    let y = ty;
-    if(logo && th > 14){ const lw = Math.min(tw, 30*k), lh = lw / logo.r; doc.addImage(logo.url, 'PNG', tx, y, lw, lh, 'logoEtq'); y += lh + 1.2*k; }
-    doc.setTextColor(0); doc.setFont('helvetica', 'bold');
-    doc.setFontSize(fs.ob); y += fs.ob*0.36; doc.text(corta(String(base.obra).toUpperCase(), tw), tx, y);
-    doc.setFontSize(fs.cod); y += fs.cod*0.38 + 0.4; doc.text(corta((esOp ? 'OP ' : '') + code, tw), tx, y);
-    lineas.forEach((t, i) => {
-      const f = i === 0 && !esOp ? fs.l1 : fs.ln; if(y + f*0.4 > ty + th) return;
-      doc.setFont('helvetica', i === 0 && !esOp ? 'bold' : 'normal'); doc.setTextColor(i === 0 && !esOp ? 0 : 50);
-      doc.setFontSize(f); y += f*0.42 + 0.3; doc.text(corta(t, tw), tx, y);
-    });
+    // Texto: el tamaño de letra se ajusta al espacio y el bloque queda centrado en la altura (1 pt ≈ 0,353 mm)
+    const k = Math.max(0.55, Math.min(1.8, Math.min(th / 26, tw / 34)));
+    const filas = [
+      {t: String(base.obra).toUpperCase(), f: 6.5*k, b: true, c: 0},
+      {t: (esOp ? 'OP ' : '') + code, f: 13*k, b: true, c: 0},
+      ...lineas.map((t, i) => ({t, f: i === 0 && !esOp ? 7.5*k : 6*k, b: i === 0 && !esOp, c: i === 0 && !esOp ? 0 : 50}))
+    ];
+    const lw = logo && th > 14 ? Math.min(tw, 30*k) : 0, lh = lw ? lw / logo.r : 0;
+    const alto = f => f * 0.42 + 0.35;
+    let total = (lh ? lh + 1.4*k : 0), usadas = [];
+    for(const r of filas){ if(total + alto(r.f) > th) break; total += alto(r.f); usadas.push(r); }
+    let y = ty + Math.max(0, (th - total) / 2);
+    if(lh){ doc.addImage(logo.url, 'PNG', tx, y, lw, lh, 'logoEtq'); y += lh + 1.4*k; }
+    for(const r of usadas){
+      doc.setFont('helvetica', r.b ? 'bold' : 'normal'); doc.setTextColor(r.c); doc.setFontSize(r.f);
+      y += alto(r.f); doc.text(corta(r.t, tw), tx, y - 0.35);
+    }
   });
   etqEntregar(doc, tipo, lista.length, `una por página de <b>${fmtN(W)} × ${fmtN(H)} mm</b>`,
     `En la impresora elige el tamaño de papel <b>${fmtN(W)} × ${fmtN(H)} mm</b> (o la etiqueta del rollo) y escala <b>100 % / tamaño real</b>.`);
@@ -2341,7 +2345,7 @@ function etqEntregar(doc, tipo, n, como, aviso){
 }
 
 // Tamaño de la impresora de etiquetas (rollo): se guarda en este equipo
-function etqRollo(){ try{ return Object.assign({medio:'rollo', w:50, h:30}, JSON.parse(localStorage.getItem('etq_rollo') || '{}')); }catch(e){ return {medio:'rollo', w:50, h:30}; } }
+function etqRollo(){ try{ return Object.assign({medio:'rollo', w:85, h:60}, JSON.parse(localStorage.getItem('etq_rollo') || '{}')); }catch(e){ return {medio:'rollo', w:85, h:60}; } }
 function etqGuardar(v){ try{ localStorage.setItem('etq_rollo', JSON.stringify(Object.assign(etqRollo(), v))); }catch(e){} }
 function etqMedio(m){ etqGuardar({medio:m}); document.querySelectorAll('#etqMedio button').forEach((b,i) => b.classList.toggle('on', (i===0) === (m==='rollo'))); $('#etqTam').style.display = m==='rollo' ? '' : 'none'; }
 async function etqLogo(){
