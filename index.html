@@ -451,7 +451,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.5';
+const APP_VERSION = '4.6';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -627,6 +627,7 @@ const API = {
     return out.filter(f => /\.pdf$/i.test(f.name)).map(f => f.name.replace(/\.pdf$/i, ''));
   },
   async ordenUrl(num){ const {data,error} = await this.sb.storage.from('ordenes').createSignedUrl('ops/' + num + '.pdf', 3600); if(error) throw error; return data.signedUrl; },
+  async ordenBajar(num){ const {data,error} = await this.sb.storage.from('ordenes').download('ops/' + num + '.pdf'); if(error) throw error; return data; },
   async ordenSubir(num, file){ const {error} = await this.sb.storage.from('ordenes').upload('ops/' + num + '.pdf', file, {upsert:true, contentType:'application/pdf', cacheControl:'3600'}); if(error) throw error; },
   async ensambladores(){ const {data,error} = await this.sb.from('ensambladores').select('nombre').eq('activo',true).order('nombre'); if(error) throw error; return data.map(r=>r.nombre); },
   async update(ids, patch){
@@ -2061,7 +2062,9 @@ const scEst = () => SC_EST.find(e => e.k === SC.est);
 const qrTexto = op => 'ELP-OP:' + op;
 function scParse(txt){
   const m = String(txt || '').toUpperCase().match(/(\d{3,6}-\d+)(?:\.(\d+))?/);
-  return m ? {op:m[1], sub:m[2] ? m[1] + '.' + m[2] : null} : null;
+  if(!m) return null;
+  const op = m[1].replace(/^0+(?=\d)/, '');
+  return {op, sub:m[2] ? op + '.' + m[2] : null};
 }
 // ¿Se puede registrar esta estación en el ítem? null = sí; texto = por qué no
 function scMotivo(it, e){
@@ -2427,6 +2430,7 @@ function renderCarga(){
   const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
   const od = $('#ordDir'); if(od) od.onchange = e => ordenesLeer([...e.target.files]);
   const of = $('#ordFiles'); if(of) of.onchange = e => ordenesLeer([...e.target.files]);
+  const oq = $('#ordQR'); if(oq) oq.onchange = e => { const f = e.target.files[0]; if(f) ordenQRSuelta(f); };
   const fb = $('#fileBase'); if(fb) fb.onchange = e => { const file = e.target.files[0]; if(file) leerBase(file); };
   const cf = $('#mConfirm'); if(cf) cf.oninput = () => { M.confirmTxt = cf.value; const b = $('#mGo'); if(b) b.disabled = !(M.backup && normH(cf.value)==='REEMPLAZAR'); };
 }
@@ -2466,7 +2470,11 @@ function ordenesHTML(){
         <div style="display:flex;gap:8px;flex-wrap:wrap">
         <label class="btn primary sm" style="cursor:pointer">${ICON.up} Elegir carpeta<input type="file" id="ordDir" webkitdirectory directory multiple style="display:none"></label>
         <label class="btn sm" style="cursor:pointer">${ICON.pdf} Elegir archivos<input type="file" id="ordFiles" accept="application/pdf,.pdf" multiple style="display:none"></label></div></div></div>
-      <div class="cstep"><b>2</b><div><div class="cs-t">Revisa y sube</div><div class="cs-d">Verás cuántas son nuevas y cuáles ya estaban. Por defecto solo se suben las nuevas, así puedes repetir el proceso cada vez que agregues órdenes.</div></div></div>`;
+      <div class="cstep"><b>2</b><div><div class="cs-t">Revisa y sube</div><div class="cs-d">Verás cuántas son nuevas y cuáles ya estaban. Por defecto solo se suben las nuevas. <b>A cada página se le agrega el código QR de su OP</b> en el encabezado, así la orden sale impresa con su código.</div></div></div>
+      <div class="cstep"><b>QR</b><div><div class="cs-t">Código QR en la orden impresa</div><div class="cs-d">Imprime la orden desde la app (botón <b>Orden</b> de la OP) y sale con su QR. También puedes ponerle el QR a un PDF sin subirlo, o a las órdenes que ya estaban cargadas.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label class="btn sm" style="cursor:pointer">${ICON.pdf} PDF suelto con QR<input type="file" id="ordQR" accept="application/pdf,.pdf" style="display:none"></label>
+        ${n ? `<button class="btn sm" onclick="ordenesQRExistentes()">${ICON.scan} Agregar QR a las ${fmtN(n)} cargadas</button>` : ''}</div></div></div>`;
   } else if(O.estado === 'revision'){
     const nuevas = O.lista.filter(x => !(S.ordenes && S.ordenes.has(x.num)));
     const ya = O.lista.length - nuevas.length;
@@ -2482,7 +2490,8 @@ function ordenesHTML(){
   } else if(O.estado === 'subiendo'){
     h += `<div class="loading"><div class="spin"></div>Subiendo órdenes… ${fmtN(O.prog)} de ${fmtN(O.total)}</div>`;
   } else if(O.estado === 'listo'){
-    h += `<div class="cstep"><b>✓</b><div><div class="cs-t">${fmtN(O.subidos)} órdenes subidas</div>
+    h += `<div class="cstep"><b>✓</b><div><div class="cs-t">${fmtN(O.subidos)} órdenes ${O.msg || 'subidas'}</div>
+      ${O.sinQR ? `<div class="warn"><b>${fmtN(O.sinQR)}</b> PDF no tienen el "Número:" de la OP en el formato esperado; quedaron sin QR.</div>` : ''}
       ${O.errores.length ? `<div class="warn"><b>${fmtN(O.errores.length)}</b> no se pudieron subir: ${esc(O.errores.slice(0,10).join(' · '))}</div>` : ''}
       <button class="btn sm" onclick="O.estado='inicio'; renderCarga()">Subir más</button></div></div>`;
   }
@@ -2509,15 +2518,86 @@ async function ordenesLeer(files){
   if(!O.lista.length && !O.sinNum.length){ toast('No se encontraron PDF en lo que elegiste', true); return; }
   O.reemplazar = false; O.estado = 'revision'; renderCarga();
 }
+// ── QR impreso dentro de la orden de producción ──
+// Lee el número de cada página ("Número: 006291-1") y pone el QR de esa OP en el encabezado,
+// a la derecha de "Orden de producción". Si el PDF ya tiene el QR, no lo repite.
+async function qrLibsPDF(){
+  if(!window.qrcode) await loadScript('lib/qrcode.js');
+  if(!window.PDFLib) await loadScript('lib/pdf-lib.js');
+  if(!window.pdfjsLib){ await loadScript('lib/pdfjs.js'); pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdfjs.worker.js'; }
+}
+async function ordenConQR(blob){
+  await qrLibsPDF();
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const doc = await PDFLib.PDFDocument.load(bytes, {ignoreEncryption:true});
+  if(String(doc.getKeywords() || '').includes('ELP-QR')) return {blob, n:0, ya:true};
+  const pdf = await pdfjsLib.getDocument({data: bytes.slice()}).promise;
+  const pages = doc.getPages(); let n = 0, ultimo = null;
+  for(let i = 0; i < pages.length; i++){
+    const tc = await (await pdf.getPage(i + 1)).getTextContent();
+    const txt = tc.items.map(t => t.str).join(' ');
+    const m = txt.match(/N[uú]mero\s*:?\s*0*(\d{3,6}-\d+)/i);
+    const op = m ? m[1] : ultimo; if(!op) continue; ultimo = op;
+    const pg = pages[i], {width:W, height:H} = pg.getSize();
+    const q = qrcode(0, 'M'); q.addData(qrTexto(op)); q.make();
+    const size = 40, nm = q.getModuleCount(), cs = size / nm;
+    const x = W * 0.626, y = H - 12 - size;
+    pg.drawRectangle({x: x - 2, y: y - 2, width: size + 4, height: size + 4, color: PDFLib.rgb(1,1,1)});
+    for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c))
+      pg.drawRectangle({x: x + c*cs, y: y + (nm - 1 - r)*cs, width: cs + 0.05, height: cs + 0.05, color: PDFLib.rgb(0,0,0)});
+    n++;
+  }
+  await pdf.destroy();
+  if(!n) return {blob, n:0};
+  doc.setKeywords(['ELP-QR']);
+  return {blob: new Blob([await doc.save()], {type:'application/pdf'}), n};
+}
+// Agregar el QR a las órdenes que ya estaban cargadas
+async function ordenesQRExistentes(){
+  if(!S.ordenes || !S.ordenes.size) return toast('No hay órdenes cargadas', true);
+  if(!confirm(`Se agregará el código QR a las ${fmtN(S.ordenes.size)} órdenes cargadas (las que ya lo tienen no se tocan). Puede tardar unos minutos. ¿Continuar?`)) return;
+  try{ await qrLibsPDF(); }catch(e){ return toast(errMsg(e), true); }
+  const l = [...S.ordenes].sort(nat);
+  O.estado = 'subiendo'; O.prog = 0; O.total = l.length; O.errores = []; O.subidos = 0; O.sinQR = 0; renderCarga();
+  let i = 0;
+  const worker = async () => { while(i < l.length){ const num = l[i++];
+    try{ const r = await ordenConQR(await API.ordenBajar(num)); if(r.n){ await API.ordenSubir(num, r.blob); O.subidos++; } else if(!r.ya) O.sinQR++; }
+    catch(e){ O.errores.push(num + ': ' + errMsg(e)); }
+    O.prog++; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Agregando QR… ${fmtN(O.prog)} de ${fmtN(O.total)}`; } };
+  await Promise.all([worker(), worker(), worker()]);
+  O.estado = 'listo'; O.msg = 'con QR agregado'; renderCarga();
+}
+// Un PDF suelto: se le pone el QR y se devuelve para imprimir (no se sube)
+async function ordenQRSuelta(f){
+  toast('Agregando el QR…');
+  try{
+    const r = await ordenConQR(f);
+    if(!r.n && !r.ya) return toast('No encontré el "Número:" de la OP en ese PDF', true);
+    const nombre = f.name.replace(/\.pdf$/i, '') + '_QR.pdf', file = new File([r.blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(r.blob);
+    const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
+    window._oqr = {file, nombre};
+    openSheet('Orden con QR', esc(f.name), `<div class="summary">${r.ya ? 'Este PDF ya tenía el QR.' : `QR agregado en <b>${fmtN(r.n)}</b> página${r.n===1?'':'s'}.`}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_oqr.file], title:_oqr.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
+  }catch(e){ toast('No se pudo agregar el QR: ' + errMsg(e), true); }
+}
+
 async function ordenesSubir(){
   const l = O.lista.filter(x => O.reemplazar || !(S.ordenes && S.ordenes.has(x.num)));
-  O.estado = 'subiendo'; O.prog = 0; O.total = l.length; O.errores = []; O.subidos = 0; renderCarga();
+  try{ await qrLibsPDF(); }catch(e){}
+  O.estado = 'subiendo'; O.prog = 0; O.total = l.length; O.errores = []; O.subidos = 0; O.sinQR = 0; renderCarga();
   let i = 0;
   const worker = async () => { while(i < l.length){ const x = l[i++];
-    try{ await API.ordenSubir(x.num, x.file); O.subidos++; }catch(e){ O.errores.push(x.num + ': ' + errMsg(e)); }
-    O.prog++; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Subiendo órdenes… ${fmtN(O.prog)} de ${fmtN(O.total)}`; } };
-  await Promise.all([worker(), worker(), worker(), worker()]);
-  O.estado = 'listo'; await loadOrdenes(); renderCarga();
+    try{
+      let f = x.file;
+      try{ const r = await ordenConQR(f); if(r.n) f = r.blob; else if(!r.ya) O.sinQR++; }catch(e){ O.sinQR++; }   // si no se puede, se sube igual
+      await API.ordenSubir(x.num, f); O.subidos++;
+    }catch(e){ O.errores.push(x.num + ': ' + errMsg(e)); }
+    O.prog++; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Subiendo órdenes con QR… ${fmtN(O.prog)} de ${fmtN(O.total)}`; } };
+  await Promise.all([worker(), worker(), worker()]);
+  O.estado = 'listo'; O.msg = 'subidas con QR'; await loadOrdenes(); renderCarga();
 }
 
 // ── Historial de cambios (solo gerente) ──
