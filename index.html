@@ -35,6 +35,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;}
 input,select{font-family:var(--mono);font-size:16px;color:var(--text);background:var(--surface3);border:1px solid var(--border);border-radius:0;padding:10px 12px;width:100%;outline:none;-webkit-appearance:none;appearance:none;min-height:44px;}
 input:focus,select:focus{border-color:var(--text2);}
 input[type=date],input[type=time]{min-width:0;}
+input[readonly]{background:transparent;font-weight:600;letter-spacing:.04em;}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px;}
 .hidden{display:none!important;}
 .lbl{font-family:var(--sans);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);}
@@ -451,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.2';
+const APP_VERSION = '5.3';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -563,6 +564,7 @@ const API = {
     if(error) throw error; return data[0] || null;
   },
   async registrarRespaldo(origen, filas){ const {error} = await this.sb.rpc('registrar_respaldo', {p_origen:origen, p_filas:filas}); if(error) throw error; },
+  async siguienteRemision(){ const {data,error} = await this.sb.rpc('siguiente_remision'); if(error) throw error; return data; },
   async usuarios(){ const {data,error} = await this.sb.rpc('usuarios_lista'); if(error) throw error; return data || []; },
   async asignarRol(id, rol, nombre){ const {error} = await this.sb.rpc('asignar_rol', {p_id:id, p_rol:rol, p_nombre:nombre||null}); if(error) throw error; },
   // La base devuelve máximo 1000 filas por consulta: se pide por tipo y por páginas
@@ -2041,7 +2043,7 @@ function sheetDespacho(){
   if(!items.length) return toast('Ninguno de los ítems seleccionados está ensamblado; no se pueden despachar', true);
   const ya = items.filter(i => i.despachado).length;
   const body = `<div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="gFecha" value="${today()}"></div>
-      <div class="field"><span class="lbl">Remisión</span><input id="gRem" inputmode="numeric" placeholder="Número"></div></div>
+      ${remCampo('gRem', '')}</div>
     ${warn(noEns, 'no están ensamblados y se omitirán (no se puede despachar sin ensamblar).')}
     ${warn(ya, 'ya estaban despachados; se reemplazará su fecha y remisión.')}
     <div class="summary" id="gSum">Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>.</div>`;
@@ -2054,6 +2056,7 @@ function sheetDespacho(){
   });
   const upd = () => { const r = $('#gRem').value.trim(); $('#gSum').innerHTML = `Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>${r?` con remisión <b>${esc(r)}</b>`:''} el <b>${fmtD($('#gFecha').value)}</b>.`; };
   $('#gRem').oninput = upd; $('#gFecha').onchange = upd; upd();
+  remNueva('gRem');
 }
 
 function sheetInstalacion(){
@@ -2157,11 +2160,12 @@ function renderScanParams(){
   if(e.k === 'ini') h = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('scEns', SC.ens, '', 'Elegir')}</div><div class="sc-note">Fecha y hora de inicio: el momento del escaneo.</div>`;
   if(e.k === 'fin') h = `<div class="sc-note">Fecha y hora final: el momento del escaneo.</div>`;
   if(e.k === 'desp') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
-      <div class="field"><span class="lbl">Remisión</span><input id="scRem" inputmode="numeric" placeholder="Número" value="${esc(SC.rem)}"></div></div>`;
+      ${remCampo('scRem', SC.rem)}</div>`;
   if(e.k === 'inst') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
       <div class="field"><span class="lbl">Instalador</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
   box.innerHTML = h;
   box.querySelectorAll('input,select').forEach(x => x.addEventListener('change', scGuardarParams));
+  if(e.k === 'desp' && !SC.rem) remNueva('scRem');
 }
 function renderScanLog(){
   const b = $('#scLog'); if(!b) return;
@@ -2488,6 +2492,18 @@ async function exportarRemision(rem){
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
       <button class="btn" onclick="navigator.clipboard.writeText(_rem.txt).then(()=>toast('✓ Copiado: OP y cantidad'),()=>toast('No se pudo copiar', true))">Copiar OP y cantidades</button></div>`, 'Listo', async () => {});
 }
+// Número de remisión consecutivo: lo asigna la base (00-NNN); "Usar otra" permite agregar a una existente
+const remCampo = (id, val) => `<div class="field"><span class="lbl">Remisión</span><input id="${id}" inputmode="numeric" placeholder="Número" value="${esc(val || '')}" ${val ? 'readonly' : ''}>
+  <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn sm ghost" onclick="remNueva('${id}')">Nueva</button><button type="button" class="btn sm ghost" onclick="remManual('${id}')">Usar otra</button></div></div>`;
+async function remNueva(id){
+  const i = $('#' + id); if(!i) return;
+  i.value = ''; i.readOnly = true; i.placeholder = 'Asignando…';
+  try{ const n = await API.siguienteRemision(); if(!$('#' + id)) return; i.value = n; }
+  catch(e){ i.readOnly = false; i.placeholder = 'Número';
+    toast(e && (e.code === 'PGRST202' || /siguiente_remision/.test(e.message || '')) ? 'Falta activar la remisión consecutiva en la base; por ahora escribe el número' : errMsg(e), true); }
+  i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change'));
+}
+function remManual(id){ const i = $('#' + id); if(!i) return; i.readOnly = false; i.value = ''; i.placeholder = 'Número de la remisión'; i.focus(); i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); }
 function remisionPedir(){
   openSheet('Exportar remisión', 'Agrupada por OP completa', `<div class="field"><span class="lbl">Número de remisión</span><input id="remNum" inputmode="numeric" placeholder="Ej. 00-158"></div>`, 'Exportar', async () => {
     const r = $('#remNum').value.trim(); if(!r){ toast('Escribe el número de remisión', true); return false; }
