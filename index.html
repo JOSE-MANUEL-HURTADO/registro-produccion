@@ -451,7 +451,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '4.6';
+const APP_VERSION = '4.7';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2266,8 +2266,8 @@ function scCant(delta){
 }
 
 // ── Etiquetas QR ──
-// · Por OP: para pegar en la orden impresa (procesos). Hoja A4 de 3 × 8.
-// · Por ítem (cada OP INSTALACION): para pegar en la pieza (ensamble, despacho, instalación). Hoja A4 de 2 × 7.
+// · Por OP: para pegar en la orden impresa (procesos). Hoja carta Avery 5160 (3 × 10).
+// · Por ítem (cada OP INSTALACION): para pegar en la pieza (ensamble, despacho, instalación). Hoja carta Avery 5163 (2 × 5).
 // Se genera un PDF que se comparte, abre o descarga para imprimir (funciona en Mac, iPad y iPhone).
 function etiquetasQR(){
   if(!isGerente()) return;   // solo el gerente genera etiquetas
@@ -2303,9 +2303,15 @@ async function etqPDF(tipo){
     if(!window.jspdf) await loadScript('lib/jspdf.js');
   }catch(e){ return toast(errMsg(e), true); }
   const logo = await etqLogo();
-  const doc = new jspdf.jsPDF({unit:'mm', format:'a4'});
-  const [COLS, ROWS] = tipo === 'op' ? [3, 8] : [2, 7];
-  const MX = 7, MY = 10, W = (210 - 2*MX) / COLS, H = (297 - 2*MY) / ROWS, QR = tipo === 'op' ? 23 : 29;
+  // Hojas tamaño CARTA de etiquetas adhesivas precortadas (estándar Avery, se consiguen también "compatibles"):
+  //  · Por ítem → Avery 5163 / 8163: 2" × 4" (50,8 × 101,6 mm), 10 por hoja (2 × 5)
+  //  · Por OP   → Avery 5160 / 8160: 1" × 2⅝" (25,4 × 66,7 mm), 30 por hoja (3 × 10)
+  const IN = 25.4;
+  const F = tipo === 'op'
+    ? {ref:'Avery 5160 / 8160', COLS:3, ROWS:10, W:2.625*IN, H:1*IN, MX:0.1875*IN, MY:0.5*IN, GX:0.125*IN, QR:21}
+    : {ref:'Avery 5163 / 8163', COLS:2, ROWS:5, W:4*IN, H:2*IN, MX:0.15625*IN, MY:0.5*IN, GX:0.1875*IN, QR:38};
+  const {COLS, ROWS, W, H, QR} = F;
+  const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const corta = (t, max) => { t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
   const qr = (txt, x, y, size) => {
     const q = qrcode(0, 'M'); q.addData(txt); q.make();
@@ -2314,11 +2320,11 @@ async function etqPDF(tipo){
   };
   lista.forEach((e, n) => {
     const k = n % (COLS*ROWS); if(n && !k) doc.addPage();
-    const x = MX + (k % COLS) * W, y = MY + Math.floor(k / COLS) * H;
-    doc.setDrawColor(170); doc.setLineDashPattern([1, 1], 0); doc.rect(x, y, W, H);
-    const qx = x + 3, qy = y + (H - QR) / 2, tx = qx + QR + 3, tw = x + W - tx - 2.5;
-    let ty = y + 4;
-    if(logo){ const lw = Math.min(tw, tipo === 'op' ? 24 : 32), lh = lw / logo.r; doc.addImage(logo.url, 'PNG', tx, ty, lw, lh, 'logoEtq'); ty += lh + 3.2; }
+    const x = F.MX + (k % COLS) * (W + F.GX), y = F.MY + Math.floor(k / COLS) * H;
+    const pad = tipo === 'op' ? 2 : 4;
+    const qx = x + pad, qy = y + (H - QR) / 2, tx = qx + QR + (tipo === 'op' ? 2 : 4), tw = x + W - tx - pad;
+    let ty = y + (tipo === 'op' ? 2.5 : 5);
+    if(logo){ const lw = Math.min(tw, tipo === 'op' ? 19 : 36), lh = lw / logo.r; doc.addImage(logo.url, 'PNG', tx, ty, lw, lh, 'logoEtq'); ty += lh + (tipo === 'op' ? 2.6 : 4.2); }
     else ty += 3;
     doc.setTextColor(0);
     if(tipo === 'op'){
@@ -2326,22 +2332,22 @@ async function etqPDF(tipo){
       qr(qrTexto(op), qx, qy, QR);
       const pisos = [...new Set(l.map(i => i.piso).filter(Boolean))].sort(nat);
       const dis = [...new Set(l.map(i => i.diseno).filter(Boolean))];
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.text(corta(String(l[0].obra).toUpperCase(), tw), tx, ty);
-      doc.setFontSize(13); doc.text(corta('OP ' + op, tw), tx, ty + 5.5);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.3); doc.setTextColor(60);
-      doc.text(corta(l.length + ' ítem' + (l.length===1?'':'s') + (pisos.length ? ' · Piso ' + pisos.join(', ') : ''), tw), tx, ty + 9.5);
-      doc.text(corta(dis.join(' / '), tw), tx, ty + 12.5);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.text(corta(String(l[0].obra).toUpperCase(), tw), tx, ty);
+      doc.setFontSize(11); doc.text(corta('OP ' + op, tw), tx, ty + 4.6);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5); doc.setTextColor(60);
+      doc.text(corta(l.length + ' ítem' + (l.length===1?'':'s') + (pisos.length ? ' · Piso ' + pisos.join(', ') : ''), tw), tx, ty + 7.8);
+      doc.text(corta(dis.join(' / '), tw), tx, ty + 10.4);
     } else {
       const it = e;
       qr(qrTexto(it.op_instalacion), qx, qy, QR);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.text(corta(String(it.obra).toUpperCase(), tw), tx, ty);
-      doc.setFontSize(15); doc.text(corta(it.op_instalacion, tw), tx, ty + 6.5);
-      doc.setFontSize(8.5); doc.text(corta([it.item, it.ubicacion].filter(Boolean).join(' · '), tw), tx, ty + 11);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(50);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(corta(String(it.obra).toUpperCase(), tw), tx, ty);
+      doc.setFontSize(18); doc.text(corta(it.op_instalacion, tw), tx, ty + 7.5);
+      doc.setFontSize(10); doc.text(corta([it.item, it.ubicacion].filter(Boolean).join(' · '), tw), tx, ty + 13);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(50);
       const med = it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '';
-      doc.text(corta([it.piso ? 'Piso ' + it.piso : '', med].filter(Boolean).join(' · '), tw), tx, ty + 14.8);
-      doc.text(corta(it.diseno || '', tw), tx, ty + 18.2);
-      if(it.vidrio) doc.text(corta('Vidrio: ' + it.vidrio, tw), tx, ty + 21.6);
+      doc.text(corta([it.piso ? 'Piso ' + it.piso : '', med].filter(Boolean).join(' · '), tw), tx, ty + 17.5);
+      doc.text(corta(it.diseno || '', tw), tx, ty + 21.5);
+      if(it.vidrio) doc.text(corta('Vidrio: ' + it.vidrio, tw), tx, ty + 25.5);
     }
   });
   const obra = (S.obra || 'obra').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
@@ -2352,7 +2358,8 @@ async function etqPDF(tipo){
   const puedeCompartir = !!(navigator.canShare && navigator.canShare({files:[file]}));
   window._etq = {file, url, nombre};
   const hojas = Math.ceil(lista.length / (COLS*ROWS));
-  const body = `<div class="summary"><b>${fmtN(lista.length)} etiqueta${lista.length===1?'':'s'} ${tipo === 'op' ? 'por OP' : 'por ítem'}</b> en ${hojas} hoja${hojas===1?'':'s'} A4 (${COLS} × ${ROWS}). Recórtalas por la línea punteada.</div>
+  const body = `<div class="summary"><b>${fmtN(lista.length)} etiqueta${lista.length===1?'':'s'} ${tipo === 'op' ? 'por OP' : 'por ítem'}</b> en ${hojas} hoja${hojas===1?'':'s'} de etiquetas adhesivas <b>${F.ref}</b> (carta, ${COLS * ROWS} por hoja).</div>
+    <div class="warn">Al imprimir: papel <b>Carta</b>, escala <b>100 % / tamaño real</b> (no "ajustar a la página"), sin márgenes extra.</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
       ${puedeCompartir ? `<button class="btn primary" onclick="navigator.share({files:[_etq.file], title:_etq.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
       <a class="btn ${puedeCompartir ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
