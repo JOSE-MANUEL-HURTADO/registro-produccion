@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.6';
+const APP_VERSION = '5.7';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -629,6 +629,9 @@ const API = {
   async remRecibidas(rems){ const out = new Map(); for(let i = 0; i < rems.length; i += 150){ const {data,error} = await this.sb.from('recepciones_remision').select('remision,nombre,creada,n_enviado,n_recibido').in('remision', rems.slice(i, i + 150)); if(error) throw error; for(const r of data || []) out.set(r.remision, r); } return out; },
   async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
   async anularRecibidoRem(rem){ const {error} = await this.sb.rpc('anular_recibido_remision', {p_rem:rem}); if(error) throw error; },
+  async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
+  async campoActa(id){ const {data,error} = await this.sb.rpc('campo_acta', {p_id:id}); if(error) throw error; return data; },
+  async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -756,6 +759,12 @@ const vePrecio = () => rolEs('gerente','consulta');          // precios y export
 const veDash = vePrecio;                                     // dashboard
 const puedeSeleccionar = () => puedeRegistrar() || rolEs('cobros');
 const registraInst = () => rolEs('gerente','asistente','cobros');     // cobros también registra instalación
+// Usuarios de campo: solo escanean y hacen firmar; no ven nada más de la app
+const esCampo = () => rolEs('conductor','entrega','recibe');
+const esInterno = () => rolEs('gerente','asistente','consulta','cobros');
+const puedeEscanear = () => puedeRegistrar() || esCampo();
+const firmaActa = () => rolEs('gerente','asistente','cobros','entrega','recibe');
+const firmaRem = () => rolEs('gerente','asistente','cobros','conductor','recibe');
 
 // ── Lista desplegable de personas (ensambladores / instaladores) con opción de escribir un nombre nuevo ──
 const normNom = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
@@ -824,6 +833,12 @@ async function afterLogin(ses){
   if(!S.perfil){
     await API.logout();
     return renderLogin('Tu usuario no tiene un rol asignado. Pídele al gerente que lo active.');
+  }
+  if(esCampo()){
+    window.addEventListener('popstate', onPop);
+    history.replaceState({v:'scan'}, '');
+    S.view = ''; SC.est = scEstaciones()[0].k; SC.fecha = today();
+    return goScan();
   }
   if(!puedeSeleccionar()) document.body.classList.add('ro');
   if(rolEs('cobros')) document.body.classList.add('rol-cobros');
@@ -909,6 +924,7 @@ function indiceAnual(){
 }
 
 function goHome(replace){
+  if(esCampo()) return goScan();
   S.view = 'home'; S.obra = null; S.sel.clear(); S.detailId = null; S.draft = null;
   if(!replace) history.pushState({v:'home'}, '');
   renderHome();
@@ -1539,7 +1555,8 @@ async function openObra(name, fromPop, anio, pf){
 function onPop(ev){
   const st = ev.state || {v:'home'};
   if(S.view === 'scan' && st.v !== 'scan'){ scStop(); closeSheet(); }
-  if(st.v === 'scan' && puedeRegistrar()){ goScan(); return; }
+  if(st.v === 'scan' && puedeEscanear()){ goScan(); return; }
+  if(esCampo()){ history.replaceState({v:'scan'}, ''); goScan(); return; }
   if(st.v === 'obra' && S.view === 'obra' && st.obra === S.obra){
     if(S.detailId && !st.d){
       if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra, d:S.detailId}, ''); return; }
@@ -2104,8 +2121,13 @@ const SC_EST = [
   {k:'entr', t:'Entrega a obra'}
 ];
 const SC = {est:null, parcial:false, ens:'', rem:'', inst:'', fecha:null, log:[], stream:null, timer:null, last:'', lastT:0, det:null, busy:false};
-const scEstaciones = () => puedeRegistrar() ? SC_EST : [];   // solo gerente y asistente escanean
-const scEst = () => SC_EST.find(e => e.k === SC.est);
+const SC_CAMPO = {
+  conductor: [{k:'rem', t:'Recibido de remisión'}],
+  entrega:   [{k:'entr', t:'Entrega a obra'}],
+  recibe:    [{k:'rec', t:'Recibir en obra'}]
+};
+const scEstaciones = () => puedeRegistrar() ? SC_EST : esCampo() ? SC_CAMPO[S.perfil.rol] : [];   // gerente, asistente y usuarios de campo
+const scEst = () => scEstaciones().find(e => e.k === SC.est) || scEstaciones()[0];
 const qrTexto = op => 'ELP-OP:' + op;
 function scParse(txt){
   const a = String(txt || '').toUpperCase().match(/ELP-ACTA:(\d+)/);
@@ -2137,7 +2159,7 @@ function scPatch(e){
 }
 
 function goScan(){
-  if(!puedeRegistrar()) return;
+  if(!puedeEscanear()) return;
   if(S.view !== 'scan') history.pushState({v:'scan'}, '');
   S.view = 'scan'; S.sel.clear(); S.detailId = null; S.draft = null; document.body.style.overflow = '';
   if(!SC.est || !scEstaciones().some(e => e.k === SC.est)) SC.est = scEstaciones()[0].k;
@@ -2146,9 +2168,9 @@ function goScan(){
 }
 function renderScan(){
   $('#app').innerHTML = shell(`
-    <button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="obra-title"><div><div class="h1">Escanear OP</div><div class="h1-sub">Elige la estación y escanea el código de la orden · ${liveHTML()}</div></div></div>
-    <div class="sc-est">${scEstaciones().map(e => `<button class="chip ${SC.est===e.k?'on':''}" onclick="scSetEst('${e.k}')">${e.t}</button>`).join('')}</div>
+    ${esCampo() ? '' : `<button class="back" onclick="history.back()">${ICON.back} Volver</button>`}
+    <div class="obra-title"><div><div class="h1">${esCampo() ? esc(scEst().t) : 'Escanear OP'}</div><div class="h1-sub">${esCampo() ? 'Escanea el código QR' : 'Elige la estación y escanea el código de la orden · ' + liveHTML()}</div></div></div>
+    <div class="sc-est" ${esCampo() ? 'style="display:none"' : ''}>${scEstaciones().map(e => `<button class="chip ${SC.est===e.k?'on':''}" onclick="scSetEst('${e.k}')">${e.t}</button>`).join('')}</div>
     <div id="scParams" class="sc-params"></div>
     <div class="sc-wrap">
       <div class="sc-cam" id="scCam">
@@ -2157,8 +2179,8 @@ function renderScan(){
         <div class="sc-hint" id="scHint"></div>
       </div>
       <div class="sc-side">
-        <div class="field"><span class="lbl">O escribe la OP (también sirve un lector de códigos)</span>
-          <div class="sc-man"><input id="scMan" placeholder="Ej. 6235-3" autocomplete="off" autocapitalize="characters" inputmode="text"><button class="btn" onclick="scManual()">Buscar</button></div></div>
+        <div class="field"><span class="lbl">${esCampo() && SC.est !== 'entr' ? 'O escribe el número (remisión o acta)' : 'O escribe la OP (también sirve un lector de códigos)'}</span>
+          <div class="sc-man"><input id="scMan" placeholder="${esCampo() && SC.est !== 'entr' ? 'Ej. 00-273' : 'Ej. 6235-3'}" autocomplete="off" autocapitalize="characters" inputmode="text"><button class="btn" onclick="scManual()">Buscar</button></div></div>
         <div class="section-t">Registrado en esta sesión</div>
         <div id="scLog" class="sc-log"></div>
       </div>
@@ -2182,6 +2204,8 @@ function renderScanParams(){
   if(e.k === 'fin') h = `<div class="sc-note">Fecha y hora final: el momento del escaneo.</div>`;
   if(e.k === 'desp') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
       ${remCampo('scRem', SC.rem)}</div>`;
+  if(e.k === 'rem') h = `<div class="sc-note">Escanea el <b>QR de la remisión</b> al llegar a la obra. Quien recibe revisa las cantidades por OP, anota novedades y firma en la pantalla.</div>`;
+  if(e.k === 'rec') h = `<div class="sc-note">Escanea el <b>QR del acta de entrega</b> o de la <b>remisión</b>. Verás lo que se te ha entregado y podrás firmar el recibido.</div>`;
   if(e.k === 'entr') h = `<div class="sc-note">Escanea la etiqueta de cada ítem que se entrega en obra (debe estar instalado y en un acta). Al terminar, escanea el <b>QR del acta</b> para que el representante de la obra firme el recibido.</div>`;
   if(e.k === 'inst') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
       <div class="field"><span class="lbl">Instalador</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
@@ -2236,7 +2260,9 @@ function scBeep(ok){
   try{ const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain();
     o.frequency.value = ok ? 1200 : 300; g.gain.value = .08; o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + .12); setTimeout(() => a.close(), 300); }catch(e){}
 }
-function scManual(){ const m = $('#scMan'); const v = m.value.trim(); if(!v) return; m.value = ''; scCodigo(v, true); }
+function scManual(){ const m = $('#scMan'); let v = m.value.trim(); if(!v) return; m.value = '';
+  if(esCampo() && SC.est !== 'entr' && !/^ELP-/i.test(v)) v = 'ELP-REM:' + v;   // conductor / recibe escriben el número de remisión
+  scCodigo(v, true); }
 
 // ── Al leer un código ──
 async function scCodigo(txt, manual){
@@ -2245,15 +2271,18 @@ async function scCodigo(txt, manual){
   SC.last = txt; SC.lastT = now;
   const p = scParse(txt);
   if(!p){ scBeep(false); return toast('Ese código no es de una OP de Elíptica', true); }
-  if(p.acta){ scBeep(true); return actaEstado(p.acta); }
-  if(p.rem){ scBeep(true); return remEstado(p.rem); }
+  if(p.acta){ if(esCampo() && !rolEs('entrega','recibe')){ scBeep(false); return toast('Este usuario solo recibe remisiones', true); } scBeep(true); return actaEstado(p.acta); }
+  if(p.rem){ if(esCampo() && !rolEs('conductor','recibe')){ scBeep(false); return toast('Este usuario solo entrega ítems de actas', true); } scBeep(true); return remEstado(p.rem); }
+  if(esCampo() && !rolEs('entrega')){ scBeep(false); return toast(rolEs('conductor') ? 'Escanea el QR de la remisión' : 'Escanea el QR del acta o de la remisión', true); }
   scGuardarParams();
   const e = scEst();
   if(e.k === 'ini' && !SC.ens){ scBeep(false); return toast('Primero elige el ensamblador', true); }
   if(e.k === 'desp' && !SC.rem){ scBeep(false); toast('Primero escribe la remisión', true); const r = $('#scRem'); if(r) r.focus(); return; }
   SC.busy = true;
   try{
-    const {data, error} = await API.sb.from('items').select('*').eq('op', p.op).order('id');
+    let data, error;
+    if(esCampo()) data = await API.campoItemsOp(p.op);
+    else ({data, error} = await API.sb.from('items').select('*').eq('op', p.op).order('id'));
     if(error) throw error;
     if(!data || !data.length){ scBeep(false); toast('No encontré la OP ' + p.op, true); return; }
     const items = data.sort((a,b) => nat(a.op_instalacion, b.op_instalacion));
@@ -2709,9 +2738,14 @@ async function actaVer(id){
 }
 
 // Estado de un acta (al escanear su QR o desde la lista): qué se ha entregado y qué está firmado
+async function actaDatos(id){
+  try{ const d = await API.campoActa(id); return d ? {a: d.acta, items: d.items || [], recs: d.recs || []} : {a: null, items: [], recs: []}; }
+  catch(e){ if(esCampo() || e.code !== 'PGRST202') throw e; }
+  return {a: await API.acta(id), items: await API.itemsActa(id), recs: await API.recepciones(id, false)};
+}
 async function actaEstado(id){
   let a, items, recs;
-  try{ a = await API.acta(id); items = await API.itemsActa(id); recs = await API.recepciones(id, false); }
+  try{ ({a, items, recs} = await actaDatos(id)); }
   catch(e){ return toast(actaFaltaSQL(e) || /recepciones|entregado/.test(e.message || '') ? 'Falta activar las entregas en la base (SQL de entregas y firma)' : errMsg(e), true); }
   if(!a) return toast('No encontré esa acta', true);
   items.sort((x, y) => nat(x.op_instalacion, y.op_instalacion));
@@ -2719,18 +2753,18 @@ async function actaEstado(id){
   const ico = it => it.recepcion_id ? '<b style="color:var(--inst,#4caf50)">✓</b>' : it.entregado_en ? '<b>●</b>' : '<span style="opacity:.4">○</span>';
   const body = `${a.anulada ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
     <div class="summary">Entregados <b>${fmtN(ent.length)} de ${fmtN(items.length)}</b> · con firma <b>${fmtN(firm.length)}</b>${porFirmar.length ? ` · <b>${fmtN(porFirmar.length)}</b> por firmar` : ''}</div>
-    ${porFirmar.length && registraInst() && !a.anulada ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Firmar recibido (${fmtN(porFirmar.length)} ítem${porFirmar.length===1?'':'s'})</button>` : ''}
+    ${porFirmar.length && firmaActa() && !a.anulada ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Firmar recibido (${fmtN(porFirmar.length)} ítem${porFirmar.length===1?'':'s'})</button>` : ''}
     <div class="sc-note" style="margin:6px 0">✓ recibido con firma · ● entregado, falta firma · ○ pendiente por entregar</div>
     <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${ico(it)}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></div>`).join('')}</div>
     ${recs.length ? `<div class="lbl" style="margin:12px 0 4px">Firmas</div>${recs.map(r => `<div style="font-size:13px;padding:4px 0">${esc(r.nombre)}${r.cargo ? ' · ' + esc(r.cargo) : ''} · ${new Date(r.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})} · ${fmtN(r.n_items)} ítems</div>`).join('')}` : ''}
-    <button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta</button>`;
+    ${esInterno() ? `<button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta</button>` : ''}`;
   openSheet('Acta N.º ' + a.num, esc(a.obra) + ' · ' + fmtD(a.fecha), body, 'Listo', async () => {});
 }
 
 // Firma de recibido del representante de la obra (en la pantalla del equipo)
 async function actaFirmar(id){
   let a, items;
-  try{ a = await API.acta(id); items = (await API.itemsActa(id)).filter(i => i.entregado_en && !i.recepcion_id).sort((x, y) => nat(x.op_instalacion, y.op_instalacion)); }
+  try{ const d = await actaDatos(id); a = d.a; items = d.items.filter(i => i.entregado_en && !i.recepcion_id).sort((x, y) => nat(x.op_instalacion, y.op_instalacion)); }
   catch(e){ return toast(errMsg(e), true); }
   if(!items.length) return toast('No hay ítems entregados pendientes de firma', true);
   const body = `<div class="summary">Recibo a satisfacción los <b>${fmtN(items.length)} ítem${items.length===1?'':'s'}</b> del acta N.º ${a.num} de ${esc(a.obra)}:</div>
@@ -2747,6 +2781,7 @@ async function actaFirmar(id){
     try{ r = await API.firmarRecepcion(a.id, nom, $('#fCar').value.trim(), $('#fDoc').value.trim(), firmaPNG()); }
     catch(e){ toast(errMsg(e), true); return false; }
     toast(`✓ Recibido firmado: ${r.n} ítem${r.n===1?'':'s'}`);
+    if(esCampo()){ SC.log.unshift({hora: nowTime(), op: 'Acta ' + a.num, est: 'Recibido firmado', n: r.n, tot: r.n, obra: a.obra + ' · ' + nom}); renderScanLog(); }
     if(S.items) for(const it of S.items) if(items.some(x => x.id === it.id)) it.recepcion_id = r.id;
     if(S.view === 'obra') renderObra();
     setTimeout(() => actaEstado(a.id), 60);
@@ -2776,6 +2811,12 @@ async function cargarRemRec(){
   const rems = [...new Set((S.items || []).filter(it => it.despachado && it.remision).map(it => it.remision))];
   try{ S.remRec = rems.length ? await API.remRecibidas(rems) : new Map(); }catch(e){ S.remRec = null; }
 }
+// Datos de una remisión: por la función de la base (sirve para todos los roles); si aún no existe, consulta directa
+async function remDatos(rem){
+  try{ const d = await API.campoRemision(rem); return {filas: (d && d.filas) || [], rec: d && d.rec}; }
+  catch(e){ if(esCampo() || e.code !== 'PGRST202') throw e; }
+  return {filas: await remFilas(rem), rec: await API.recRemision(rem)};
+}
 async function remFilas(rem){
   const {data, error} = await API.sb.from('items').select('id,obra,item,diseno,op,cant,fecha_despacho').eq('remision', rem).eq('despachado', true).order('id');
   if(error) throw error;
@@ -2784,7 +2825,7 @@ async function remFilas(rem){
 }
 async function remEstado(rem){
   let filas, rec;
-  try{ filas = await remFilas(rem); rec = await API.recRemision(rem); }
+  try{ ({filas, rec} = await remDatos(rem)); }
   catch(e){ return toast(/recepciones_remision/.test(e.message || '') || e.code === 'PGRST205' || e.code === '42P01' ? 'Falta activar el recibido de remisiones en la base (SQL de recibido de remisión)' : errMsg(e), true); }
   if(!filas.length) return toast('No hay ítems despachados con la remisión ' + rem, true);
   const det = new Map(((rec && rec.detalle) || []).map(d => [d.op, d]));
@@ -2792,15 +2833,15 @@ async function remEstado(rem){
   const body = `${rec ? `<div class="summary">✓ <b>Recibida</b> por <b>${esc(rec.nombre)}</b>${rec.cargo ? ' · ' + esc(rec.cargo) : ''} el ${new Date(rec.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})} · ${fmtN(rec.n_recibido)} de ${fmtN(rec.n_enviado)} unidades</div>
       ${rec.observaciones ? `<div class="warn">${esc(rec.observaciones)}</div>` : ''}`
     : `<div class="summary"><b>${fmtN(filas.length)} OP</b> · ${fmtN(tot)} unidades · despachada ${fmtD(filas[0].fecha)} · <b>sin recibido</b></div>
-      ${registraInst() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="remFirmar(decodeURIComponent('${encQ(rem)}'))">Firmar recibido en obra</button>` : ''}`}
+      ${firmaRem() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="remFirmar(decodeURIComponent('${encQ(rem)}'))">Firmar recibido en obra</button>` : ''}`}
     <div style="max-height:40vh;overflow:auto">${filas.map(f => { const d = det.get(f.op), falta = d && d.recibido < d.enviado;
       return `<div style="display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(f.op)}</b> · ${esc(f.dis)}</span><span>${rec ? `<b ${falta ? 'style="color:var(--bad,#d9534f)"' : ''}>${fmtN(d ? d.recibido : f.n)}</b> de ${fmtN(f.n)}` : `<b>${fmtN(f.n)}</b>`}</span></div>`; }).join('')}</div>
-    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportarRemision(decodeURIComponent('${encQ(rem)}'))">${ICON.down} PDF</button>
+    <div style="display:flex;gap:8px;margin-top:10px">${esInterno() ? `<button class="btn" style="flex:1" onclick="exportarRemision(decodeURIComponent('${encQ(rem)}'))">${ICON.down} PDF</button>` : ''}
       ${rec && isGerente() ? `<button class="btn ghost" onclick="remAnularRecibido(decodeURIComponent('${encQ(rem)}'))">Anular recibido</button>` : ''}</div>`;
   openSheet('Remisión ' + esc(rem), esc([...new Set(filas.map(f => f.obra))].join(' · ')), body, 'Listo', async () => {});
 }
 async function remFirmar(rem){
-  let filas; try{ filas = await remFilas(rem); }catch(e){ return toast(errMsg(e), true); }
+  let filas; try{ ({filas} = await remDatos(rem)); }catch(e){ return toast(errMsg(e), true); }
   if(!filas.length) return toast('No hay ítems despachados con la remisión ' + rem, true);
   const body = `<div class="summary">Confirma lo que llegó de cada OP. Si falta algo o llegó averiado, baja la cantidad y anótalo en observaciones.</div>
     <div style="max-height:30vh;overflow:auto;margin:6px 0">${filas.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
@@ -2822,6 +2863,7 @@ async function remFirmar(rem){
     catch(e){ toast(errMsg(e), true); return false; }
     toast('✓ Recibido firmado');
     if(S.view === 'obra'){ await cargarRemRec(); renderObra(); }
+    if(esCampo()){ SC.log.unshift({hora: nowTime(), op: 'Rem. ' + rem, est: 'Recibido firmado', n: detalle.reduce((a, d) => a + d.recibido, 0), tot: detalle.reduce((a, d) => a + d.enviado, 0), obra: nom}); renderScanLog(); }
     setTimeout(() => remEstado(rem), 60);
   });
   firmaIniciar();
@@ -3258,7 +3300,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Gerente']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Gerente'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
