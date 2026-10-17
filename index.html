@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.3';
+const APP_VERSION = '5.4';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -617,6 +617,9 @@ const API = {
     return out;
   },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
+  async actas(obra){ const {data,error} = await this.sb.from('actas').select('*').eq('obra', obra).order('num'); if(error) throw error; return data || []; },
+  async crearActa(obra, ids, fecha, recibe){ const {data,error} = await this.sb.rpc('crear_acta', {p_obra:obra, p_ids:ids, p_fecha:fecha, p_recibe:recibe||null}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
+  async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
   async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
@@ -1515,7 +1518,7 @@ async function openObra(name, fromPop, anio, pf){
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
   window.scrollTo(0,0);
-  try{ S.items = await API.obra(name); await loadComercial(); }
+  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); }
   catch(e){ toast('Error al cargar la obra: '+e.message, true); return; }
   if(S.view !== 'obra' || S.obra !== name) return;
   S.items.sort((a,b) => nat(a.op_instalacion,b.op_instalacion) || nat(a.item,b.item) || a.id-b.id);
@@ -1590,7 +1593,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Exportar una remisión agrupada por OP completa" onclick="remisionPedir()">${ICON.down} Remisión</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Exportar una remisión agrupada por OP completa" onclick="remisionPedir()">${ICON.down} Remisión</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const n = actaPend().length; return n ? ` <b style="margin-left:4px">${fmtN(n)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
         </div>
         <div class="chips" id="chips"></div>
         <div class="filters">
@@ -1631,7 +1634,7 @@ function procPills(it){
 }
 function rowHTML(it){
   const st = stageOf(it);
-  let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}</span>`
+  let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}${it.acta_id ? ' · Acta ' + esc(actaNum(it.acta_id)) : ''}</span>`
             : it.despachado ? `<span class="subtag">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}</span>` : '';
   if(veCobros() && it.despachado){
     const c = com(it);
@@ -1706,7 +1709,7 @@ function renderSelbar(){
 async function recargarObra(){
   if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar en el ítem abierto. ¿Descartarlos?')) return;
   const keepSel = new Set(S.sel), keepDet = S.detailId;
-  try{ S.items = await API.obra(S.obra); await loadComercial(); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
+  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
   catch(e){ return toast('Error: '+e.message, true); }
   S.sel = new Set([...keepSel].filter(id => S.items.some(i=>i.id===id)));
   S.detailId = S.items.some(i=>i.id===keepDet) ? keepDet : null;
@@ -1800,6 +1803,7 @@ function renderDetail(){
           <div class="field"><span class="lbl">Fecha instalación</span><input type="date" value="${esc(d.fecha_instalacion||'')}" onchange="dSet('fecha_instalacion',this.value||null)"></div>
           <div class="field"><span class="lbl">Instalador</span>${personaField('pfInst', d.instalador, 'instalador', 'Elegir')}</div>
         </div>` : ''}
+        ${it.acta_id ? `<div class="d-meta">Entregado en el <b>acta N.º ${esc(actaNum(it.acta_id))}</b></div>` : ''}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
       </fieldset>
@@ -1846,7 +1850,8 @@ function dToggle(k){
     else { if(!estaEnsamblado({...byId(S.detailId), ...d, despachado:false})) return toast('No se puede despachar: este ítem no está ensamblado. Primero registra el día final del ensamble.', true);
       d.despachado=true; d.fecha_despacho = d.fecha_despacho || today(); }
   } else {
-    if(d.instalado){ if(!confirm('¿Quitar la instalación de este ítem? Se borrarán la fecha y el instalador.')) return; d.instalado=false; d.fecha_instalacion=null; d.instalador=null; }
+    if(d.instalado){ if(byId(S.detailId).acta_id) return toast('Este ítem ya está en el acta de entrega N.º ' + actaNum(byId(S.detailId).acta_id) + '. Para quitar la instalación, el gerente debe anular esa acta.', true);
+      if(!confirm('¿Quitar la instalación de este ítem? Se borrarán la fecha y el instalador.')) return; d.instalado=false; d.fecha_instalacion=null; d.instalador=null; }
     else { if(!d.despachado) return toast('No se puede instalar: este ítem no está despachado. Primero registra el despacho.', true);
       d.instalado=true; d.fecha_instalacion = d.fecha_instalacion || today(); }
   }
@@ -2491,6 +2496,124 @@ async function exportarRemision(rem){
       <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
       <button class="btn" onclick="navigator.clipboard.writeText(_rem.txt).then(()=>toast('✓ Copiado: OP y cantidad'),()=>toast('No se pudo copiar', true))">Copiar OP y cantidades</button></div>`, 'Listo', async () => {});
+}
+// ── Actas de entrega (ítems instalados, por OP de instalación) ───
+// Cada ítem instalado entra a una sola acta; las actas se numeran por obra (1, 2, 3…)
+const actaPend = () => (S.items || []).filter(it => it.instalado && !it.acta_id);
+const actaNum = id => { const a = (S.actas || []).find(x => x.id === id); return a ? a.num : '—'; };
+const actaFaltaSQL = e => e && (e.code === 'PGRST202' || e.code === '42P01' || e.code === 'PGRST205' || /crear_acta|actas/.test(e.message || ''));
+async function actasHoja(){
+  if(S.actas === null || S.actas === undefined){ try{ S.actas = await API.actas(S.obra); }catch(e){ S.actas = null; } }
+  const pend = actaPend(), actas = (S.actas || []).slice().reverse();
+  const sig = (S.actas || []).reduce((m, a) => Math.max(m, a.num), 0) + 1;
+  const body = `${S.actas === null ? `<div class="warn">Las actas aún no están activadas en la base (falta correr el SQL de actas de entrega).</div>` : ''}
+    <div class="summary"><b>${fmtN(pend.length)}</b> ítem${pend.length===1?'':'s'} instalado${pend.length===1?'':'s'} pendiente${pend.length===1?'':'s'} de acta.</div>
+    ${registraInst() && pend.length && S.actas !== null ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaNueva()">Generar acta N.º ${sig}</button>` : ''}
+    ${actas.length ? `<div class="lbl" style="margin:12px 0 4px">Actas generadas</div>` + actas.map(a => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;font-size:13px${a.anulada ? ';opacity:.5;text-decoration:line-through' : ''}"><b>Acta N.º ${a.num}</b> · ${fmtD(a.fecha)} · ${fmtN(a.n_items)} ítem${a.n_items===1?'':'s'}${a.recibe ? '<br><small>Recibe: ' + esc(a.recibe) + '</small>' : ''}${a.anulada ? ' · ANULADA' : ''}</div>
+      ${a.anulada ? '' : `<button class="btn sm" onclick="actaVer(${a.id})">PDF</button>${isGerente() ? `<button class="btn sm ghost" onclick="actaAnular(${a.id})">Anular</button>` : ''}`}</div>`).join('') : '<div class="empty" style="padding:12px 0">Aún no hay actas en esta obra.</div>'}`;
+  openSheet('Actas de entrega', esc(S.obra), body, 'Listo', async () => {});
+}
+function actaNueva(){
+  const pend = actaPend().sort((a, b) => nat(b.fecha_instalacion || '', a.fecha_instalacion || '') || nat(a.op_instalacion, b.op_instalacion));
+  const sel = window._actaSel = new Set(pend.map(it => it.id));
+  const grupos = [...grp(pend, it => it.fecha_instalacion || '').entries()];
+  const sig = (S.actas || []).reduce((m, a) => Math.max(m, a.num), 0) + 1;
+  const body = `<div class="fgrid"><div class="field"><span class="lbl">Fecha del acta</span><input type="date" id="acFecha" value="${today()}"></div>
+      <div class="field"><span class="lbl">Recibe (nombre / cargo)</span><input id="acRecibe" placeholder="Opcional"></div></div>
+    <div class="summary" id="acSum"></div>
+    <div class="sc-items" style="max-height:42vh;overflow:auto">${grupos.map(([f, l], g) => `
+      <label style="display:flex;gap:8px;align-items:center;padding:8px 0 4px;font-weight:600;font-size:13px"><input type="checkbox" style="width:18px;height:18px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)" checked data-g="${g}" onchange="actaTogG(${g}, this.checked)"> Instalados ${f ? fmtD(f) : 'sin fecha'} · ${fmtN(l.length)}</label>
+      ${l.map(it => `<label style="display:flex;gap:8px;align-items:center;padding:3px 0 3px 22px;font-size:13px"><input type="checkbox" style="width:18px;height:18px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)" checked data-id="${it.id}" data-gi="${g}" onchange="actaTog(${it.id}, this.checked)"><span><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></label>`).join('')}`).join('')}</div>`;
+  openSheet('Acta de entrega N.º ' + sig, esc(S.obra) + ' · solo ítems instalados que no tienen acta', body, 'Generar acta', async () => {
+    const ids = [...sel]; if(!ids.length){ toast('No hay ítems seleccionados', true); return false; }
+    const fecha = $('#acFecha').value || today(), recibe = $('#acRecibe').value.trim();
+    if(!confirm(`¿Generar el acta con ${ids.length} ítem${ids.length===1?'':'s'}? Quedarán marcados como entregados y no volverán a salir en otra acta.`)) return false;
+    let r;
+    try{ r = await API.crearActa(S.obra, ids, fecha, recibe); }
+    catch(e){ toast(actaFaltaSQL(e) ? 'Falta activar las actas en la base (SQL de actas de entrega)' : errMsg(e), true); return false; }
+    try{ S.actas = await API.actas(S.obra); }catch(e){}
+    const set = new Set(ids);
+    for(const it of S.items) if(set.has(it.id) && it.instalado && !it.acta_id) it.acta_id = r.id;
+    renderObra();
+    setTimeout(() => actaVer(r.id), 60);
+  });
+  actaSum();
+}
+function actaSum(){ const b = $('#acSum'); if(b) b.innerHTML = `<b>${fmtN(window._actaSel.size)}</b> ítem${window._actaSel.size===1?'':'s'} en el acta`; }
+function actaTog(id, on){ on ? window._actaSel.add(id) : window._actaSel.delete(id); actaSum(); }
+function actaTogG(g, on){ document.querySelectorAll(`input[data-gi="${g}"]`).forEach(c => { c.checked = on; actaTog(Number(c.dataset.id), on); }); }
+async function actaAnular(id){
+  const a = (S.actas || []).find(x => x.id === id); if(!a) return;
+  if(!confirm(`¿Anular el acta N.º ${a.num}? Sus ${a.n_items} ítems vuelven a quedar pendientes de acta. El número ${a.num} no se reutiliza.`)) return;
+  try{ await API.anularActa(id); }catch(e){ return toast(errMsg(e), true); }
+  for(const it of S.items) if(it.acta_id === id) it.acta_id = null;
+  try{ S.actas = await API.actas(S.obra); }catch(e){}
+  toast('✓ Acta anulada'); renderObra(); actasHoja();
+}
+async function actaVer(id){
+  const a = (S.actas || []).find(x => x.id === id);
+  const items = S.items.filter(it => it.acta_id === id).sort((x, y) => nat(x.op_instalacion, y.op_instalacion));
+  if(!a || !items.length) return toast('No encontré los ítems de esa acta', true);
+  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); }catch(e){ return toast(errMsg(e), true); }
+  const logo = await etqLogo();
+  const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
+  const PW = 215.9, PH = 279.4, M = 14;
+  const cols = [['OP inst.', 22, 'l'], ['Ítem', 16, 'l'], ['Ubicación', 37, 'l'], ['Piso', 13, 'l'], ['Diseño', 42, 'l'], ['Medida', 22, 'l'], ['m2', 13, 'r'], ['Instalado', 22.9, 'r']];
+  const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
+  const W = cols.reduce((s, c) => s + c[1], 0);
+  const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
+  const tx = (t, i, y) => { const c = cols[i]; doc.text(corta(t, c[1] - 3), c[2] === 'r' ? X[i] + c[1] - 1.5 : X[i] + 1.5, y, {align: c[2] === 'r' ? 'right' : 'left'}); };
+  let y, pag = 0;
+  const encabezado = () => {
+    pag++;
+    if(logo){ const h = 12; doc.addImage(logo.url, 'PNG', M, 12, h * logo.r, h); }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20);
+    doc.text('ACTA DE ENTREGA', PW - M, 17, {align:'right'});
+    doc.setFontSize(11); doc.text('N.º ' + a.num, PW - M, 23, {align:'right'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90);
+    doc.text('Fecha: ' + fmtD(a.fecha) + (pag > 1 ? '   ·   Hoja ' + pag : ''), PW - M, 28, {align:'right'});
+    doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(M, 32, PW - M, 32);
+    y = 39;
+  };
+  const cab = () => {
+    doc.setFillColor(238); doc.rect(M, y - 4.2, W, 6.2, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(40);
+    cols.forEach((c, i) => tx(c[0], i, y)); y += 6;
+  };
+  encabezado();
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(20); doc.text('Obra: ' + S.obra, M, y); y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(50);
+  const intro = doc.splitTextToSize(`Por medio de la presente, Elíptica hace entrega de los ${items.length} ítems relacionados a continuación, los cuales se encuentran instalados en la obra. Con la firma de esta acta se recibe a satisfacción lo aquí relacionado.`, PW - 2 * M);
+  doc.text(intro, M, y); y += intro.length * 4.2 + 4;
+  cab();
+  for(const it of items){
+    if(y > PH - 62){ doc.addPage(); encabezado(); cab(); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
+    [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)].forEach((t, i) => tx(t, i, y));
+    doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
+  }
+  const m2 = items.reduce((s, i) => s + (Number(i.m2) || 0), 0);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+  doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y);
+  y += 8;
+  if(y > PH - 62){ doc.addPage(); encabezado(); }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('Observaciones', M, y);
+  doc.setDrawColor(170); doc.rect(M, y + 2, PW - 2 * M, 20);
+  const fy = PH - 26;
+  doc.setDrawColor(120); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60);
+  doc.line(M, fy, PW / 2 - 6, fy); doc.text('Entrega · Elíptica', M, fy + 4.5);
+  doc.line(PW / 2 + 6, fy, PW - M, fy); doc.text('Recibe' + (a.recibe ? ': ' + a.recibe : ' (nombre, cargo y firma)'), PW / 2 + 6, fy + 4.5);
+  doc.setFontSize(7); doc.setTextColor(140); doc.text(`Acta N.º ${a.num} · ${S.obra} · ${items.length} ítems · ${fmtN(m2, 2)} m2`, M, PH - 10);
+  const nombre = `Acta_${a.num}_${S.obra.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_')}.pdf`;
+  const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
+  const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  window._acta = {file, url, nombre};
+  openSheet('Acta de entrega N.º ' + a.num, esc(S.obra), `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(m2, 1)} m² · ${fmtD(a.fecha)}${a.recibe ? ' · Recibe ' + esc(a.recibe) : ''}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_acta.file], title:_acta.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
 }
 // Número de remisión consecutivo: lo asigna la base (00-NNN); "Usar otra" permite agregar a una existente
 const remCampo = (id, val) => `<div class="field"><span class="lbl">Remisión</span><input id="${id}" inputmode="numeric" placeholder="Número" value="${esc(val || '')}" ${val ? 'readonly' : ''}>
