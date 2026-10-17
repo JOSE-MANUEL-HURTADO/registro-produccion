@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.5';
+const APP_VERSION = '5.6';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -625,6 +625,10 @@ const API = {
   async entregar(ids){ const {data,error} = await this.sb.rpc('entregar_items', {p_ids:ids}); if(error) throw error; return data; },
   async deshacerEntrega(ids){ const {data,error} = await this.sb.rpc('deshacer_entrega', {p_ids:ids}); if(error) throw error; return data; },
   async firmarRecepcion(acta, nombre, cargo, doc, firma){ const {data,error} = await this.sb.rpc('firmar_recepcion', {p_acta:acta, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_firma:firma}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
+  async recRemision(rem){ const {data,error} = await this.sb.from('recepciones_remision').select('*').eq('remision', rem).maybeSingle(); if(error) throw error; return data; },
+  async remRecibidas(rems){ const out = new Map(); for(let i = 0; i < rems.length; i += 150){ const {data,error} = await this.sb.from('recepciones_remision').select('remision,nombre,creada,n_enviado,n_recibido').in('remision', rems.slice(i, i + 150)); if(error) throw error; for(const r of data || []) out.set(r.remision, r); } return out; },
+  async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
+  async anularRecibidoRem(rem){ const {error} = await this.sb.rpc('anular_recibido_remision', {p_rem:rem}); if(error) throw error; },
   async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -1524,7 +1528,7 @@ async function openObra(name, fromPop, anio, pf){
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
   window.scrollTo(0,0);
-  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); }
+  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); }
   catch(e){ toast('Error al cargar la obra: '+e.message, true); return; }
   if(S.view !== 'obra' || S.obra !== name) return;
   S.items.sort((a,b) => nat(a.op_instalacion,b.op_instalacion) || nat(a.item,b.item) || a.id-b.id);
@@ -1641,7 +1645,7 @@ function procPills(it){
 function rowHTML(it){
   const st = stageOf(it);
   let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}${it.acta_id ? ' · Acta ' + esc(actaNum(it.acta_id)) + (it.recepcion_id ? ' ✓ recibido' : it.entregado_en ? ' · entregado' : '') : ''}</span>`
-            : it.despachado ? `<span class="subtag">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}</span>` : '';
+            : it.despachado ? `<span class="subtag ${S.remRec && S.remRec.has(it.remision) ? 'ok' : ''}">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}${S.remRec && S.remRec.has(it.remision) ? ' · recibida ✓' : ''}</span>` : '';
   if(veCobros() && it.despachado){
     const c = com(it);
     const m = (ok, l, n) => `<span class="cobm ${ok?'ok':'pend'}" title="${ok?'Cobrado':'Por cobrar'} ${l}${ok&&n?' · corte '+esc(n):''}">$${l}${ok?' ✓':''}</span>`;
@@ -1715,7 +1719,7 @@ function renderSelbar(){
 async function recargarObra(){
   if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar en el ítem abierto. ¿Descartarlos?')) return;
   const keepSel = new Set(S.sel), keepDet = S.detailId;
-  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
+  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
   catch(e){ return toast('Error: '+e.message, true); }
   S.sel = new Set([...keepSel].filter(id => S.items.some(i=>i.id===id)));
   S.detailId = S.items.some(i=>i.id===keepDet) ? keepDet : null;
@@ -2106,6 +2110,8 @@ const qrTexto = op => 'ELP-OP:' + op;
 function scParse(txt){
   const a = String(txt || '').toUpperCase().match(/ELP-ACTA:(\d+)/);
   if(a) return {acta: Number(a[1])};
+  const r = String(txt || '').trim().match(/^ELP-REM:(.+)$/i);
+  if(r) return {rem: r[1].trim()};
   const m = String(txt || '').toUpperCase().match(/(\d{3,6}-\d+)(?:\.(\d+))?/);
   if(!m) return null;
   const op = m[1].replace(/^0+(?=\d)/, '');
@@ -2240,6 +2246,7 @@ async function scCodigo(txt, manual){
   const p = scParse(txt);
   if(!p){ scBeep(false); return toast('Ese código no es de una OP de Elíptica', true); }
   if(p.acta){ scBeep(true); return actaEstado(p.acta); }
+  if(p.rem){ scBeep(true); return remEstado(p.rem); }
   scGuardarParams();
   const e = scEst();
   if(e.k === 'ini' && !SC.ens){ scBeep(false); return toast('Primero elige el ensamblador', true); }
@@ -2438,7 +2445,10 @@ async function exportarRemision(rem){
       for(const x of r.data || []){ const t = tot.get(x.op) || {n:0, d:0}; const c = Number(x.cant) || 1; t.n += c; if(x.despachado) t.d += c; tot.set(x.op, t); }
     }
     if(!window.jspdf) await loadScript('lib/jspdf.js');
+    if(!window.qrcode) await loadScript('lib/qrcode.js');
   }catch(e){ return toast(errMsg(e), true); }
+  let rec = null; try{ rec = await API.recRemision(rem); }catch(e){}
+  const recOp = new Map(((rec && rec.detalle) || []).map(d => [d.op, d]));
   const uniq = l => [...new Set(l.filter(v => v !== null && v !== undefined && v !== ''))];
   const filas = [...grp(items, it => it.obra + '\u0001' + it.op).values()].map(l => {
     const med = uniq(l.map(i => i.ancho ? fmtN(i.ancho) + ' × ' + fmtN(i.alto) : ''));
@@ -2451,7 +2461,10 @@ async function exportarRemision(rem){
   const logo = await etqLogo();
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
-  const cols = [['OP', 22, 'l'], ['Ítem', 22, 'l'], ['Diseño', 68, 'l'], ['Medida', 26, 'l'], ['Cant.', 14, 'r'], ['m2', 16, 'r'], ['Pend. OP', 18, 'r']];
+  const cols = [['OP', 22, 'l'], ['Ítem', 20, 'l'], ['Diseño', 52, 'l'], ['Medida', 24, 'l'], ['Cant.', 13, 'r'], ['m2', 15, 'r'], ['Pend. OP', 18, 'r'], ['Recibido', 21.9, 'r']];
+  const qr = (txt, x, y, size) => { const q = qrcode(0, 'M'); q.addData(txt); q.make();
+    const n = q.getModuleCount(), cs = size / n; doc.setFillColor(0, 0, 0);
+    for(let r = 0; r < n; r++) for(let c = 0; c < n; c++) if(q.isDark(r, c)) doc.rect(x + c*cs, y + r*cs, cs + 0.02, cs + 0.02, 'F'); };
   const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
   const W = cols.reduce((a, c) => a + c[1], 0);
   const corta = (t, max) => { t = String(t || ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
@@ -2460,12 +2473,14 @@ async function exportarRemision(rem){
     pag++;
     if(logo){ const h = 12; doc.addImage(logo.url, 'PNG', M, 12, h * logo.r, h); }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20);
-    doc.text('REMISIÓN DE DESPACHO', PW - M, 17, {align:'right'});
-    doc.setFontSize(11); doc.text('N.º ' + rem, PW - M, 23, {align:'right'});
+    qr('ELP-REM:' + rem, PW - M - 22, 9, 22);
+    const xr = PW - M - 26;
+    doc.text('REMISIÓN DE DESPACHO', xr, 17, {align:'right'});
+    doc.setFontSize(11); doc.text('N.º ' + rem, xr, 23, {align:'right'});
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90);
-    doc.text('Fecha de despacho: ' + (fecha ? fmtD(fecha) : '—') + (pag > 1 ? '   ·   Hoja ' + pag : ''), PW - M, 28, {align:'right'});
-    doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(M, 32, PW - M, 32);
-    y = 38;
+    doc.text('Fecha de despacho: ' + (fecha ? fmtD(fecha) : '—') + (pag > 1 ? '   ·   Hoja ' + pag : ''), xr, 28, {align:'right'});
+    doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(M, 34, PW - M, 34);
+    y = 40;
   };
   const cabTabla = () => {
     doc.setFillColor(238); doc.rect(M, y - 4.2, W, 6.2, 'F');
@@ -2484,7 +2499,9 @@ async function exportarRemision(rem){
     for(const f of fl){
       nueva(10);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
-      const v = [f.op, f.item, f.dis, f.med, fmtN(f.n), fmtN(f.m2, 2), f.pend ? fmtN(f.pend) + ' de ' + fmtN(f.tot) : '—'];
+      const ro = recOp.get(f.op);
+      const v = [f.op, f.item, f.dis, f.med, fmtN(f.n), fmtN(f.m2, 2), f.pend ? fmtN(f.pend) + ' de ' + fmtN(f.tot) : '—', rec ? fmtN(ro ? ro.recibido : f.n) + (ro && ro.recibido < f.n ? ' (!)' : '') : ''];
+      if(!rec){ doc.setDrawColor(120); doc.rect(X[7] + cols[7][1] - 12, y - 3.3, 10, 4.4); }
       v.forEach((t, i) => { const c = cols[i]; doc.text(corta(t, c[1] - 3), c[2] === 'r' ? X[i] + c[1] - 1.5 : X[i] + 1.5, y, {align: c[2] === 'r' ? 'right' : 'left'}); });
       if(f.pisos){ doc.setFontSize(7); doc.setTextColor(110); doc.text(corta('Pisos: ' + f.pisos, cols[2][1] + cols[3][1] - 3), X[2] + 1.5, y + 3.3); }
       doc.setDrawColor(225); doc.line(M, y + (f.pisos ? 5 : 2.2), M + W, y + (f.pisos ? 5 : 2.2));
@@ -2497,24 +2514,42 @@ async function exportarRemision(rem){
     doc.text(fmtN(n), X[4] + cols[4][1] - 1.5, y, {align:'right'}); doc.text(fmtN(m2, 2), X[5] + cols[5][1] - 1.5, y, {align:'right'});
     y += 9;
   }
+  // Constancia de recibido firmada en la app
+  if(rec){
+    const nov = ((rec.detalle) || []).filter(d => d.recibido < d.enviado);
+    const obsL = rec.observaciones ? doc.splitTextToSize('Observaciones: ' + rec.observaciones, PW - 2 * M - 76) : [];
+    const novL = nov.length ? doc.splitTextToSize('Novedades: ' + nov.map(d => `OP ${d.op} llegaron ${d.recibido} de ${d.enviado}`).join(' · '), PW - 2 * M - 76) : [];
+    const alto = Math.max(36, 18 + (obsL.length + novL.length) * 3.8);
+    if(y + alto > PH - 40){ doc.addPage(); encabezado(); }
+    doc.setDrawColor(200); doc.rect(M, y - 4, PW - 2 * M, alto);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(20); doc.text('Recibido en obra', M + 3, y + 1.5);
+    doc.setFontSize(9); doc.text(`${rec.nombre}${rec.cargo ? ' · ' + rec.cargo : ''}`, M + 3, y + 7);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(70);
+    doc.text(`${rec.documento ? 'Doc. ' + rec.documento + ' · ' : ''}Firmado en la app el ${new Date(rec.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})} · recibidas ${rec.n_recibido} de ${rec.n_enviado} unidades`, M + 3, y + 11.5);
+    let yy = y + 16; if(novL.length){ doc.setTextColor(170, 40, 40); doc.text(novL, M + 3, yy); yy += novL.length * 3.8; doc.setTextColor(70); }
+    if(obsL.length) doc.text(obsL, M + 3, yy);
+    try{ doc.addImage(rec.firma, 'PNG', PW - M - 70, y - 2, 66, alto - 4); }catch(e){}
+    y += alto + 4;
+  }
   // Firmas
   if(y > PH - 40){ doc.addPage(); encabezado(); }
   const fy = PH - 26;
   doc.setDrawColor(120); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60);
   [['Entregó', M], ['Recibió (nombre, C.C. y firma)', PW / 2 + 6]].forEach(([t, x]) => { doc.line(x, fy, x + PW / 2 - M - 6, fy); doc.text(t, x, fy + 4.5); });
   doc.setFontSize(7); doc.setTextColor(140);
-  doc.text('Cantidades agrupadas por OP. "Pend. OP" = unidades de la OP que aún no se han despachado.', M, PH - 10);
+  doc.text('Cantidades agrupadas por OP. "Pend. OP" = unidades de la OP que aún no se han despachado. Escanee el QR para registrar el recibido en obra.', M, PH - 10);
   const totN = filas.reduce((a, f) => a + f.n, 0);
   const nombre = 'Remision_' + rem.replace(/[^\w\-]+/g, '_') + '.pdf';
   const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
   const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
-  window._rem = {file, url, nombre, txt: ['OP\tCant.', ...filas.map(f => f.op + '\t' + f.n)].join('\n')};
+  window._rem = {rem, file, url, nombre, txt: ['OP\tCant.', ...filas.map(f => f.op + '\t' + f.n)].join('\n')};
   openSheet('Remisión ' + esc(rem), esc(uniq(filas.map(f => f.obra)).join(' · ')), `<div class="summary"><b>${fmtN(filas.length)} OP</b> · ${fmtN(totN)} unidad${totN===1?'':'es'} · ${fmtN(filas.reduce((a, f) => a + f.m2, 0), 1)} m²</div>
     <div class="sc-items" style="max-height:34vh;overflow:auto;margin:8px 0">${filas.map(f => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line,rgba(127,127,127,.2));font-size:13px"><span><b>${esc(f.op)}</b> · ${esc(f.dis)}</span><span><b>${fmtN(f.n)}</b>${f.pend ? ` <small style="opacity:.7">(faltan ${fmtN(f.pend)})</small>` : ''}</span></div>`).join('')}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
       ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_rem.file], title:_rem.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
       <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
+      <button class="btn" onclick="remEstado(_rem.rem)">${rec ? '✓ Recibida · ver detalle' : 'Recibido en obra (firma)'}</button>
       <button class="btn" onclick="navigator.clipboard.writeText(_rem.txt).then(()=>toast('✓ Copiado: OP y cantidad'),()=>toast('No se pudo copiar', true))">Copiar OP y cantidades</button></div>`, 'Listo', async () => {});
 }
 // ── Actas de entrega (ítems instalados, por OP de instalación) ───
@@ -2735,6 +2770,66 @@ function firmaPNG(){
   const F = window._firma, o = document.createElement('canvas'), w = 600, h = Math.round(F.c.height * w / F.c.width);
   o.width = w; o.height = h; const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(F.c, 0, 0, w, h);
   return o.toDataURL('image/png');
+}
+// ── Recibido de remisión en obra: escanear el QR de la remisión, confirmar cantidades por OP y firmar ──
+async function cargarRemRec(){
+  const rems = [...new Set((S.items || []).filter(it => it.despachado && it.remision).map(it => it.remision))];
+  try{ S.remRec = rems.length ? await API.remRecibidas(rems) : new Map(); }catch(e){ S.remRec = null; }
+}
+async function remFilas(rem){
+  const {data, error} = await API.sb.from('items').select('id,obra,item,diseno,op,cant,fecha_despacho').eq('remision', rem).eq('despachado', true).order('id');
+  if(error) throw error;
+  return [...grp((data || []).filter(it => it.op), it => it.op).values()].map(l => ({op: l[0].op, obra: l[0].obra, item: [...new Set(l.map(i => i.item).filter(Boolean))].join(', '), dis: [...new Set(l.map(i => i.diseno).filter(Boolean))].join(' / '), n: l.reduce((a, i) => a + (Number(i.cant) || 1), 0), fecha: l[0].fecha_despacho}))
+    .sort((a, b) => nat(a.obra, b.obra) || nat(a.op, b.op));
+}
+async function remEstado(rem){
+  let filas, rec;
+  try{ filas = await remFilas(rem); rec = await API.recRemision(rem); }
+  catch(e){ return toast(/recepciones_remision/.test(e.message || '') || e.code === 'PGRST205' || e.code === '42P01' ? 'Falta activar el recibido de remisiones en la base (SQL de recibido de remisión)' : errMsg(e), true); }
+  if(!filas.length) return toast('No hay ítems despachados con la remisión ' + rem, true);
+  const det = new Map(((rec && rec.detalle) || []).map(d => [d.op, d]));
+  const tot = filas.reduce((a, f) => a + f.n, 0);
+  const body = `${rec ? `<div class="summary">✓ <b>Recibida</b> por <b>${esc(rec.nombre)}</b>${rec.cargo ? ' · ' + esc(rec.cargo) : ''} el ${new Date(rec.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})} · ${fmtN(rec.n_recibido)} de ${fmtN(rec.n_enviado)} unidades</div>
+      ${rec.observaciones ? `<div class="warn">${esc(rec.observaciones)}</div>` : ''}`
+    : `<div class="summary"><b>${fmtN(filas.length)} OP</b> · ${fmtN(tot)} unidades · despachada ${fmtD(filas[0].fecha)} · <b>sin recibido</b></div>
+      ${registraInst() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="remFirmar(decodeURIComponent('${encQ(rem)}'))">Firmar recibido en obra</button>` : ''}`}
+    <div style="max-height:40vh;overflow:auto">${filas.map(f => { const d = det.get(f.op), falta = d && d.recibido < d.enviado;
+      return `<div style="display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(f.op)}</b> · ${esc(f.dis)}</span><span>${rec ? `<b ${falta ? 'style="color:var(--bad,#d9534f)"' : ''}>${fmtN(d ? d.recibido : f.n)}</b> de ${fmtN(f.n)}` : `<b>${fmtN(f.n)}</b>`}</span></div>`; }).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportarRemision(decodeURIComponent('${encQ(rem)}'))">${ICON.down} PDF</button>
+      ${rec && isGerente() ? `<button class="btn ghost" onclick="remAnularRecibido(decodeURIComponent('${encQ(rem)}'))">Anular recibido</button>` : ''}</div>`;
+  openSheet('Remisión ' + esc(rem), esc([...new Set(filas.map(f => f.obra))].join(' · ')), body, 'Listo', async () => {});
+}
+async function remFirmar(rem){
+  let filas; try{ filas = await remFilas(rem); }catch(e){ return toast(errMsg(e), true); }
+  if(!filas.length) return toast('No hay ítems despachados con la remisión ' + rem, true);
+  const body = `<div class="summary">Confirma lo que llegó de cada OP. Si falta algo o llegó averiado, baja la cantidad y anótalo en observaciones.</div>
+    <div style="max-height:30vh;overflow:auto;margin:6px 0">${filas.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="flex:1"><b>${esc(f.op)}</b> · ${esc(f.dis)}<br><small>enviadas ${fmtN(f.n)}</small></span>
+      <input type="number" min="0" max="${f.n}" value="${f.n}" data-i="${i}" class="remRecQ" inputmode="numeric" style="width:76px;min-height:38px;padding:6px 8px;text-align:right"></div>`).join('')}</div>
+    <div class="field"><span class="lbl">Observaciones / novedades</span><input id="fObs" placeholder="Opcional"></div>
+    <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" autocomplete="off"></div>
+    <div class="fgrid"><div class="field"><span class="lbl">Cargo</span><input id="fCar" placeholder="Almacenista, residente…"></div>
+      <div class="field"><span class="lbl">Cédula</span><input id="fDoc" inputmode="numeric" placeholder="Opcional"></div></div>
+    <div class="field"><span class="lbl">Firma</span><canvas id="fPad" style="width:100%;height:170px;background:#fff;touch-action:none;border:1px solid var(--border);display:block"></canvas></div>
+    <button type="button" class="btn sm ghost" onclick="firmaLimpiar()">Borrar firma</button>`;
+  openSheet('Recibido de remisión ' + esc(rem), esc([...new Set(filas.map(f => f.obra))].join(' · ')), body, 'Firmar y guardar', async () => {
+    const nom = $('#fNom').value.trim(); if(!nom){ toast('Escribe el nombre de quien recibe', true); return false; }
+    if(!window._firma || !window._firma.trazos){ toast('Falta la firma', true); return false; }
+    const detalle = filas.map((f, i) => { const v = Math.round(Number(document.querySelector(`.remRecQ[data-i="${i}"]`).value)); return {op: f.op, enviado: f.n, recibido: Math.max(0, Math.min(f.n, isFinite(v) ? v : f.n))}; });
+    const obs = $('#fObs').value.trim();
+    if(detalle.some(d => d.recibido < d.enviado) && !obs){ toast('Hay cantidades incompletas: anota la novedad en observaciones', true); return false; }
+    try{ await API.firmarRemision(rem, nom, $('#fCar').value.trim(), $('#fDoc').value.trim(), obs, detalle, firmaPNG()); }
+    catch(e){ toast(errMsg(e), true); return false; }
+    toast('✓ Recibido firmado');
+    if(S.view === 'obra'){ await cargarRemRec(); renderObra(); }
+    setTimeout(() => remEstado(rem), 60);
+  });
+  firmaIniciar();
+}
+async function remAnularRecibido(rem){
+  if(!confirm(`¿Anular el recibido de la remisión ${rem}? Se borra la firma y habrá que firmar de nuevo.`)) return;
+  try{ await API.anularRecibidoRem(rem); }catch(e){ return toast(errMsg(e), true); }
+  toast('✓ Recibido anulado'); if(S.view === 'obra'){ await cargarRemRec(); renderObra(); } remEstado(rem);
 }
 // Número de remisión consecutivo: lo asigna la base (00-NNN); "Usar otra" permite agregar a una existente
 const remCampo = (id, val) => `<div class="field"><span class="lbl">Remisión</span><input id="${id}" inputmode="numeric" placeholder="Número" value="${esc(val || '')}" ${val ? 'readonly' : ''}>
