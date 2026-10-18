@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.7';
+const APP_VERSION = '5.8';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -618,13 +618,12 @@ const API = {
   },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   async actas(obra){ const {data,error} = await this.sb.from('actas').select('*').eq('obra', obra).order('num'); if(error) throw error; return data || []; },
-  async crearActa(obra, ids, fecha, recibe){ const {data,error} = await this.sb.rpc('crear_acta', {p_obra:obra, p_ids:ids, p_fecha:fecha, p_recibe:recibe||null}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
   async acta(id){ const {data,error} = await this.sb.from('actas').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
   async itemsActa(id){ const {data,error} = await this.sb.from('items').select('*').eq('acta_id', id).order('id'); if(error) throw error; return data || []; },
   async recepciones(acta, conFirma){ const {data,error} = await this.sb.from('recepciones').select(conFirma ? '*' : 'id,acta_id,nombre,cargo,documento,n_items,creada').eq('acta_id', acta).order('id'); if(error) throw error; return data || []; },
   async entregar(ids){ const {data,error} = await this.sb.rpc('entregar_items', {p_ids:ids}); if(error) throw error; return data; },
   async deshacerEntrega(ids){ const {data,error} = await this.sb.rpc('deshacer_entrega', {p_ids:ids}); if(error) throw error; return data; },
-  async firmarRecepcion(acta, nombre, cargo, doc, firma){ const {data,error} = await this.sb.rpc('firmar_recepcion', {p_acta:acta, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_firma:firma}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
+  async firmarRecepcion(acta, nombre, cargo, doc, firma, excluir){ const {data,error} = await this.sb.rpc('firmar_recepcion', {p_acta:acta, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_firma:firma, p_excluir:excluir||[]}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
   async recRemision(rem){ const {data,error} = await this.sb.from('recepciones_remision').select('*').eq('remision', rem).maybeSingle(); if(error) throw error; return data; },
   async remRecibidas(rems){ const out = new Map(); for(let i = 0; i < rems.length; i += 150){ const {data,error} = await this.sb.from('recepciones_remision').select('remision,nombre,creada,n_enviado,n_recibido').in('remision', rems.slice(i, i + 150)); if(error) throw error; for(const r of data || []) out.set(r.remision, r); } return out; },
   async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
@@ -1620,7 +1619,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Exportar una remisión agrupada por OP completa" onclick="remisionPedir()">${ICON.down} Remisión</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const n = actaPend().length; return n ? ` <b style="margin-left:4px">${fmtN(n)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Exportar una remisión agrupada por OP completa" onclick="remisionPedir()">${ICON.down} Remisión</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
         </div>
         <div class="chips" id="chips"></div>
         <div class="filters">
@@ -1661,7 +1660,7 @@ function procPills(it){
 }
 function rowHTML(it){
   const st = stageOf(it);
-  let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}${it.acta_id ? ' · Acta ' + esc(actaNum(it.acta_id)) + (it.recepcion_id ? ' ✓ recibido' : it.entregado_en ? ' · entregado' : '') : ''}</span>`
+  let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}${it.acta_id ? ' · Acta ' + esc(actaNum(it.acta_id)) + (it.recepcion_id ? ' ✓ recibido' : ' · entregado, sin firma') : ''}</span>`
             : it.despachado ? `<span class="subtag ${S.remRec && S.remRec.has(it.remision) ? 'ok' : ''}">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}${S.remRec && S.remRec.has(it.remision) ? ' · recibida ✓' : ''}</span>` : '';
   if(veCobros() && it.despachado){
     const c = com(it);
@@ -1830,7 +1829,7 @@ function renderDetail(){
           <div class="field"><span class="lbl">Fecha instalación</span><input type="date" value="${esc(d.fecha_instalacion||'')}" onchange="dSet('fecha_instalacion',this.value||null)"></div>
           <div class="field"><span class="lbl">Instalador</span>${personaField('pfInst', d.instalador, 'instalador', 'Elegir')}</div>
         </div>` : ''}
-        ${it.acta_id ? `<div class="d-meta">En el <b>acta de entrega N.º ${esc(actaNum(it.acta_id))}</b>${it.entregado_en ? ` · entregado en obra ${fmtD(String(it.entregado_en).slice(0,10))}${it.entregado_por ? ' por ' + esc(it.entregado_por) : ''}` : ' · aún sin entregar en obra'}${it.recepcion_id ? ' · <b>recibido con firma</b>' : ''}</div>` : ''}
+        ${it.acta_id ? `<div class="d-meta">En el <b>acta de entrega N.º ${esc(actaNum(it.acta_id))}</b>${it.entregado_en ? ` · entregado en obra ${fmtD(String(it.entregado_en).slice(0,10))}${it.entregado_por ? ' por ' + esc(it.entregado_por) : ''}` : ''}${it.recepcion_id ? ' · <b>recibido con firma</b>' : ''}</div>` : ''}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
       </fieldset>
@@ -1877,7 +1876,7 @@ function dToggle(k){
     else { if(!estaEnsamblado({...byId(S.detailId), ...d, despachado:false})) return toast('No se puede despachar: este ítem no está ensamblado. Primero registra el día final del ensamble.', true);
       d.despachado=true; d.fecha_despacho = d.fecha_despacho || today(); }
   } else {
-    if(d.instalado){ if(byId(S.detailId).acta_id) return toast('Este ítem ya está en el acta de entrega N.º ' + actaNum(byId(S.detailId).acta_id) + '. Para quitar la instalación, el gerente debe anular esa acta.', true);
+    if(d.instalado){ if(byId(S.detailId).acta_id) return toast('Este ítem ya está en el acta de entrega N.º ' + actaNum(byId(S.detailId).acta_id) + '. Para quitar la instalación primero hay que sacarlo del acta (si aún no está firmada).', true);
       if(!confirm('¿Quitar la instalación de este ítem? Se borrarán la fecha y el instalador.')) return; d.instalado=false; d.fecha_instalacion=null; d.instalador=null; }
     else { if(!d.despachado) return toast('No se puede instalar: este ítem no está despachado. Primero registra el despacho.', true);
       d.instalado=true; d.fecha_instalacion = d.fecha_instalacion || today(); }
@@ -2146,7 +2145,7 @@ function scMotivo(it, e){
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', '); return null; }
   if(e.k === 'fin'){ if(!it.ensamblador) return 'sin ensamblador'; if(it.dia_final) return 'ya terminado'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; return null; }
-  if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(!it.acta_id) return 'sin acta'; if(it.entregado_en) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
+  if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
   return 'no aplica';
 }
@@ -2206,7 +2205,8 @@ function renderScanParams(){
       ${remCampo('scRem', SC.rem)}</div>`;
   if(e.k === 'rem') h = `<div class="sc-note">Escanea el <b>QR de la remisión</b> al llegar a la obra. Quien recibe revisa las cantidades por OP, anota novedades y firma en la pantalla.</div>`;
   if(e.k === 'rec') h = `<div class="sc-note">Escanea el <b>QR del acta de entrega</b> o de la <b>remisión</b>. Verás lo que se te ha entregado y podrás firmar el recibido.</div>`;
-  if(e.k === 'entr') h = `<div class="sc-note">Escanea la etiqueta de cada ítem que se entrega en obra (debe estar instalado y en un acta). Al terminar, escanea el <b>QR del acta</b> para que el representante de la obra firme el recibido.</div>`;
+  if(e.k === 'entr') h = `<div class="sc-note">Escanea la etiqueta de cada ítem instalado que entregas: entra al <b>acta en curso</b> de su obra. Al terminar, cierra el acta para que quien recibe revise y firme.</div>
+    ${SC.acta ? `<div class="summary" style="margin-top:8px;display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Acta N.º ${SC.acta.num}</b> · ${esc(SC.acta.obra)}</span><button class="btn sm primary" onclick="actaEstado(${SC.acta.id})">Ver / cerrar y firmar</button></div>` : ''}`;
   if(e.k === 'inst') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
       <div class="field"><span class="lbl">Instalador</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
   box.innerHTML = h;
@@ -2293,7 +2293,7 @@ async function scCodigo(txt, manual){
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
       if(await scAplicar([it], items.length, e) === false) return;
-      scBeep(true); toast(`✓ ${p.sub} · ${e.t}`);
+      scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num : ''}`);
       return;
     }
     scBeep(true);
@@ -2320,11 +2320,14 @@ function scHoja(p, items, e){
 // Registra y guarda lo que había antes, para poder deshacer desde la lista de la sesión
 async function scAplicar(l, tot, e){
   if(e.k === 'entr'){
-    const ids = l.map(it => it.id), n = await API.entregar(ids);
-    if(!n) throw new Error('No se marcó ninguno (revisa que estén instalados, en un acta y sin entregar)');
-    for(const it of l){ it.entregado_en = new Date().toISOString(); const x = S.items && S.items.find(y => y.id === it.id); if(x) x.entregado_en = it.entregado_en; }
-    SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: e.t, n: l.length, tot: l.length === 1 ? 1 : tot, obra: l[0].obra, prev: [], entr: ids});
-    renderScanLog(); return;
+    const ids = l.map(it => it.id), res = await API.entregar(ids);
+    const r = Array.isArray(res) ? res.filter(x => x.n) : [];
+    if(!r.length) throw new Error('No se entregó ninguno (revisa que estén instalados y no estén ya en un acta)');
+    const ac = r[r.length - 1];
+    for(const it of l){ it.entregado_en = new Date().toISOString(); it.acta_id = ac.acta_id; const x = S.items && S.items.find(y => y.id === it.id); if(x){ x.entregado_en = it.entregado_en; x.acta_id = ac.acta_id; } }
+    SC.acta = {id: ac.acta_id, num: ac.num, obra: ac.obra};
+    SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: e.t + ' → acta ' + ac.num, n: l.length, tot: l.length === 1 ? 1 : tot, obra: l[0].obra, prev: [], entr: ids});
+    renderScanLog(); renderScanParams(); return;
   }
   if(e.k === 'ini' && isGerente()){
     const f = l.filter(it => faltaProc(it).length);
@@ -2340,7 +2343,7 @@ async function scAplicar(l, tot, e){
 async function scDeshacer(i){
   const l = SC.log[i]; if(!l || !l.prev || l.deshecho) return;
   if(!confirm(`¿Deshacer ${l.est} de ${l.op} (${l.n} ítem${l.n===1?'':'s'})?`)) return;
-  if(l.entr){ try{ await API.deshacerEntrega(l.entr); l.deshecho = true; renderScanLog(); toast('✓ Deshecho'); }catch(e){ toast(errMsg(e), true); } return; }
+  if(l.entr){ try{ await API.deshacerEntrega(l.entr); l.deshecho = true; renderScanLog(); toast('✓ Sacado del acta'); }catch(e){ toast(errMsg(e), true); } return; }
   try{
     const g = new Map();
     for(const {id, pv} of l.prev){ const k = JSON.stringify(pv); if(!g.has(k)) g.set(k, {pv, ids:[]}); g.get(k).ids.push(id); }
@@ -2581,57 +2584,32 @@ async function exportarRemision(rem){
       <button class="btn" onclick="remEstado(_rem.rem)">${rec ? '✓ Recibida · ver detalle' : 'Recibido en obra (firma)'}</button>
       <button class="btn" onclick="navigator.clipboard.writeText(_rem.txt).then(()=>toast('✓ Copiado: OP y cantidad'),()=>toast('No se pudo copiar', true))">Copiar OP y cantidades</button></div>`, 'Listo', async () => {});
 }
-// ── Actas de entrega (ítems instalados, por OP de instalación) ───
-// Cada ítem instalado entra a una sola acta; las actas se numeran por obra (1, 2, 3…)
-const actaPend = () => (S.items || []).filter(it => it.instalado && !it.acta_id);
+// ── Actas de entrega: se construyen al escanear en "Entrega a obra" y se cierran con la firma de quien recibe ──
+// Cada obra tiene a lo sumo un acta ABIERTA; al firmarla queda FIRMADA y lo siguiente abre el acta siguiente
 const actaNum = id => { const a = (S.actas || []).find(x => x.id === id); return a ? a.num : '—'; };
-const actaFaltaSQL = e => e && (e.code === 'PGRST202' || e.code === '42P01' || e.code === 'PGRST205' || /crear_acta|actas/.test(e.message || ''));
+const actaAbierta = () => (S.actas || []).find(a => a.estado === 'abierta');
+const actaEst = a => a.estado || (a.anulada ? 'anulada' : 'firmada');
+const actaFaltaSQL = e => e && (e.code === 'PGRST202' || e.code === '42P01' || e.code === 'PGRST205' || /actas/.test(e.message || ''));
 async function actasHoja(){
   if(S.actas === null || S.actas === undefined){ try{ S.actas = await API.actas(S.obra); }catch(e){ S.actas = null; } }
-  const pend = actaPend(), actas = (S.actas || []).slice().reverse();
-  const sig = (S.actas || []).reduce((m, a) => Math.max(m, a.num), 0) + 1;
-  const body = `${S.actas === null ? `<div class="warn">Las actas aún no están activadas en la base (falta correr el SQL de actas de entrega).</div>` : ''}
-    <div class="summary"><b>${fmtN(pend.length)}</b> ítem${pend.length===1?'':'s'} instalado${pend.length===1?'':'s'} pendiente${pend.length===1?'':'s'} de acta.</div>
-    ${registraInst() && pend.length && S.actas !== null ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaNueva()">Generar acta N.º ${sig}</button>` : ''}
-    ${actas.length ? `<div class="lbl" style="margin:12px 0 4px">Actas generadas</div>` + actas.map(a => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div style="flex:1;font-size:13px${a.anulada ? ';opacity:.5;text-decoration:line-through' : ''}"><b>Acta N.º ${a.num}</b> · ${fmtD(a.fecha)} · ${fmtN(a.n_items)} ítem${a.n_items===1?'':'s'}${a.anulada ? ' · ANULADA' : (() => { const l = S.items.filter(it => it.acta_id === a.id), e = l.filter(it => it.entregado_en).length, f = l.filter(it => it.recepcion_id).length; return `<br><small>Entregados ${fmtN(e)} de ${fmtN(l.length)} · con firma ${fmtN(f)}</small>`; })()}</div>
-      ${a.anulada ? '' : `<button class="btn sm" onclick="actaEstado(${a.id})">Estado</button><button class="btn sm ghost" onclick="actaVer(${a.id})">PDF</button>${isGerente() ? `<button class="btn sm ghost" onclick="actaAnular(${a.id})">Anular</button>` : ''}`}</div>`).join('') : '<div class="empty" style="padding:12px 0">Aún no hay actas en esta obra.</div>'}`;
+  const ab = actaAbierta(), actas = (S.actas || []).filter(a => actaEst(a) !== 'abierta').slice().reverse();
+  const sinEnt = (S.items || []).filter(it => it.instalado && !it.acta_id).length;
+  const body = `${S.actas === null ? `<div class="warn">Las actas aún no están activadas en la base (falta correr el SQL de actas).</div>` : ''}
+    <div class="sc-note" style="margin-bottom:8px">Los ítems entran al acta al escanearlos en <b>Escanear → Entrega a obra</b>. Al final, quien recibe revisa la lista, deja por fuera lo que no acepte y firma; ahí el acta se cierra.</div>
+    ${ab ? `<div class="summary"><b>Acta N.º ${ab.num} en curso</b> · ${fmtN(ab.n_items)} ítem${ab.n_items===1?'':'s'} entregado${ab.n_items===1?'':'s'} · sin firmar</div>
+      <div style="display:flex;gap:8px;margin:8px 0"><button class="btn primary" style="flex:1" onclick="actaEstado(${ab.id})">Ver / cerrar y firmar</button>${isGerente() ? `<button class="btn ghost" onclick="actaAnular(${ab.id})">Anular</button>` : ''}</div>`
+      : `<div class="summary">No hay un acta en curso en esta obra.</div>`}
+    <div class="sc-note">${fmtN(sinEnt)} ítem${sinEnt===1?'':'s'} instalado${sinEnt===1?'':'s'} aún sin entregar.</div>
+    ${actas.length ? `<div class="lbl" style="margin:12px 0 4px">Actas firmadas</div>` + actas.map(a => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;font-size:13px${actaEst(a) === 'anulada' ? ';opacity:.5;text-decoration:line-through' : ''}"><b>Acta N.º ${a.num}</b> · ${fmtD(a.fecha)} · ${fmtN(a.n_items)} ítem${a.n_items===1?'':'s'}${actaEst(a) === 'anulada' ? ' · ANULADA' : a.recibe ? '<br><small>Recibió: ' + esc(a.recibe) + '</small>' : ''}</div>
+      ${actaEst(a) === 'anulada' ? '' : `<button class="btn sm" onclick="actaEstado(${a.id})">Ver</button><button class="btn sm ghost" onclick="actaVer(${a.id})">PDF</button>`}</div>`).join('') : ''}`;
   openSheet('Actas de entrega', esc(S.obra), body, 'Listo', async () => {});
 }
-function actaNueva(){
-  const pend = actaPend().sort((a, b) => nat(b.fecha_instalacion || '', a.fecha_instalacion || '') || nat(a.op_instalacion, b.op_instalacion));
-  const sel = window._actaSel = new Set(pend.map(it => it.id));
-  const grupos = [...grp(pend, it => it.fecha_instalacion || '').entries()];
-  const sig = (S.actas || []).reduce((m, a) => Math.max(m, a.num), 0) + 1;
-  const body = `<div class="fgrid"><div class="field"><span class="lbl">Fecha del acta</span><input type="date" id="acFecha" value="${today()}"></div>
-      <div class="field"><span class="lbl">Recibe (nombre / cargo)</span><input id="acRecibe" placeholder="Opcional"></div></div>
-    <div class="summary" id="acSum"></div>
-    <div class="sc-items" style="max-height:42vh;overflow:auto">${grupos.map(([f, l], g) => `
-      <label style="display:flex;gap:8px;align-items:center;padding:8px 0 4px;font-weight:600;font-size:13px"><input type="checkbox" style="width:18px;height:18px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)" checked data-g="${g}" onchange="actaTogG(${g}, this.checked)"> Instalados ${f ? fmtD(f) : 'sin fecha'} · ${fmtN(l.length)}</label>
-      ${l.map(it => `<label style="display:flex;gap:8px;align-items:center;padding:3px 0 3px 22px;font-size:13px"><input type="checkbox" style="width:18px;height:18px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)" checked data-id="${it.id}" data-gi="${g}" onchange="actaTog(${it.id}, this.checked)"><span><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></label>`).join('')}`).join('')}</div>`;
-  openSheet('Acta de entrega N.º ' + sig, esc(S.obra) + ' · solo ítems instalados que no tienen acta', body, 'Generar acta', async () => {
-    const ids = [...sel]; if(!ids.length){ toast('No hay ítems seleccionados', true); return false; }
-    const fecha = $('#acFecha').value || today(), recibe = $('#acRecibe').value.trim();
-    if(!confirm(`¿Generar el acta con ${ids.length} ítem${ids.length===1?'':'s'}? Quedarán marcados como entregados y no volverán a salir en otra acta.`)) return false;
-    let r;
-    try{ r = await API.crearActa(S.obra, ids, fecha, recibe); }
-    catch(e){ toast(actaFaltaSQL(e) ? 'Falta activar las actas en la base (SQL de actas de entrega)' : errMsg(e), true); return false; }
-    try{ S.actas = await API.actas(S.obra); }catch(e){}
-    const set = new Set(ids);
-    for(const it of S.items) if(set.has(it.id) && it.instalado && !it.acta_id) it.acta_id = r.id;
-    renderObra();
-    setTimeout(() => actaVer(r.id), 60);
-  });
-  actaSum();
-}
-function actaSum(){ const b = $('#acSum'); if(b) b.innerHTML = `<b>${fmtN(window._actaSel.size)}</b> ítem${window._actaSel.size===1?'':'s'} en el acta`; }
-function actaTog(id, on){ on ? window._actaSel.add(id) : window._actaSel.delete(id); actaSum(); }
-function actaTogG(g, on){ document.querySelectorAll(`input[data-gi="${g}"]`).forEach(c => { c.checked = on; actaTog(Number(c.dataset.id), on); }); }
 async function actaAnular(id){
   const a = (S.actas || []).find(x => x.id === id); if(!a) return;
-  if(!confirm(`¿Anular el acta N.º ${a.num}? Sus ${a.n_items} ítems vuelven a quedar pendientes de acta. El número ${a.num} no se reutiliza.`)) return;
+  if(!confirm(`¿Anular el acta N.º ${a.num} en curso? Sus ${a.n_items} ítems vuelven a quedar sin entregar y habrá que escanearlos de nuevo.`)) return;
   try{ await API.anularActa(id); }catch(e){ return toast(errMsg(e), true); }
-  for(const it of S.items) if(it.acta_id === id) it.acta_id = null;
+  for(const it of S.items) if(it.acta_id === id){ it.acta_id = null; it.entregado_en = null; }
   try{ S.actas = await API.actas(S.obra); }catch(e){}
   toast('✓ Acta anulada'); renderObra(); actasHoja();
 }
@@ -2649,7 +2627,7 @@ async function actaVer(id){
   const logo = await etqLogo();
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
-  const cols = [['OP inst.', 21, 'l'], ['Ítem', 15, 'l'], ['Ubicación', 33, 'l'], ['Piso', 11, 'l'], ['Diseño', 37, 'l'], ['Medida', 21, 'l'], ['m2', 12, 'r'], ['Instalado', 18, 'r'], ['Recibido', 19.9, 'c']];
+  const cols = [['OP inst.', 21, 'l'], ['Ítem', 15, 'l'], ['Ubicación', 33, 'l'], ['Piso', 11, 'l'], ['Diseño', 37, 'l'], ['Medida', 21, 'l'], ['m2', 12, 'r'], ['Instalado', 18, 'r'], ['Entregado', 19.9, 'r']];
   const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
   const W = cols.reduce((s, c) => s + c[1], 0);
   const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
@@ -2681,7 +2659,11 @@ async function actaVer(id){
   encabezado();
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(20); doc.text('Obra: ' + obra, M, y); y += 6;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(50);
-  const intro = doc.splitTextToSize(`Por medio de la presente, Elíptica relaciona los ${items.length} ítems instalados en la obra que se entregan con esta acta. Cada ítem se registra como recibido al escanear su etiqueta en el momento de la entrega, y quien recibe firma en la app como constancia. Escanee el código QR para consultar el estado de la entrega.`, PW - 2 * M);
+  const borrador = actaEst(a) === 'abierta';
+  const intro = doc.splitTextToSize(borrador
+    ? `BORRADOR — acta en curso, pendiente de la firma de quien recibe. Relaciona los ${items.length} ítems instalados que se han entregado en obra hasta el momento.`
+    : `Por medio de la presente, Elíptica hace entrega de los ${items.length} ítems relacionados, instalados en la obra. Cada ítem se registró al escanear su etiqueta en el momento de la entrega, y quien recibe los recibió a satisfacción con su firma en la app (ver constancia). Escanee el código QR para consultar esta acta.`, PW - 2 * M);
+  if(borrador) doc.setTextColor(170, 40, 40);
   doc.text(intro, M, y); y += intro.length * 4.2 + 4;
   cab();
   for(const it of items){
@@ -2689,14 +2671,12 @@ async function actaVer(id){
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
     const rec = it.recepcion_id ? recPor.get(it.recepcion_id) : null;
     [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)].forEach((t, i) => tx(t, i, y));
-    if(rec){ const d = String(rec.creada).slice(0, 10); tx('Sí ' + d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(2, 4), 8, y); }
-    else if(it.entregado_en){ doc.setTextColor(120); tx('Entregado', 8, y); }
-    else { doc.setDrawColor(120); doc.rect(X[8] + cols[8][1] / 2 - 1.8, y - 3, 3.6, 3.6); }
+    if(it.entregado_en){ const d = new Date(it.entregado_en), p2 = n => String(n).padStart(2, '0'); tx(`${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`, 8, y); }
     doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
   }
   const m2 = items.reduce((s, i) => s + (Number(i.m2) || 0), 0), nRec = items.filter(i => i.recepcion_id).length;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20);
-  doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y); tx(fmtN(nRec) + ' de ' + fmtN(items.length), 8, y);
+  doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y);
   y += 8;
   if(y > PH - 62){ doc.addPage(); encabezado(); }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('Observaciones', M, y);
@@ -2737,57 +2717,70 @@ async function actaVer(id){
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
 }
 
-// Estado de un acta (al escanear su QR o desde la lista): qué se ha entregado y qué está firmado
+// Estado de un acta (al escanear su QR, desde el escáner o desde la lista)
 async function actaDatos(id){
   try{ const d = await API.campoActa(id); return d ? {a: d.acta, items: d.items || [], recs: d.recs || []} : {a: null, items: [], recs: []}; }
   catch(e){ if(esCampo() || e.code !== 'PGRST202') throw e; }
   return {a: await API.acta(id), items: await API.itemsActa(id), recs: await API.recepciones(id, false)};
 }
+function qrSVG(txt, px){
+  if(!window.qrcode) return '';
+  const q = qrcode(0, 'M'); q.addData(txt); q.make();
+  return q.createSvgTag({cellSize: Math.max(2, Math.floor(px / (q.getModuleCount() + 8))), margin: 4, scalable: true}).replace('<svg ', `<svg style="width:${px}px;height:${px}px;background:#fff" `);
+}
 async function actaEstado(id){
   let a, items, recs;
-  try{ ({a, items, recs} = await actaDatos(id)); }
-  catch(e){ return toast(actaFaltaSQL(e) || /recepciones|entregado/.test(e.message || '') ? 'Falta activar las entregas en la base (SQL de entregas y firma)' : errMsg(e), true); }
+  try{ ({a, items, recs} = await actaDatos(id)); if(!window.qrcode) await loadScript('lib/qrcode.js').catch(() => {}); }
+  catch(e){ return toast(actaFaltaSQL(e) || /recepciones|entregado/.test(e.message || '') ? 'Falta activar las actas en la base (SQL de actas)' : errMsg(e), true); }
   if(!a) return toast('No encontré esa acta', true);
   items.sort((x, y) => nat(x.op_instalacion, y.op_instalacion));
-  const ent = items.filter(i => i.entregado_en), porFirmar = ent.filter(i => !i.recepcion_id), firm = items.filter(i => i.recepcion_id);
-  const ico = it => it.recepcion_id ? '<b style="color:var(--inst,#4caf50)">✓</b>' : it.entregado_en ? '<b>●</b>' : '<span style="opacity:.4">○</span>';
-  const body = `${a.anulada ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
-    <div class="summary">Entregados <b>${fmtN(ent.length)} de ${fmtN(items.length)}</b> · con firma <b>${fmtN(firm.length)}</b>${porFirmar.length ? ` · <b>${fmtN(porFirmar.length)}</b> por firmar` : ''}</div>
-    ${porFirmar.length && firmaActa() && !a.anulada ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Firmar recibido (${fmtN(porFirmar.length)} ítem${porFirmar.length===1?'':'s'})</button>` : ''}
-    <div class="sc-note" style="margin:6px 0">✓ recibido con firma · ● entregado, falta firma · ○ pendiente por entregar</div>
-    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${ico(it)}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></div>`).join('')}</div>
-    ${recs.length ? `<div class="lbl" style="margin:12px 0 4px">Firmas</div>${recs.map(r => `<div style="font-size:13px;padding:4px 0">${esc(r.nombre)}${r.cargo ? ' · ' + esc(r.cargo) : ''} · ${new Date(r.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})} · ${fmtN(r.n_items)} ítems</div>`).join('')}` : ''}
-    ${esInterno() ? `<button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta</button>` : ''}`;
-  openSheet('Acta N.º ' + a.num, esc(a.obra) + ' · ' + fmtD(a.fecha), body, 'Listo', async () => {});
+  const est = actaEst(a), abierta = est === 'abierta';
+  const body = `${est === 'anulada' ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
+    ${abierta ? `<div class="summary"><b>En curso</b> · ${fmtN(items.length)} ítem${items.length===1?'':'s'} entregado${items.length===1?'':'s'} · falta la firma de quien recibe</div>
+      ${items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
+      ${rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}`
+    : est === 'firmada' ? `<div class="summary">✓ <b>Firmada</b>${recs[0] ? ` por <b>${esc(recs[0].nombre)}</b>${recs[0].cargo ? ' · ' + esc(recs[0].cargo) : ''} el ${new Date(recs[0].creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})}` : ''} · ${fmtN(items.length)} ítem${items.length===1?'':'s'} recibidos</div>` : ''}
+    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
+    ${esInterno() && items.length ? `<button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta${abierta ? ' (borrador)' : ''}</button>` : ''}`;
+  openSheet('Acta de entrega N.º ' + a.num, esc(a.obra) + (abierta ? ' · en curso' : ' · ' + fmtD(a.fecha)), body, 'Listo', async () => {});
 }
 
-// Firma de recibido del representante de la obra (en la pantalla del equipo)
+// Cerrar el acta: quien recibe revisa la lista (puede dejar por fuera lo que no acepte) y firma en la pantalla
 async function actaFirmar(id){
   let a, items;
-  try{ const d = await actaDatos(id); a = d.a; items = d.items.filter(i => i.entregado_en && !i.recepcion_id).sort((x, y) => nat(x.op_instalacion, y.op_instalacion)); }
+  try{ const d = await actaDatos(id); a = d.a; items = d.items.filter(i => !i.recepcion_id).sort((x, y) => nat(x.op_instalacion, y.op_instalacion)); }
   catch(e){ return toast(errMsg(e), true); }
-  if(!items.length) return toast('No hay ítems entregados pendientes de firma', true);
-  const body = `<div class="summary">Recibo a satisfacción los <b>${fmtN(items.length)} ítem${items.length===1?'':'s'}</b> del acta N.º ${a.num} de ${esc(a.obra)}:</div>
-    <div style="max-height:18vh;overflow:auto;font-size:12px;margin:6px 0">${items.map(i => `<b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.ubicacion ? ' · ' + esc(i.ubicacion) : ''}`).join('<br>')}</div>
-    <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" value="${esc(a.recibe || '')}" autocomplete="off"></div>
+  if(!a || actaEst(a) !== 'abierta') return toast('Esta acta ya está cerrada', true);
+  if(!items.length) return toast('El acta no tiene ítems', true);
+  const fuera = window._actaFuera = new Set();
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  const body = `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
+    <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.ubicacion ? ' · ' + esc(i.ubicacion) : ''}</span></label>`).join('')}</div>
+    <div class="sc-note" id="afSum"></div>
+    <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" autocomplete="off"></div>
     <div class="fgrid"><div class="field"><span class="lbl">Cargo</span><input id="fCar" placeholder="Residente, interventor…"></div>
       <div class="field"><span class="lbl">Cédula</span><input id="fDoc" inputmode="numeric" placeholder="Opcional"></div></div>
     <div class="field"><span class="lbl">Firma</span><canvas id="fPad" style="width:100%;height:170px;background:#fff;touch-action:none;border:1px solid var(--border);display:block"></canvas></div>
     <button type="button" class="btn sm ghost" onclick="firmaLimpiar()">Borrar firma</button>`;
-  openSheet('Firma de recibido', 'Acta N.º ' + a.num + ' · ' + esc(a.obra), body, 'Firmar y guardar', async () => {
+  openSheet('Cerrar acta N.º ' + a.num, esc(a.obra), body, 'Firmar y cerrar acta', async () => {
     const nom = $('#fNom').value.trim(); if(!nom){ toast('Escribe el nombre de quien recibe', true); return false; }
+    if(fuera.size >= items.length){ toast('No quedó ningún ítem marcado como recibido', true); return false; }
     if(!window._firma || !window._firma.trazos){ toast('Falta la firma', true); return false; }
+    if(fuera.size && !confirm(`${fuera.size} ítem${fuera.size===1?'':'s'} no se recibe${fuera.size===1?'':'n'} y saldrá${fuera.size===1?'':'n'} del acta. ¿Continuar?`)) return false;
     let r;
-    try{ r = await API.firmarRecepcion(a.id, nom, $('#fCar').value.trim(), $('#fDoc').value.trim(), firmaPNG()); }
+    try{ r = await API.firmarRecepcion(a.id, nom, $('#fCar').value.trim(), $('#fDoc').value.trim(), firmaPNG(), [...fuera]); }
     catch(e){ toast(errMsg(e), true); return false; }
-    toast(`✓ Recibido firmado: ${r.n} ítem${r.n===1?'':'s'}`);
-    if(esCampo()){ SC.log.unshift({hora: nowTime(), op: 'Acta ' + a.num, est: 'Recibido firmado', n: r.n, tot: r.n, obra: a.obra + ' · ' + nom}); renderScanLog(); }
-    if(S.items) for(const it of S.items) if(items.some(x => x.id === it.id)) it.recepcion_id = r.id;
-    if(S.view === 'obra') renderObra();
-    setTimeout(() => actaEstado(a.id), 60);
+    toast(`✓ Acta N.º ${a.num} firmada: ${r.n} ítem${r.n===1?'':'s'} recibidos`);
+    if(S.items) for(const it of S.items){ if(fuera.has(it.id)){ it.acta_id = null; it.entregado_en = null; } else if(it.acta_id === a.id) it.recepcion_id = r.id; }
+    if(SC.acta && SC.acta.id === a.id) SC.acta = null;
+    if(S.view === 'scan'){ SC.log.unshift({hora: nowTime(), op: 'Acta ' + a.num, est: 'Firmada', n: r.n, tot: items.length, obra: a.obra + ' · ' + nom}); renderScanLog(); renderScanParams(); }
+    if(S.view === 'obra'){ try{ S.actas = await API.actas(S.obra); }catch(e){} renderObra(); }
+    setTimeout(() => esInterno() ? actaVer(a.id) : actaEstado(a.id), 60);
   });
+  actaFirmaSum(items.length);
   firmaIniciar();
 }
+function actaFirmaSum(n){ const b = $('#afSum'); if(b){ const f = window._actaFuera.size; b.innerHTML = `Recibe <b>${fmtN(n - f)}</b> de ${fmtN(n)}${f ? ` · <b>${fmtN(f)}</b> no recibido${f===1?'':'s'}` : ''}`; } }
 function firmaIniciar(){
   const c = $('#fPad'); if(!c) return;
   const dpr = Math.max(2, window.devicePixelRatio || 1), r = c.getBoundingClientRect();
