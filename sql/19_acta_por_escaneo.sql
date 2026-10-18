@@ -11,7 +11,7 @@ alter table public.actas add column if not exists estado text;
 
 -- Migración de lo que se haya hecho con el esquema anterior
 do $$
-declare r record; keep bigint;
+declare o record; keep bigint;
 begin
   perform set_config('elp.acta', '1', true);
   -- ítems asignados a un acta pero nunca entregados vuelven a quedar libres
@@ -23,10 +23,10 @@ begin
       else 'anulada' end
    where a.estado is null;
   -- máximo un acta abierta por obra: se juntan en la más reciente
-  for r in select obra from public.actas where estado = 'abierta' group by obra having count(*) > 1 loop
-    select max(id) into keep from public.actas where obra = r.obra and estado = 'abierta';
-    update public.items set acta_id = keep where acta_id in (select id from public.actas where obra = r.obra and estado = 'abierta' and id <> keep);
-    update public.actas set estado = 'anulada', anulada = true where obra = r.obra and estado = 'abierta' and id <> keep;
+  for o in select obra from public.actas where estado = 'abierta' group by obra having count(*) > 1 loop
+    select max(id) into keep from public.actas where obra = o.obra and estado = 'abierta';
+    update public.items set acta_id = keep where acta_id in (select id from public.actas where obra = o.obra and estado = 'abierta' and id <> keep);
+    update public.actas set estado = 'anulada', anulada = true where obra = o.obra and estado = 'abierta' and id <> keep;
   end loop;
   update public.actas a set n_items = (select count(*) from public.items i where i.acta_id = a.id) where a.estado in ('abierta','firmada');
 end $$;
