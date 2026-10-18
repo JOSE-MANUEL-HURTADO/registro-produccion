@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.1';
+const APP_VERSION = '6.2';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -646,7 +646,7 @@ const API = {
       const {data,error} = await this.sb.storage.from('ordenes').list('ops', {limit:1000, offset:off, sortBy:{column:'name', order:'asc'}});
       if(error) throw error;
       out = out.concat(data || []);
-      if(!data || data.length < 1000) break;
+      if(!Array.isArray(data) || data.length < 1000) break;
     }
     return out.filter(f => /\.pdf$/i.test(f.name)).map(f => f.name.replace(/\.pdf$/i, ''));
   },
@@ -3119,6 +3119,9 @@ function renderCarga(){
   } else if(C.estado === 'inicio'){
     body = `
       <div class="carga-steps">
+        <div class="cstep" style="border:1px solid var(--cola);padding:12px"><b>PDF</b><div><div class="cs-t">Desde las órdenes de producción (lo más rápido)</div><div class="cs-d">Sube el PDF de la orden tal como sale del sistema (puedes elegir varios). La app lee obra, OP, ítem, sistema, cantidad, vidrio, medidas, m², ubicación y fecha, y <b>divide cada cantidad en OP de instalación</b> (6291-1.1, 6291-1.2…): si la ubicación trae los apartamentos (201-303-403-503) le asigna uno a cada unidad con su piso. Antes de guardar revisas todo. Al cargar, la orden también queda subida <b>con su QR</b>.</div>
+          <label class="btn primary sm" style="cursor:pointer">${ICON.pdf} Elegir órdenes PDF<input type="file" id="fileOpPdf" accept="application/pdf,.pdf" multiple style="display:none"></label></div></div>
+        <div class="cs-d" style="margin:4px 0 2px">O, si prefieres, desde Excel:</div>
         <div class="cstep"><b>1</b><div><div class="cs-t">Descarga la plantilla</div><div class="cs-d">Tiene las columnas que la app necesita. Llénala como hoy, con las cantidades ya divididas en OP INSTALACION: una fila por cada una.</div>
           <button class="btn sm" onclick="descargarPlantilla()">${ICON.down} Descargar plantilla</button></div></div>
         <div class="cstep"><b>2</b><div><div class="cs-t">Sube el archivo</div><div class="cs-d">Excel (.xlsx o .xls) o CSV. También sirve un archivo con las columnas de tu BASE_: las columnas que sobren se ignoran.</div>
@@ -3147,6 +3150,7 @@ function renderCarga(){
     </div>
     ${body}`);
   const f = $('#fileOp'); if(f) f.onchange = e => { const file = e.target.files[0]; if(file) leerArchivo(file); };
+  const fp = $('#fileOpPdf'); if(fp) fp.onchange = e => { const l = [...e.target.files]; if(l.length) leerOrdenesPDF(l); };
   const od = $('#ordDir'); if(od) od.onchange = e => ordenesLeer([...e.target.files]);
   const of = $('#ordFiles'); if(of) of.onchange = e => ordenesLeer([...e.target.files]);
   const oq = $('#ordQR'); if(oq) oq.onchange = e => { const f = e.target.files[0]; if(f) ordenQRSuelta(f); };
@@ -3505,6 +3509,17 @@ async function leerArchivo(file){
       filas.push(f);
     }
     if(!filas.length) throw new Error('El archivo no tiene filas con datos debajo de los encabezados.');
+    C.pdfs = null;
+    await revisarFilas(filas);
+  }catch(e){
+    C.estado = 'inicio';
+    toast(errMsg(e), true);
+  }
+  renderCarga();
+}
+// Validaciones comunes (Excel o PDF): repetidas, ya existentes, obras nuevas o parecidas
+async function revisarFilas(filas){
+  {
     // Repetidas dentro del archivo
     const cnt = new Map(); filas.forEach(f => f.d.op_instalacion && cnt.set(f.d.op_instalacion, (cnt.get(f.d.op_instalacion)||0)+1));
     filas.forEach(f => { if(cnt.get(f.d.op_instalacion) > 1) f.errors.push('OP INSTALACION repetida en el archivo'); });
@@ -3529,11 +3544,104 @@ async function leerArchivo(file){
     }
     C.filas = filas; C.obrasInfo = obrasInfo; C.soloProblemas = filas.some(f => f.errors.length);
     C.estado = 'revision';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CARGAR DESDE LAS ÓRDENES DE PRODUCCIÓN (PDF): se leen obra, OP, ítem, sistema, cantidad, vidrio,
+//  medidas, m², ubicación y fecha; cada cantidad se divide en OP de instalación (6291-1.1, .2 …)
+// ════════════════════════════════════════════════════════════════
+const MESES = {enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+const pdfNum = t => { const v = parseFloat(String(t || '').replace(/\./g, '').replace(',', '.')); return isFinite(v) ? v : null; };
+async function leerOrdenesPDF(files){
+  C.estado = 'leyendo'; C.archivo = files.length === 1 ? files[0].name : files.length + ' órdenes PDF'; C.msg = 'Leyendo las órdenes'; renderCarga();
+  try{
+    await qrLibsPDF();
+    const ops = [], pdfs = [];
+    for(const [fi, file] of files.entries()){
+      C.msg = `Leyendo ${file.name} (${fi + 1} de ${files.length})`; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = C.msg;
+      const pdf = await pdfjsLib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
+      let actual = null, num = null;
+      for(let pn = 1; pn <= pdf.numPages; pn++){
+        const tc = await (await pdf.getPage(pn)).getTextContent();
+        const it = tc.items.filter(t => t.str.trim()).map(t => ({s: t.str.trim(), x: t.transform[4], x2: t.transform[4] + t.width, y: t.transform[5]}));
+        const one = re => it.find(t => re.test(t.s));
+        const nm = one(/^N[uú]mero\s*:/i), m = nm && nm.s.match(/(\d{3,6})-(\d+)/);
+        if(m){
+          const op = m[1].replace(/^0+(?=\d)/, '') + '-' + m[2];
+          if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = file.name; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
+        }
+        // Nombre completo del vidrio (en el encabezado sale cortado): se busca en la lista de materiales
+        if(actual && actual.vidrioCorto && !actual.vidrio){ const v = it.find(t => t.s.length > actual.vidrioCorto.length && t.s.startsWith(actual.vidrioCorto)); if(v) actual.vidrio = v.s; }
+      }
+      await pdf.destroy();
+      if(num) pdfs.push({num, file});
+    }
+    if(!ops.length) throw new Error('No encontré órdenes de producción en ese PDF (busco el "Número: 006291-1" del encabezado).');
+    const filas = [];
+    for(const o of ops){
+      const unidades = dividirUbicacion(o.ubicacion, o.cant || 1);
+      unidades.forEach((u, k) => {
+        const f = {n: o.op + ' · ' + o.archivo, errors: [], warns: [], d: {
+          obra: o.obra, item: o.item, ubicacion: u.ubicacion, piso: u.piso, diseno: o.sistema, vidrio: o.vidrio || o.vidrioCorto,
+          ancho: o.ancho, alto: o.alto, m2: o.m2, cant: 1, op: o.op, op_instalacion: o.op + '.' + (k + 1),
+          fecha_op: o.fecha || today(), tiempo_op: o.tiempo, puntos: o.puntos, precio: o.valor || null, sistema: null, serie: null}};
+        if(!f.d.obra) f.errors.push('No encontré la obra');
+        if(!f.d.item) f.errors.push('No encontré el ítem');
+        if(f.d.ancho == null || f.d.alto == null) f.warns.push('Medidas incompletas');
+        if(!o.fecha) f.warns.push('Sin fecha en la orden: se usará hoy');
+        if(o.avisoUb && k === 0) f.warns.push(o.avisoUb);
+        if(o.avisoM2 && k === 0) f.warns.push(o.avisoM2);
+        if(f.d.precio == null) f.warns.push('Sin precio');
+        filas.push(f);
+      });
+    }
+    C.pdfs = pdfs;
+    await revisarFilas(filas);
   }catch(e){
     C.estado = 'inicio';
     toast(errMsg(e), true);
   }
   renderCarga();
+}
+// Lee los datos de la primera página de una OP usando la posición de cada encabezado
+function ordenPagina(it, op){
+  const cx = t => (t.x + t.x2) / 2;
+  const enFila = (lbl, dy) => {   // valores en la fila debajo de un encabezado, asignados al encabezado más cercano
+    const h = it.find(t => t.s === lbl); if(!h) return {};
+    const heads = it.filter(t => Math.abs(t.y - h.y) < 2);
+    const vals = it.filter(t => h.y - t.y > 4 && h.y - t.y < dy);
+    const out = {};
+    for(const v of vals){ let best = null, bd = 1e9; for(const hh of heads){ const d = Math.abs(cx(hh) - cx(v)); if(d < bd){ bd = d; best = hh; } } if(best && bd < 40) out[best.s] = (out[best.s] ? out[best.s] + ' ' : '') + v.s; }
+    return out;
+  };
+  const a = enFila('Sistema', 16), b = enFila('M2', 16), c = enFila('Punt.', 16);
+  const o = {op, sistema: a['Sistema'] || null, item: a['Item'] || null, cant: parseInt(a['Cantidad']) || 1, vidrioCorto: a['Vidrio 1'] || null, vidrio: null};
+  const lado = ks => { const v = ks.map(k => pdfNum(b[k])).filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) : null; };
+  o.m2 = pdfNum(b['M2']); o.ancho = lado(['Ancho 1','Ancho 2','Ancho 3']); o.alto = lado(['Alto 1','Alto 2','Alto 3']);
+  if(o.m2 == null && o.ancho && o.alto) o.m2 = Math.round(o.ancho * o.alto / 1e4) / 100;
+  if(o.m2 && o.ancho && o.alto && Math.abs(o.ancho * o.alto / 1e6 - o.m2) / o.m2 > 0.08) o.avisoM2 = `Revisa medidas: ${fmtN(o.ancho)} × ${fmtN(o.alto)} no da ${fmtN(o.m2, 2)} m²`;
+  o.puntos = pdfNum(c['Punt.']); o.tiempo = pdfNum(c['Tiem.']); o.valor = pdfNum(c['Valor']) || null;
+  const ob = it.find(t => t.s === 'Obra:'); if(ob){ const v = it.filter(t => Math.abs(t.y - ob.y) < 2 && t.x > ob.x2).sort((p, q) => p.x - q.x)[0]; o.obra = v ? v.s.toUpperCase() : null; }
+  const fe = it.find(t => /^Fecha\s*:/.test(t.s)); if(fe){
+    const v = (fe.s.replace(/^Fecha\s*:\s*/, '') || (it.filter(t => Math.abs(t.y - fe.y) < 2 && t.x > fe.x2).sort((p, q) => p.x - q.x)[0] || {}).s || '');
+    const mm = v.toLowerCase().match(/([a-záéíóú]+)\s+(\d{1,2})\s+de\s+(\d{4})/);
+    if(mm && MESES[mm[1]]) o.fecha = `${mm[3]}-${String(MESES[mm[1]]).padStart(2, '0')}-${mm[2].padStart(2, '0')}`;
+  }
+  const ub = it.find(t => /^Ubicaci[oó]n$/i.test(t.s));
+  if(ub){ const v = it.filter(t => ub.y - t.y > 2 && ub.y - t.y < 14).sort((p, q) => p.x - q.x).map(t => t.s).join(' '); o.ubicacion = v.trim() || null; }
+  return o;
+}
+// "ALCOBA 1 201-303-403-503" con cantidad 4 → una unidad por apartamento (piso = centenas). Si no cuadra, todas iguales
+function dividirUbicacion(ub, cant){
+  ub = (ub || '').trim();
+  const m = ub.match(/^(.*?)\s*((?:\d{3,4})(?:\s*-\s*\d{3,4})*)$/);
+  const pisoTxt = t => { const p = String(t).match(/(\d+)\s*°?\s*PISO|PISO\s*(\d+)/i); return p ? 'PISO ' + (p[1] || p[2]) : null; };
+  if(m){
+    const cods = m[2].split('-').map(x => x.trim()).filter(Boolean);
+    if(cods.length === cant) return cods.map(cd => ({ubicacion: (m[1] ? m[1] + ' ' : '') + cd, piso: 'PISO ' + Math.floor(Number(cd) / 100)}));
+  }
+  return Array.from({length: cant}, () => ({ubicacion: ub || null, piso: pisoTxt(ub)}));
 }
 
 function revisionHTML(){
@@ -3564,9 +3672,9 @@ function revisionHTML(){
       <button class="btn sm" onclick="C.soloProblemas=!C.soloProblemas;renderCarga()">${C.soloProblemas ? 'Ver todas las filas' : 'Ver solo problemas'}</button>
     </div>
     <div class="ctable-wrap"><table class="ctable">
-      <thead><tr><th>Fila</th><th>Obra</th><th>Ítem</th><th>OP inst.</th><th>Medidas</th><th>M²</th><th>Precio</th><th>Observaciones</th></tr></thead>
+      <thead><tr><th>Fila</th><th>Obra</th><th>Ítem</th><th>OP inst.</th><th>Ubicación · piso</th><th>Medidas</th><th>M²</th><th>Precio</th><th>Observaciones</th></tr></thead>
       <tbody>${lista.slice(0,500).map(f => `<tr class="${f.errors.length?'err':''}">
-        <td>${f.n}</td><td>${esc(f.d.obra||'—')}</td><td>${esc(f.d.item||'—')}</td><td class="mono">${esc(f.d.op_instalacion||'—')}</td>
+        <td>${f.n}</td><td>${esc(f.d.obra||'—')}</td><td>${esc(f.d.item||'—')}</td><td class="mono">${esc(f.d.op_instalacion||'—')}</td><td>${esc([f.d.ubicacion, f.d.piso].filter(Boolean).join(' · ') || '—')}</td>
         <td>${f.d.ancho!=null?fmtN(f.d.ancho):'—'} × ${f.d.alto!=null?fmtN(f.d.alto):'—'}</td><td>${fmtN(f.d.m2,2)}</td><td>${f.d.precio!=null?'$'+fmtN(f.d.precio):'—'}</td>
         <td>${f.errors.map(e=>`<span class="obs e">${esc(e)}</span>`).join('')}${f.warns.map(w=>`<span class="obs w">${esc(w)}</span>`).join('')}${!f.errors.length&&!f.warns.length?'<span class="obs ok">OK</span>':''}</td>
       </tr>`).join('') || `<tr><td colspan="8" class="empty">Ninguna fila con problemas.</td></tr>`}</tbody>
@@ -3593,6 +3701,12 @@ async function confirmarCarga(){
     try{ await API.insertComercial(com); C.errComercial = null; }
     catch(e){ C.errComercial = errMsg(e); }
     C.cargados = {ids: ins.map(r=>r.id), obras, n: ins.length, total: rows.length};
+    if(C.pdfs && C.pdfs.length){
+      const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = 'Subiendo las órdenes con su QR…';
+      let sub = 0; const err = [];
+      for(const x of C.pdfs){ try{ let fl = x.file; try{ const r = await ordenConQR(fl); if(r.n) fl = r.blob; }catch(e){} await API.ordenSubir(x.num, fl); sub++; }catch(e){ err.push(x.num + ': ' + errMsg(e)); } }
+      C.cargados.pdfSub = sub; C.cargados.pdfErr = err; loadOrdenes();
+    }
   }catch(e){
     const parcial = (e && e.parcial) || [];
     C.cargados = {ids: parcial.map(r=>r.id), obras, n: parcial.length, total: rows.length, error: errMsg(e)};
@@ -3608,6 +3722,8 @@ function resultadoHTML(){
   return `<div class="result ${c.error?'bad':''}">
       <div class="h1" style="font-size:20px">${c.error ? 'La carga quedó incompleta' : '✓ Carga completa'}</div>
       <div class="h1-sub" style="font-size:14px;margin-top:8px">${fmtN(c.n)} de ${fmtN(c.total)} ítems guardados en la base${c.error ? `. Error: ${esc(c.error)}` : ''}.</div>
+      ${c.pdfSub ? `<div class="h1-sub" style="font-size:14px;margin-top:6px">✓ ${fmtN(c.pdfSub)} orden${c.pdfSub===1?'':'es'} PDF subida${c.pdfSub===1?'':'s'} con su código QR.</div>` : ''}
+      ${c.pdfErr && c.pdfErr.length ? `<div class="warn" style="margin-top:12px">No se pudieron subir estas órdenes PDF: ${esc(c.pdfErr.join(' · '))}. Súbelas desde la pestaña Órdenes PDF.</div>` : ''}
       ${C.errComercial ? `<div class="warn" style="margin-top:12px">Los ítems quedaron cargados pero <b>los precios no</b> se guardaron: ${esc(C.errComercial)}. Deshaz la carga y vuelve a intentarlo.</div>` : ''}
       <div class="quick" style="margin-top:18px">
         ${c.obras.map(o => `<button class="btn sm primary" onclick="openObra(decodeURIComponent('${encodeURIComponent(o)}'))">Ver ${esc(o)}</button>`).join('')}
