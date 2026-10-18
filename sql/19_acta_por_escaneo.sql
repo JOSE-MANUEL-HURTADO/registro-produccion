@@ -38,6 +38,7 @@ create unique index if not exists actas_una_abierta on public.actas (obra) where
 drop function if exists public.crear_acta(text, bigint[], date, text);
 
 -- Escanear = entregar: el ítem (instalado y sin acta) entra al acta abierta de su obra
+drop function if exists public.entregar_items(bigint[]);
 create or replace function public.entregar_items(p_ids bigint[])
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare o record; a_id bigint; a_num integer; cnt integer; res jsonb := '[]'; quien text;
