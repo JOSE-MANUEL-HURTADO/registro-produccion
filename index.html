@@ -3592,7 +3592,6 @@ async function leerOrdenesPDF(files){
         if(!o.fecha) f.warns.push('Sin fecha en la orden: se usará hoy');
         if(o.avisoUb && k === 0) f.warns.push(o.avisoUb);
         if(o.avisoM2 && k === 0) f.warns.push(o.avisoM2);
-        if(f.d.precio == null) f.warns.push('Sin precio');
         filas.push(f);
       });
     }
