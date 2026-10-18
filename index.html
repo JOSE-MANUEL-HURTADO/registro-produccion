@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.0';
+const APP_VERSION = '6.1';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -633,6 +633,8 @@ const API = {
   async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
   async campoActa(id){ const {data,error} = await this.sb.rpc('campo_acta', {p_id:id}); if(error) throw error; return data; },
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
+  async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
+  async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
   async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -1874,7 +1876,10 @@ function dNow(which){
 function dToggle(k){
   const d = S.draft;
   if(k==='despachado'){
-    if(d.despachado){ if(d.instalado) return toast('Este ítem está instalado: primero quita la instalación', true); if(!confirm('¿Quitar el despacho de este ítem? Se borrarán la fecha y la remisión.')) return; d.despachado=false; d.fecha_despacho=null; d.remision=null; }
+    if(d.despachado){ if(d.instalado) return toast('Este ítem está instalado: primero quita la instalación', true);
+      const it0 = byId(S.detailId);
+      if(it0.despachado) return despCancelar([it0], 'Cancelar despacho');   // ya guardado: se cancela con motivo
+      d.despachado=false; d.fecha_despacho=null; d.remision=null; }
     else { if(!estaEnsamblado({...byId(S.detailId), ...d, despachado:false})) return toast('No se puede despachar: este ítem no está ensamblado. Primero registra el día final del ensamble.', true);
       d.despachado=true; d.fecha_despacho = d.fecha_despacho || today(); }
   } else {
@@ -2090,6 +2095,8 @@ function sheetDespacho(){
       ${remCampo('gRem', '')}</div>
     ${warn(noEns, 'no están ensamblados y se omitirán (no se puede despachar sin ensamblar).')}
     ${warn(ya, 'ya estaban despachados; se reemplazará su fecha y remisión.')}
+    ${ya ? `<div class="anular"><div><b>¿Hay que cancelarlo?</b> Cancela el despacho de los ${fmtN(ya)} ítems seleccionados que ya están despachados (pide el motivo).</div>
+      <button class="btn sm" onclick="despCancelar(selItems().filter(i => i.despachado), 'Cancelar despacho')">Cancelar despacho</button></div>` : ''}
     <div class="summary" id="gSum">Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>.</div>`;
   openSheet('Registrar despacho', subSel(sel.length), body, `Despachar ${fmtN(items.length)}`, async () => {
     const f = $('#gFecha').value, r = $('#gRem').value.trim();
@@ -2831,9 +2838,10 @@ async function remFilas(rem){
 }
 async function remEstado(rem){
   let filas, rec;
-  try{ ({filas, rec} = await remDatos(rem)); }
+  let canc = [];
+  try{ ({filas, rec} = await remDatos(rem)); if(esInterno()) canc = await API.cancelados(rem).catch(() => []); }
   catch(e){ return toast(/recepciones_remision/.test(e.message || '') || e.code === 'PGRST205' || e.code === '42P01' ? 'Falta activar el recibido de remisiones en la base (SQL de recibido de remisión)' : errMsg(e), true); }
-  if(!filas.length) return toast('No hay ítems despachados con la remisión ' + rem, true);
+  if(!filas.length) return toast(canc.length ? `La remisión ${rem} fue cancelada completa (${canc.length} ítems)` : 'No hay ítems despachados con la remisión ' + rem, true);
   const det = new Map(((rec && rec.detalle) || []).map(d => [d.op, d]));
   const tot = filas.reduce((a, f) => a + f.n, 0);
   const body = `${rec ? `<div class="summary">✓ <b>Recibida</b> por <b>${esc(rec.nombre)}</b>${rec.cargo ? ' · ' + esc(rec.cargo) : ''} el ${new Date(rec.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})} · ${fmtN(rec.n_recibido)} de ${fmtN(rec.n_enviado)} unidades</div>
@@ -2842,6 +2850,8 @@ async function remEstado(rem){
       ${firmaRem() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="remFirmar(decodeURIComponent('${encQ(rem)}'))">Firmar recibido en obra</button>` : ''}`}
     <div style="max-height:40vh;overflow:auto">${filas.map(f => { const d = det.get(f.op), falta = d && d.recibido < d.enviado;
       return `<div style="display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(f.op)}</b> · ${esc(f.dis)}</span><span>${rec ? `<b ${falta ? 'style="color:var(--bad,#d9534f)"' : ''}>${fmtN(d ? d.recibido : f.n)}</b> de ${fmtN(f.n)}` : `<b>${fmtN(f.n)}</b>`}</span></div>`; }).join('')}</div>
+    ${canc.length ? `<div class="sc-note" style="margin-top:8px"><b>${fmtN(canc.length)} ítem${canc.length===1?'':'s'} cancelado${canc.length===1?'':'s'}</b> de esta remisión: ${canc.slice(0, 6).map(c => esc(c.op_instalacion || c.op) + ' (' + esc(c.motivo) + ')').join(', ')}${canc.length > 6 ? '…' : ''}</div>` : ''}
+    ${puedeRegistrar() && !rec ? `<button class="btn ghost" style="width:100%;margin-top:8px" onclick="remCancelar(decodeURIComponent('${encQ(rem)}'))">Cancelar despacho (toda o parte)</button>` : ''}
     <div style="display:flex;gap:8px;margin-top:10px">${esInterno() ? `<button class="btn" style="flex:1" onclick="exportarRemision(decodeURIComponent('${encQ(rem)}'))">${ICON.down} PDF</button>` : ''}
       ${rec && isGerente() ? `<button class="btn ghost" onclick="remAnularRecibido(decodeURIComponent('${encQ(rem)}'))">Anular recibido</button>` : ''}</div>`;
   openSheet('Remisión ' + esc(rem), esc([...new Set(filas.map(f => f.obra))].join(' · ')), body, 'Listo', async () => {});
@@ -2879,6 +2889,41 @@ async function remAnularRecibido(rem){
   try{ await API.anularRecibidoRem(rem); }catch(e){ return toast(errMsg(e), true); }
   toast('✓ Recibido anulado'); if(S.view === 'obra'){ await cargarRemRec(); renderObra(); } remEstado(rem);
 }
+// ── Cancelar despacho: toda una remisión o ítems sueltos, con motivo (queda registrado) ──
+async function remCancelar(rem){
+  const {data, error} = await API.sb.from('items').select('*').eq('remision', rem).eq('despachado', true).order('id');
+  if(error) return toast(errMsg(error), true);
+  if(!data || !data.length) return toast('No hay ítems despachados con la remisión ' + rem, true);
+  despCancelar(data.sort((a, b) => nat(a.op_instalacion, b.op_instalacion)), 'Cancelar despacho · Rem. ' + rem);
+}
+function despCancelar(items, titulo){
+  if(!puedeRegistrar()) return;
+  if(!items.length) return toast('No hay ítems despachados para cancelar', true);
+  const sel = window._dcSel = new Set(items.filter(i => !i.instalado).map(i => i.id));
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  const body = `<div class="summary">Marca los ítems cuyo despacho se cancela. Vuelven a <b>Ensamblado</b> y quedan sin fecha ni remisión.</div>
+    ${items.length > 1 ? `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-weight:600;font-size:13px"><input type="checkbox" ${ck} checked onchange="document.querySelectorAll('.dcIt:not(:disabled)').forEach(c => { c.checked = this.checked; c.checked ? _dcSel.add(Number(c.dataset.id)) : _dcSel.delete(Number(c.dataset.id)); }); dcSum()"> Todos</label>` : ''}
+    <div style="max-height:34vh;overflow:auto;font-size:13px">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0${i.instalado ? ';opacity:.5' : ''}"><input type="checkbox" class="dcIt" data-id="${i.id}" ${ck} ${i.instalado ? 'disabled' : 'checked'} onchange="this.checked ? _dcSel.add(${i.id}) : _dcSel.delete(${i.id}); dcSum()"><span><b>${esc(i.op_instalacion || i.op)}</b> · ${esc(i.item || '')}${i.ubicacion ? ' · ' + esc(i.ubicacion) : ''} · Rem. ${esc(i.remision || '—')}${i.instalado ? ' · <b>instalado, no se puede</b>' : ''}</span></label>`).join('')}</div>
+    <div class="sc-note" id="dcSum"></div>
+    <div class="field"><span class="lbl">Motivo de la cancelación</span><input id="dcMot" placeholder="Ej. la obra no tenía frente, se devolvió el camión…"></div>`;
+  openSheet(titulo || 'Cancelar despacho', esc(items[0].obra || ''), body, 'Confirmar cancelación', async () => {
+    const ids = [...sel], mot = $('#dcMot').value.trim();
+    if(!ids.length){ toast('No hay ítems marcados', true); return false; }
+    if(!mot){ toast('Escribe el motivo de la cancelación', true); return false; }
+    if(!confirm(`¿Cancelar el despacho de ${ids.length} ítem${ids.length===1?'':'s'}?`)) return false;
+    let n;
+    try{ n = await API.cancelarDespacho(ids, mot); }
+    catch(e){ toast(e && e.code === 'PGRST202' ? 'Falta activar la cancelación de despachos en la base (SQL 21)' : errMsg(e), true); return false; }
+    const set = new Set(ids);
+    for(const it of (S.items || [])) if(set.has(it.id)){ it.despachado = false; it.fecha_despacho = null; it.remision = null; it.status = deriveStatus(it); }
+    if(S.draft && set.has(S.detailId)){ Object.assign(S.draft, {despachado:false, fecha_despacho:null, remision:null}); S.draft._base = JSON.parse(JSON.stringify({...S.draft, _dirty:undefined})); }
+    S.plCache = null;
+    toast(`✓ Despacho cancelado: ${n} ítem${n===1?'':'s'}`);
+    if(S.view === 'obra'){ renderObra(); if(S.detailId) renderDetail(); }
+  });
+  dcSum();
+}
+function dcSum(){ const b = $('#dcSum'); if(b) b.innerHTML = `Se cancelará${window._dcSel.size===1?'':'n'} <b>${fmtN(window._dcSel.size)}</b> ítem${window._dcSel.size===1?'':'s'}`; }
 // Número de remisión consecutivo: lo asigna la base (00-NNN); "Usar otra" permite agregar a una existente
 const remCampo = (id, val) => `<div class="field"><span class="lbl">Remisión</span><input id="${id}" inputmode="numeric" placeholder="Número" value="${esc(val || '')}" ${val ? 'readonly' : ''}>
   <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn sm ghost" onclick="remNueva('${id}')">Nueva</button><button type="button" class="btn sm ghost" onclick="remManual('${id}')">Usar otra</button></div></div>`;
