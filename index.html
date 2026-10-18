@@ -3119,7 +3119,7 @@ function renderCarga(){
   } else if(C.estado === 'inicio'){
     body = `
       <div class="carga-steps">
-        <div class="cstep" style="border:1px solid var(--cola);padding:12px"><b>PDF</b><div><div class="cs-t">Desde las órdenes de producción (lo más rápido)</div><div class="cs-d">Sube el PDF de la orden tal como sale del sistema (puedes elegir varios). La app lee obra, OP, ítem, sistema, cantidad, vidrio, medidas, m², ubicación y fecha, y <b>divide cada cantidad en OP de instalación</b> (6291-1.1, 6291-1.2…): si la ubicación trae los apartamentos (201-303-403-503) le asigna uno a cada unidad con su piso. Antes de guardar revisas todo. Al cargar, la orden también queda subida <b>con su QR</b>.</div>
+        <div class="cstep" style="border:1px solid var(--cola);padding:12px"><b>★</b><div><div class="cs-t">Desde las órdenes de producción (lo más rápido)</div><div class="cs-d">Sube el PDF de la orden tal como sale del sistema (puedes elegir varios). La app lee obra, OP, ítem, sistema, cantidad, vidrio, medidas, m², ubicación y fecha, y <b>divide cada cantidad en OP de instalación</b> (6291-1.1, 6291-1.2…): si la ubicación trae los apartamentos (201-303-403-503) le asigna uno a cada unidad con su piso. Antes de guardar revisas todo. Al cargar, la orden también queda subida <b>con su QR</b>.</div>
           <label class="btn primary sm" style="cursor:pointer">${ICON.pdf} Elegir órdenes PDF<input type="file" id="fileOpPdf" accept="application/pdf,.pdf" multiple style="display:none"></label></div></div>
         <div class="cs-d" style="margin:4px 0 2px">O, si prefieres, desde Excel:</div>
         <div class="cstep"><b>1</b><div><div class="cs-t">Descarga la plantilla</div><div class="cs-d">Tiene las columnas que la app necesita. Llénala como hoy, con las cantidades ya divididas en OP INSTALACION: una fila por cada una.</div>
@@ -3140,7 +3140,7 @@ function renderCarga(){
   }
   $('#app').innerHTML = shell(`
     <button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : C.tab==='historial' ? 'Quién cambió qué y cuándo' : C.tab==='ordenes' ? 'PDF de las órdenes de producción, por número de OP' : 'Ítems nuevos desde Excel · entran en estado EN COLA'}</div></div></div>
+    <div class="obra-title"><div><div class="h1">Cargar datos</div><div class="h1-sub">${C.tab==='reemplazar' ? 'Tu BASE_ de Excel reemplaza toda la base de la app' : C.tab==='usuarios' ? 'Quién puede entrar a la app y qué puede hacer' : C.tab==='historial' ? 'Quién cambió qué y cuándo' : C.tab==='ordenes' ? 'PDF de las órdenes de producción, por número de OP' : 'Ítems nuevos desde la orden PDF o desde Excel · entran en estado EN COLA'}</div></div></div>
     <div class="tabs">
       <button class="tab ${C.tab==='agregar'?'on':''}" onclick="setCargaTab('agregar')">Agregar OPs nuevas</button>
       <button class="tab ${C.tab==='reemplazar'?'on':''}" onclick="setCargaTab('reemplazar')">Reemplazar base completa</button>
