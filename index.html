@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.9';
+const APP_VERSION = '6.0';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1621,7 +1621,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Exportar una remisión agrupada por OP completa" onclick="remisionPedir()">${ICON.down} Remisión</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
         </div>
         <div class="chips" id="chips"></div>
         <div class="filters">
@@ -2891,12 +2891,35 @@ async function remNueva(id){
   i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change'));
 }
 function remManual(id){ const i = $('#' + id); if(!i) return; i.readOnly = false; i.value = ''; i.placeholder = 'Número de la remisión'; i.focus(); i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); }
+// Remisiones de la obra abierta: lista con número, fecha, OP y unidades (más recientes primero) + buscador
+function remisionesObra(){
+  const g = grp((S.items || []).filter(it => it.despachado && it.remision), it => it.remision);
+  return [...g.entries()].map(([rem, l]) => ({rem, fecha: maxF(l, 'fecha_despacho'), ops: new Set(l.map(i => i.op)).size,
+    n: l.reduce((a, i) => a + (Number(i.cant) || 1), 0), m2: l.reduce((a, i) => a + (Number(i.m2) || 0), 0),
+    inst: l.filter(i => i.instalado).length, tot: l.length}))
+    .sort((a, b) => nat(b.fecha || '', a.fecha || '') || nat(b.rem, a.rem));
+}
 function remisionPedir(){
-  openSheet('Exportar remisión', 'Agrupada por OP completa', `<div class="field"><span class="lbl">Número de remisión</span><input id="remNum" inputmode="numeric" placeholder="Ej. 00-158"></div>`, 'Exportar', async () => {
-    const r = $('#remNum').value.trim(); if(!r){ toast('Escribe el número de remisión', true); return false; }
+  const lista = window._remLista = remisionesObra();
+  const body = `<div class="field"><span class="lbl">Buscar (número, fecha u OP)</span><input id="remNum" placeholder="Ej. 00-158, 16/10 o 6235" autocomplete="off"></div>
+    <div id="remList" style="max-height:52vh;overflow:auto;margin-top:6px"></div>`;
+  openSheet('Remisiones', esc(S.obra || '') + ' · ' + fmtN(lista.length) + ' despacho' + (lista.length===1?'':'s'), body, 'Buscar otra', async () => {
+    const r = $('#remNum').value.trim(); if(!r){ toast('Escribe el número de la remisión', true); return false; }
     setTimeout(() => exportarRemision(r), 30);
   });
-  setTimeout(() => { const i = $('#remNum'); if(i) i.focus(); }, 50);
+  const pintar = () => {
+    const q = ($('#remNum').value || '').trim().toUpperCase();
+    const opsDe = rem => (S.items || []).filter(i => i.remision === rem).map(i => (i.op || '') + ' ' + (i.op_instalacion || '')).join(' ');
+    const l = !q ? lista : lista.filter(r => r.rem.toUpperCase().includes(q) || fmtD(r.fecha).includes(q) || opsDe(r.rem).toUpperCase().includes(q));
+    $('#remList').innerHTML = l.length ? l.map(r => { const rec = S.remRec && S.remRec.get(r.rem);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;font-size:13px"><b>Rem. ${esc(r.rem)}</b> · ${fmtD(r.fecha)}${rec ? ' · <span style="color:var(--inst,#4caf50)">recibida ✓</span>' : ''}
+          <br><small>${fmtN(r.ops)} OP · ${fmtN(r.n)} und · ${fmtN(r.m2, 1)} m²${r.inst ? ` · instaladas ${fmtN(r.inst)} de ${fmtN(r.tot)}` : ''}</small></div>
+        <button class="btn sm" onclick="remEstado(decodeURIComponent('${encQ(r.rem)}'))">Ver</button>
+        <button class="btn sm ghost" onclick="exportarRemision(decodeURIComponent('${encQ(r.rem)}'))">PDF</button></div>`; }).join('')
+      : `<div class="empty" style="padding:14px 0">${lista.length ? 'Ninguna remisión de esta obra coincide. Toca <b>Buscar otra</b> para buscar el número en todas las obras.' : 'Esta obra aún no tiene despachos.'}</div>`;
+  };
+  $('#remNum').oninput = pintar; pintar();
 }
 function etqEntregar(doc, tipo, n, como, aviso){
   const obra = (S.obra || 'obra').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
