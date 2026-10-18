@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '5.8';
+const APP_VERSION = '5.9';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -465,6 +465,8 @@ const PROCS = [
 // Para iniciar ensamble deben estar completos (X) estos procesos; vidrio y prealistado pueden ir después
 const PROC_ENS = ['cortado','troquelado','mecanizado','programado'];
 const faltaProc = it => PROCS.filter(([k]) => PROC_ENS.includes(k) && it[k] !== 'X').map(([,,c]) => c);
+// Procesos que se quitarían (X → otra cosa) a un ítem que ya está en ensamble
+const quitaProc = (it, nuevo) => (it.ensamblador || it.dia_inicio) ? PROCS.filter(([k]) => PROC_ENS.includes(k) && it[k] === 'X' && k in nuevo && nuevo[k] !== 'X').map(([,,c]) => c) : [];
 const STAGES = {
   'EN COLA':   {c:'var(--cola)', t:'En cola'},
   'PRODUCCIÓN':{c:'var(--prod)', t:'Producción'},
@@ -1906,6 +1908,9 @@ async function dSave(){
   if((d.dia_inicio||d.dia_final) && !d.ensamblador) return toast('Falta el ensamblador', true);
   if(d.dia_final && !d.dia_inicio) return toast('Falta el día de inicio', true);
   if(!ensambleOk(it, d)) return;
+  const qp = quitaProc(it, d);
+  if(qp.length){ if(!isGerente()) return toast('Este ítem ya está en ensamble: no se puede quitar ' + qp.join(', '), true);
+    if(!confirm(`El ítem ya está en ensamble y le vas a quitar ${qp.join(', ')}. ¿Continuar?`)) return; }
   if(d.despachado && !it.despachado && !estaEnsamblado({...it, ...d, despachado:false})) return toast('No se puede despachar: el ítem no está ensamblado', true);
   if(it.despachado && d.despachado && it.dia_final && !d.dia_final) return toast('El ítem está despachado: no se puede quitar el día final del ensamble', true);
   if(d.dia_final && d.dia_inicio && d.dia_final < d.dia_inicio) return toast('El día final es anterior al de inicio', true);
@@ -2001,7 +2006,15 @@ function sheetProcesos(){
     const p = {};
     for(const [k] of PROCS){ const v = choice[k]||'keep'; if(v==='X'||v==='+') p[k]=v; else if(v==='clear') p[k]=null; }
     if(!Object.keys(p).length){ toast('No elegiste ningún proceso', true); return false; }
-    await applyGroup(items, () => ({...p}));
+    let l = items;
+    const bloq = items.filter(i => quitaProc(i, p).length);
+    if(bloq.length){
+      if(isGerente()){ if(!confirm(`${bloq.length} ítem(s) ya están en ensamble y les quitarías ${[...new Set(bloq.flatMap(i => quitaProc(i, p)))].join(', ')}. ¿Continuar?`)) return false; }
+      else { const fuera = new Set(bloq.map(i => i.id)); l = items.filter(i => !fuera.has(i.id));
+        toast(`${bloq.length} ítem(s) ya están en ensamble: no se les quita el proceso`, true);
+        if(!l.length) return false; }
+    }
+    await applyGroup(l, () => ({...p}));
   });
   document.querySelectorAll('#shBody .seg').forEach(seg => seg.addEventListener('click', e => {
     const b = e.target.closest('button'); if(!b) return;
@@ -2050,12 +2063,12 @@ async function quitarEnsamble(){
 
 function sheetTerminado(){
   const items = selItems();
-  const sinEns = items.filter(i => !i.ensamblador);
-  const ok = items.filter(i => i.ensamblador);
+  const sinEns = items.filter(i => !i.ensamblador || !i.dia_inicio);
+  const ok = items.filter(i => i.ensamblador && i.dia_inicio);
   const ya = ok.filter(i => i.dia_final).length;
   const body = `<div class="fgrid"><div class="field"><span class="lbl">Día final</span><input type="date" id="gDia" value="${today()}"></div>
       <div class="field"><span class="lbl">Hora final</span><input type="time" id="gHora" value="${nowTime()}"></div></div>
-    ${warn(sinEns.length, 'no tienen ensamblador asignado y se omitirán.')}
+    ${warn(sinEns.length, 'no tienen ensamble iniciado (ensamblador y día de inicio) y se omitirán.')}
     ${warn(ya, 'ya tenían fecha final; se reemplazará.')}
     <div class="summary">Quedarán en <b>Ensamblado</b> ${fmtN(ok.length)} ítems.</div>`;
   openSheet('Ensamble terminado', subSel(items.length), body, `Registrar ${fmtN(ok.length)}`, async () => {
@@ -2143,7 +2156,7 @@ function scMotivo(it, e){
   if(e.proc){ if(it[e.k] === 'X') return 'ya completo'; if(SC.parcial && it[e.k] === '+') return 'ya parcial'; return null; }
   if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', '); return null; }
-  if(e.k === 'fin'){ if(!it.ensamblador) return 'sin ensamblador'; if(it.dia_final) return 'ya terminado'; return null; }
+  if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
