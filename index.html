@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.21';
+const APP_VERSION = '6.22';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2757,6 +2757,7 @@ async function exportarRemision(rem){
 // Cada obra tiene a lo sumo un acta ABIERTA; al firmarla queda FIRMADA y lo siguiente abre el acta siguiente
 const actaNum = id => { const a = (S.actas || []).find(x => x.id === id); return a ? a.num : '—'; };
 const actaAbierta = () => (S.actas || []).find(a => a.estado === 'abierta');
+const pisoLbl = p => /^\d+$/.test(String(p).trim()) ? 'Piso ' + String(p).trim() : String(p);
 const actaEst = a => a.estado || (a.anulada ? 'anulada' : 'firmada');
 const actaFaltaSQL = e => e && (e.code === 'PGRST202' || e.code === '42P01' || e.code === 'PGRST205' || /actas/.test(e.message || ''));
 async function actasHoja(){
@@ -2796,7 +2797,8 @@ async function actaVer(id){
   const logo = await etqLogo();
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
-  const cols = [['OP inst.', 21, 'l'], ['Ítem', 15, 'l'], ['Ubicación', 33, 'l'], ['Piso', 11, 'l'], ['Diseño', 37, 'l'], ['Medida', 21, 'l'], ['m2', 12, 'r'], ['Instalado', 18, 'r'], ['Entregado', 19.9, 'r']];
+  const cols = [['OP inst.', 20, 'l'], ['Ítem', 14, 'l'], ['Ubicación', 30, 'l'], ['Piso', 22, 'l'], ['Diseño', 27, 'l'], ['Medida', 24, 'l'], ['m2', 11, 'r'], ['Instalado', 19, 'r'], ['Entregado', 20.9, 'r']];
+  const ENTERO = [2, 3];   // Ubicación y Piso nunca se recortan: si no caben, bajan a otra línea
   const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
   const W = cols.reduce((s, c) => s + c[1], 0);
   const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
@@ -2836,12 +2838,14 @@ async function actaVer(id){
   doc.text(intro, M, y); y += intro.length * 4.2 + 4;
   cab();
   for(const it of items){
-    if(y > PH - 62){ doc.addPage(); encabezado(); cab(); }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
-    const rec = it.recepcion_id ? recPor.get(it.recepcion_id) : null;
-    [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)].forEach((t, i) => tx(t, i, y));
+    const vals = [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)];
+    const lin = {}; for(const i of ENTERO) lin[i] = doc.splitTextToSize(String(vals[i] ?? ''), cols[i][1] - 3);
+    const nl = Math.max(1, ...ENTERO.map(i => lin[i].length)), alto = 6 + (nl - 1) * 3.4;
+    if(y + alto - 6 > PH - 62){ doc.addPage(); encabezado(); cab(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20); }
+    vals.forEach((t, i) => { if(ENTERO.includes(i)) lin[i].forEach((l, k) => doc.text(l, X[i] + 1.5, y + k * 3.4)); else tx(t, i, y); });
     if(it.entregado_en){ const d = new Date(it.entregado_en), p2 = n => String(n).padStart(2, '0'); tx(`${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`, 8, y); }
-    doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
+    doc.setDrawColor(225); doc.line(M, y + alto - 3.8, M + W, y + alto - 3.8); y += alto;
   }
   const m2 = items.reduce((s, i) => s + (Number(i.m2) || 0), 0), nRec = items.filter(i => i.recepcion_id).length;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20);
@@ -2909,7 +2913,7 @@ async function actaEstado(id){
       ${items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
       ${rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}`
     : est === 'firmada' ? `<div class="summary">✓ <b>Firmada</b>${recs[0] ? ` por <b>${esc(recs[0].nombre)}</b>${recs[0].cargo ? ' · ' + esc(recs[0].cargo) : ''} el ${new Date(recs[0].creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})}` : ''} · ${fmtN(items.length)} ítem${items.length===1?'':'s'} recibidos</div>` : ''}
-    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
+    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · <b>' + esc(pisoLbl(it.piso)) + '</b>' : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
     ${esInterno() && items.length ? `<button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta${abierta ? ' (borrador)' : ''}</button>` : ''}`;
   openSheet('Acta de entrega N.º ' + a.num, esc(a.obra) + (abierta ? ' · en curso' : ' · ' + fmtD(a.fecha)), body, 'Listo', async () => {});
 }
@@ -2924,7 +2928,7 @@ async function actaFirmar(id){
   const fuera = window._actaFuera = new Set();
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const body = `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
-    <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.ubicacion ? ' · ' + esc(i.ubicacion) : ''}</span></label>`).join('')}</div>
+    <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(i.ubicacion) : ''}</span></label>`).join('')}</div>
     <div class="sc-note" id="afSum"></div>
     <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" autocomplete="off"></div>
     <div class="fgrid"><div class="field"><span class="lbl">Cargo</span><input id="fCar" placeholder="Residente, interventor…"></div>
