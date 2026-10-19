@@ -11,7 +11,7 @@
 create table if not exists public.remisiones_corregidas (
   item_id   bigint primary key,
   obra      text,
-  fecha_despacho date,
+  fecha_despacho text,
   remision_antes text,
   remision_nueva text,
   cuando    timestamptz not null default now()
@@ -19,7 +19,7 @@ create table if not exists public.remisiones_corregidas (
 alter table public.remisiones_corregidas enable row level security;
 
 with malos as (
-  select id, obra, fecha_despacho, remision
+  select id, obra, fecha_despacho::text as fecha_despacho, remision
   from public.items
   where despachado
     and (remision is null or trim(remision) = '' or trim(remision) ~ '^[0\s\-\./]+$')
@@ -29,7 +29,7 @@ with malos as (
   from (select distinct obra, fecha_despacho from malos) g
 ), nuevos as (
   select m.id, m.obra, m.fecha_despacho, m.remision,
-         'SR-' || coalesce(to_char(m.fecha_despacho, 'YYMMDD'), 'SINFECHA') || '-' || g.n as nueva
+         'SR-' || coalesce(nullif(substr(regexp_replace(coalesce(m.fecha_despacho, ''), '[^0-9]', '', 'g'), 3, 6), ''), 'SINFECHA') || '-' || g.n as nueva
   from malos m join grupos g on g.obra is not distinct from m.obra and g.fecha_despacho is not distinct from m.fecha_despacho
 ), guardar as (
   insert into public.remisiones_corregidas (item_id, obra, fecha_despacho, remision_antes, remision_nueva)
