@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.27';
+const APP_VERSION = '6.28';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2435,7 +2435,7 @@ async function scCodigo(txt, manual){
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
       if(await scAplicar([it], items.length, e) === false) return;
-      scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
+      scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num + (it.piso ? ' · ' + pisoLbl(it.piso) : '') + (it.ubicacion ? ' · ' + lugarCorto(it.ubicacion) : '') : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
     }
     scBeep(true);
