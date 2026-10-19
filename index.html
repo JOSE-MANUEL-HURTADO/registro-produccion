@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.30';
+const APP_VERSION = '6.31';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -479,7 +479,8 @@ const STAGES = {
   'PRODUCCIÓN':{c:'var(--prod)', t:'Producción'},
   'ENSAMBLADO':{c:'var(--ens)',  t:'Ensamblado'},
   'DESPACHADO':{c:'var(--desp)', t:'Despachado'},
-  'INSTALADO': {c:'var(--inst)', t:'Instalado'}
+  'INSTALADO': {c:'var(--inst)', t:'Instalado'},
+  'ENTREGAR':  {c:'var(--inst)', t:'Por entregar'}
 };
 const MIN_COLS = 'id,obra,status,despachado,instalado,m2,cant,fecha_op,dia_inicio,hora_inicio,dia_final,ensamblador,op,fecha_despacho,cortado,troquelado,mecanizado,programado,vidrio_proc,prealistado';
 const ANUAL_COLS = 'id,obra,fecha_op,dia_inicio,fecha_despacho,status,despachado,instalado';
@@ -652,7 +653,10 @@ const API = {
     return out;
   },
   // Instalado y aún sin entregar en un acta (desde que existen las actas en la app)
-  async porEntregar(){ try{ return await this.all(o => this.sb.from('items').select('obra,piso', o).eq('instalado', true).is('acta_id', null).gte('fecha_instalacion', ENTREGA_DESDE).order('id')); }catch(e){ console.warn('por entregar', e); return []; } },
+  async porEntregar(){ try{ return await this.all(o => this.sb.from('items').select('id,obra,op,m2,piso,fecha_instalacion', o).eq('instalado', true).is('acta_id', null).gte('fecha_instalacion', ENTREGA_DESDE).order('id')); }catch(e){ console.warn('por entregar', e); return []; } },
+  async cerradas(){ const {data,error} = await this.sb.from('obras_cerradas').select('obra,cerrada_en,quien'); if(error) throw error; return data || []; },
+  async cerrarObra(obra){ const {error} = await this.sb.from('obras_cerradas').upsert({obra, quien: (S.perfil && S.perfil.nombre) || null}, {onConflict:'obra'}); if(error) throw error; },
+  async reabrirObra(obra){ const {error} = await this.sb.from('obras_cerradas').delete().eq('obra', obra); if(error) throw error; },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   async actas(obra){ const {data,error} = await this.sb.from('actas').select('*').eq('obra', obra).order('num'); if(error) throw error; return data || []; },
   async acta(id){ const {data,error} = await this.sb.from('actas').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
@@ -949,7 +953,20 @@ function shell(inner){
 // ════════════════════════════════════════════════════════════════
 //  INICIO — OBRAS ACTIVAS
 // ════════════════════════════════════════════════════════════════
-async function loadActivos(){ const [a, e] = await Promise.all([API.activos(), API.porEntregar()]); S.activos = a; S.porEnt = e; }
+async function loadActivos(){
+  const [a, e, c] = await Promise.all([API.activos(), API.porEntregar(), API.cerradas().catch(() => [])]);
+  S.cerradas = new Map(c.map(x => [x.obra, x]));
+  // Las obras entregadas (contrato cerrado) no cuentan como pendientes
+  S.activos = a.filter(i => !S.cerradas.has(i.obra)); S.porEnt = e.filter(i => !S.cerradas.has(i.obra));
+}
+async function marcarEntregada(obra, cerrar){
+  if(!isGerente()) return;
+  if(!confirm(cerrar ? `¿Marcar ${obra} como ENTREGADA (contrato cerrado)?\n\nDeja de aparecer en Obras activas, Planta y Por entregar. Los ítems no cambian y se puede reabrir.` : `¿Reabrir ${obra}? Vuelve a aparecer con sus pendientes.`)) return;
+  try{ cerrar ? await API.cerrarObra(obra) : await API.reabrirObra(obra); }
+  catch(e){ return toast(/obras_cerradas|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar esta opción en la base (SQL 33)' : errMsg(e), true); }
+  await loadActivos(); toast(cerrar ? '✓ ' + obra + ' marcada como entregada' : '✓ ' + obra + ' reabierta');
+  if(S.view === 'obra') renderObra(); else renderHome();
+}
 
 function resumenObras(){
   const m = new Map();
@@ -1055,6 +1072,7 @@ const PL_ST = [
   ['PRODUCCIÓN', 'En ensamble',      'Con ensamblador, sin terminar'],
   ['ENSAMBLADO', 'Ensamblado',       'Terminado, por despachar'],
   ['DESPACHADO', 'Por instalar',     'Despachado sin instalar'],
+  ['ENTREGAR',   'Por entregar',     'Instalado sin acta de entrega'],
   ['INSTALADO',  'Instalado',        'Instalado en el periodo']
 ];
 // Periodos para ver lo ensamblado / instalado por fecha
@@ -1116,6 +1134,7 @@ function renderPlantaBox(){
   if(!S.plPer) S.plPer = {k:'hoy'};
   const by = {}; for(const [k] of PL_ST) by[k] = [];
   for(const it of S.activos){ const k = plStage(it); if(k && by[k]) by[k].push(it); }
+  by['ENTREGAR'] = (S.porEnt || []).slice();
   const inst = plFechaYa('fecha_instalacion');
   if(!inst) plFecha('fecha_instalacion');
   const tiles = $('#stTiles');
@@ -1198,7 +1217,7 @@ function plPorEnsamblador(list){
 }
 
 function plPorObra(list, st){
-  const campo = st === 'EN COLA' ? ['fecha_op','OP del','min'] : st === 'ENSAMBLADO' ? ['dia_final','Último terminado','max'] : ['fecha_despacho','Último despacho','max'];
+  const campo = st === 'EN COLA' ? ['fecha_op','OP del','min'] : st === 'ENSAMBLADO' ? ['dia_final','Último terminado','max'] : st === 'ENTREGAR' ? ['fecha_instalacion','Última instalación','max'] : ['fecha_despacho','Último despacho','max'];
   const g = [...grp(list, it => it.obra).entries()].sort((a,b) => nat(a[0], b[0]));
   return `<div class="pl-grid">${g.map(([obra, items]) => {
     const filas = [...grp(items, it => it.op||'').values()]
@@ -1207,6 +1226,7 @@ function plPorObra(list, st){
     const m2 = items.reduce((a,i)=>a+(Number(i.m2)||0),0);
     return `<div class="pl-card">
       <div class="pl-head"><span class="n">${esc(obra)}</span><span class="m"><b>${fmtN(items.length)}</b> ítems · ${fmtN(m2,1)} m²</span></div>
+      ${st === 'ENTREGAR' && isGerente() ? `<div style="padding:0 14px 8px"><button class="btn sm ghost" onclick="marcarEntregada(decodeURIComponent('${encQ(obra)}'), true)">Marcar obra entregada</button></div>` : ''}
       ${filas.map(f => { const d = diasDesde(f.f); return `<button class="pl-row" onclick="${plGo(obra,st,f.op,'')}">
         <span class="o"><em>OP ${esc(f.op||'—')}</em>${st==='ENSAMBLADO' && f.ens.length ? ' · '+esc(f.ens.join(', ')) : ''}</span><span class="k">${fmtN(f.n)}</span>
         <span class="d">${fmtN(f.m2,1)} m²${f.f ? ` · ${campo[1]} ${fmtD(f.f)} · <span class="${st==='EN COLA'&&d>30 || st!=='EN COLA'&&d>7 ?'old':''}">${diasTxt(d)}</span>` : ''}</span></button>`; }).join('')}
@@ -1698,8 +1718,9 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
         </div>
+        ${S.cerradas && S.cerradas.has(S.obra) ? `<div class="summary" style="margin:6px 0 10px">Obra <b>entregada</b> (contrato cerrado) el ${fmtD(String(S.cerradas.get(S.obra).cerrada_en).slice(0,10))}${S.cerradas.get(S.obra).quien ? ' por ' + esc(S.cerradas.get(S.obra).quien) : ''}. No aparece en Obras activas ni en Planta.</div>` : ''}
         <div class="chips" id="chips"></div>
         <div class="filters">
           <div class="search">${ICON.search}<input id="qItem" placeholder="Ítem, ubicación, OP, remisión…" value="${esc(S.f.q)}" autocomplete="off" autocapitalize="characters"></div>
