@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.3';
+const APP_VERSION = '6.4';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -659,6 +659,10 @@ const API = {
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
   async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
+  async odCrear(o){ const {data,error} = await this.sb.from('ordenes_despacho').insert(o).select('*').single(); if(error) throw error; return data; },
+  async odAbiertas(){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('estado', 'abierta').order('id', {ascending:false}); if(error) throw error; return data || []; },
+  async od(id){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
+  async odActualizar(id, patch){ const {error} = await this.sb.from('ordenes_despacho').update(patch).eq('id', id); if(error) throw error; },
   async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -1752,7 +1756,7 @@ function renderSelbar(){
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
       <button class="btn sm" onclick="ordenDespacho()">Orden de despacho</button>
-      <button class="btn sm" onclick="sheetDespacho()">Despacho</button>
+      ${isGerente() ? `<button class="btn sm" onclick="sheetDespacho()">Despacho manual</button>` : ''}
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
       ${registraCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
       <button class="btn sm btn-cob" onclick="sheetCobro('i')">$ Cobro instalación</button>` : ''}
@@ -1905,7 +1909,8 @@ function dToggle(k){
       const it0 = byId(S.detailId);
       if(it0.despachado) return despCancelar([it0], 'Cancelar despacho');   // ya guardado: se cancela con motivo
       d.despachado=false; d.fecha_despacho=null; d.remision=null; }
-    else { if(!estaEnsamblado({...byId(S.detailId), ...d, despachado:false})) return toast('No se puede despachar: este ítem no está ensamblado. Primero registra el día final del ensamble.', true);
+    else { if(!isGerente()) return toast('El despacho se registra escaneando el ítem en el cargue (Escanear → Despacho)', true);
+      if(!estaEnsamblado({...byId(S.detailId), ...d, despachado:false})) return toast('No se puede despachar: este ítem no está ensamblado. Primero registra el día final del ensamble.', true);
       d.despachado=true; d.fecha_despacho = d.fecha_despacho || today(); }
   } else {
     if(d.instalado){ if(byId(S.detailId).acta_id) return toast('Este ítem ya está en el acta de entrega N.º ' + actaNum(byId(S.detailId).acta_id) + '. Para quitar la instalación primero hay que sacarlo del acta (si aún no está firmada).', true);
@@ -2112,6 +2117,7 @@ function sheetTerminado(){
 }
 
 function sheetDespacho(){
+  if(!isGerente()) return toast('El despacho se registra escaneando los ítems en el cargue (Escanear → Despacho)', true);
   const sel = selItems(), items = sel.filter(estaEnsamblado);
   const noEns = sel.length - items.length;
   if(!items.length) return toast('Ninguno de los ítems seleccionados está ensamblado; no se pueden despachar', true);
@@ -2122,6 +2128,7 @@ function sheetDespacho(){
     ${warn(ya, 'ya estaban despachados; se reemplazará su fecha y remisión.')}
     ${ya ? `<div class="anular"><div><b>¿Hay que cancelarlo?</b> Cancela el despacho de los ${fmtN(ya)} ítems seleccionados que ya están despachados (pide el motivo).</div>
       <button class="btn sm" onclick="despCancelar(selItems().filter(i => i.despachado), 'Cancelar despacho')">Cancelar despacho</button></div>` : ''}
+    <div class="warn">Despacho <b>sin escanear</b>: úsalo solo si las etiquetas no se pueden leer. Lo normal es escanear cada ítem en el cargue.</div>
     <div class="summary" id="gSum">Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>.</div>
     <div class="sc-note">Peso estimado de la carga: <b>${fmtKg(pesoTotal(items).kg)}</b>${pesoTotal(items).sin ? ` (${fmtN(pesoTotal(items).sin)} sin calibre)` : ''}</div>`;
   openSheet('Registrar despacho', subSel(sel.length), body, `Despachar ${fmtN(items.length)}`, async () => {
@@ -2165,7 +2172,7 @@ const SC_EST = [
   {k:'inst', t:'Instalación'},
   {k:'entr', t:'Entrega a obra'}
 ];
-const SC = {est:null, parcial:false, ens:'', rem:'', inst:'', fecha:null, log:[], stream:null, timer:null, last:'', lastT:0, det:null, busy:false};
+const SC = {est:null, parcial:false, ens:'', rem:'', inst:'', od:null, fecha:null, log:[], stream:null, timer:null, last:'', lastT:0, det:null, busy:false};
 const SC_CAMPO = {
   conductor: [{k:'rem', t:'Recibido de remisión'}],
   entrega:   [{k:'entr', t:'Entrega a obra'}],
@@ -2177,6 +2184,8 @@ const qrTexto = op => 'ELP-OP:' + op;
 function scParse(txt){
   const a = String(txt || '').toUpperCase().match(/ELP-ACTA:(\d+)/);
   if(a) return {acta: Number(a[1])};
+  const od = String(txt || '').toUpperCase().match(/ELP-OD:(\d+)/);
+  if(od) return {od: Number(od[1])};
   const r = String(txt || '').trim().match(/^ELP-REM:(.+)$/i);
   if(r) return {rem: r[1].trim()};
   const m = String(txt || '').toUpperCase().match(/(\d{3,6}-\d+)(?:\.(\d+))?/);
@@ -2190,7 +2199,7 @@ function scMotivo(it, e){
   if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', '); return null; }
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
-  if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; return null; }
+  if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(SC.od && !SC.od.items.includes(it.id)) return 'no está en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
   return 'no aplica';
@@ -2247,8 +2256,14 @@ function renderScanParams(){
   if(e.proc) h = `<label class="switch"><span>Registrar como <b>parcial (+)</b> en lugar de completo (X)</span><button class="tgl ${SC.parcial?'on':''}" onclick="SC.parcial=!SC.parcial; this.classList.toggle('on')"></button></label>`;
   if(e.k === 'ini') h = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('scEns', SC.ens, '', 'Elegir')}</div><div class="sc-note">Fecha y hora de inicio: el momento del escaneo.</div>`;
   if(e.k === 'fin') h = `<div class="sc-note">Fecha y hora final: el momento del escaneo.</div>`;
-  if(e.k === 'desp') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
-      ${remCampo('scRem', SC.rem)}</div>`;
+  if(e.k === 'desp') h = `${SC.od ? `<div class="summary" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="flex:1"><b>Orden de despacho N.º ${SC.od.id}</b> · ${esc(SC.od.obra || '')}<br><small id="odProg">…</small></span>
+        <button class="btn sm" onclick="odSoltar()">Cambiar</button></div>`
+      : `<div class="field"><span class="lbl">Orden de despacho</span><div style="display:flex;gap:6px"><select id="scOd" style="flex:1"><option value="">Escanea el QR de la orden o elígela…</option></select></div></div>
+        <div class="sc-note" style="margin-bottom:6px">Sin orden se puede cargar igual, pero con orden la app te avisa si un ítem no va en ese camión y te muestra lo que falta.</div>`}
+    <div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
+      ${remCampo('scRem', SC.rem)}</div>
+    <div class="sc-note">El despacho y la remisión quedan registrados <b>al escanear cada ítem</b> que sube al camión.</div>
+    ${SC.rem && SC.log.some(l => l.rem === SC.rem && !l.deshecho) ? `<button class="btn primary" style="width:100%;margin-top:8px" onclick="odTerminar()">Terminar cargue · remisión ${esc(SC.rem)}</button>` : ''}`;
   if(e.k === 'rem') h = `<div class="sc-note">Escanea el <b>QR de la remisión</b> al llegar a la obra. Quien recibe revisa las cantidades por OP, anota novedades y firma en la pantalla.</div>`;
   if(e.k === 'rec') h = `<div class="sc-note">Escanea el <b>QR del acta de entrega</b> o de la <b>remisión</b>. Verás lo que se te ha entregado y podrás firmar el recibido.</div>`;
   if(e.k === 'entr') h = `<div class="sc-note">Escanea la etiqueta de cada ítem instalado que entregas: entra al <b>acta en curso</b> de su obra. Al terminar, cierra el acta para que quien recibe revise y firme.</div>
@@ -2258,6 +2273,7 @@ function renderScanParams(){
   box.innerHTML = h;
   box.querySelectorAll('input,select').forEach(x => x.addEventListener('change', scGuardarParams));
   if(e.k === 'desp' && !SC.rem) remNueva('scRem');
+  if(e.k === 'desp'){ if(SC.od) odProgreso(); else odLlenarSelect(); }
 }
 function renderScanLog(){
   const b = $('#scLog'); if(!b) return;
@@ -2318,6 +2334,7 @@ async function scCodigo(txt, manual){
   const p = scParse(txt);
   if(!p){ scBeep(false); return toast('Ese código no es de una OP de Elíptica', true); }
   if(p.acta){ if(esCampo() && !rolEs('entrega','recibe')){ scBeep(false); return toast('Este usuario solo recibe remisiones', true); } scBeep(true); return actaEstado(p.acta); }
+  if(p.od){ if(!puedeRegistrar()){ scBeep(false); return toast('Este usuario no carga despachos', true); } scBeep(true); return odUsar(p.od); }
   if(p.rem){ if(esCampo() && !rolEs('conductor','recibe')){ scBeep(false); return toast('Este usuario solo entrega ítems de actas', true); } scBeep(true); return remEstado(p.rem); }
   if(esCampo() && !rolEs('entrega')){ scBeep(false); return toast(rolEs('conductor') ? 'Escanea el QR de la remisión' : 'Escanea el QR del acta o de la remisión', true); }
   scGuardarParams();
@@ -2385,6 +2402,7 @@ async function scAplicar(l, tot, e){
   const op = l[0].op || '', sub = l.length === 1 ? l[0].op_instalacion : null;
   SC.log.unshift({hora: nowTime(), op: sub || op, est: e.proc ? e.t + (SC.parcial ? ' +' : '') : e.t, n: l.length, tot: sub ? 1 : tot, obra: l[0].obra, prev, rem: e.k === 'desp' ? SC.rem : null});
   renderScanLog();
+  if(e.k === 'desp') renderScanParams();
 }
 async function scDeshacer(i){
   const l = SC.log[i]; if(!l || !l.prev || l.deshecho) return;
@@ -2968,8 +2986,8 @@ function ordenDespacho(){
     ${sinCal.length ? `<div class="warn">Sin calibre de vidrio: ${sinCal.slice(0, 6).map(i => esc(i.op_instalacion) + (i.vidrio ? ' (' + esc(i.vidrio) + ')' : '')).join(', ')}${sinCal.length > 6 ? '…' : ''}</div>` : ''}
     <div style="max-height:30vh;overflow:auto;margin-top:8px">${porOp.map(o => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(o.op)}</b> · ${esc(o.dis)} · ${fmtN(o.n)} und</span><b>${fmtKg(o.kg)}</b></div>`).join('')}</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-      <button class="btn" style="flex:1" onclick="ordenDespachoPDF()">${ICON.down} PDF orden de cargue</button>
-      ${puedeRegistrar() ? `<button class="btn" style="flex:1" onclick="closeSheet(); sheetDespacho()">Despachar estos</button>` : ''}</div>`;
+      ${puedeRegistrar() ? `<button class="btn primary" style="flex:1" onclick="odGuardar()">Guardar orden e imprimir</button>` : `<button class="btn" style="flex:1" onclick="ordenDespachoPDF()">${ICON.down} PDF orden de cargue</button>`}</div>
+    <div class="sc-note" style="margin-top:6px">La orden no despacha nada: el despacho y la remisión se crean cuando se escanea cada ítem al subirlo al camión.</div>`;
   window._od = {items, p, m2};
   openSheet('Orden de despacho', subSel(sel.length), body, 'Listo', async () => {});
   const bar = () => { const cap = Number($('#odCap').value) || 0; try{ localStorage.setItem('cap_camion', cap); }catch(e){}
@@ -2978,9 +2996,9 @@ function ordenDespacho(){
       <div style="font-size:12px;margin-top:4px">${cap ? `<b style="color:${over ? 'var(--danger,#d9534f)' : 'inherit'}">${fmtN(pct, 0)} %</b> ${over ? '· <b>NO CABE</b>, sobran ' + fmtKg(p.kg - cap) : '· quedan ' + fmtKg(cap - p.kg)}` : 'Escribe la capacidad'}</div>`; };
   $('#odCap').oninput = bar; bar();
 }
-async function ordenDespachoPDF(){
+async function ordenDespachoPDF(od){
   const {items, p, m2} = window._od || {}; if(!items) return;
-  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); }catch(e){ return toast(errMsg(e), true); }
+  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); if(!window.qrcode) await loadScript('lib/qrcode.js'); }catch(e){ return toast(errMsg(e), true); }
   const logo = await etqLogo(), cap = capCamion();
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
@@ -2992,8 +3010,11 @@ async function ordenDespachoPDF(){
   let y, pag = 0;
   const enc = () => { pag++;
     if(logo){ const h = 12; doc.addImage(logo.url, 'PNG', M, 12, h * logo.r, h); }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20); doc.text('ORDEN DE DESPACHO', PW - M, 17, {align:'right'});
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90); doc.text('Fecha: ' + fmtD(today()) + (pag > 1 ? '   ·   Hoja ' + pag : ''), PW - M, 23, {align:'right'});
+    const xr = od ? PW - M - 26 : PW - M;
+    if(od){ const q = qrcode(0, 'M'); q.addData('ELP-OD:' + od.id); q.make(); const n = q.getModuleCount(), cs = 22 / n; doc.setFillColor(0, 0, 0);
+      for(let r = 0; r < n; r++) for(let c = 0; c < n; c++) if(q.isDark(r, c)) doc.rect(PW - M - 22 + c*cs, 7 + r*cs, cs + 0.02, cs + 0.02, 'F'); }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20); doc.text('ORDEN DE DESPACHO' + (od ? ' N.º ' + od.id : ''), xr, 17, {align:'right'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90); doc.text('Fecha: ' + fmtD(today()) + (pag > 1 ? '   ·   Hoja ' + pag : ''), xr, 23, {align:'right'});
     doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(M, 30, PW - M, 30); y = 37; };
   const cab = () => { doc.setFillColor(238); doc.rect(M, y - 4.2, W, 6.2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(40); cols.forEach((c, i) => tx(c[0], i, y)); y += 6; };
   enc();
@@ -3012,8 +3033,8 @@ async function ordenDespachoPDF(){
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y); tx(fmtN(Math.round(p.kg)), 8, y);
   const fy = PH - 26; doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.setDrawColor(120);
   [['Cargó', M], ['Conductor', M + 64], ['Placa del vehículo', M + 128]].forEach(([t, x]) => { doc.line(x, fy, x + 56, fy); doc.text(t, x, fy + 4.5); });
-  doc.setFontSize(7); doc.setTextColor(140); doc.text('Peso estimado: m2 × (calibre del vidrio + 1 mm) × 2,5 kg. Laminado = suma de las láminas.', M, PH - 10);
-  const nombre = 'Orden_despacho_' + today() + '.pdf';
+  doc.setFontSize(7); doc.setTextColor(140); doc.text('Peso estimado: m2 × (calibre del vidrio + 1 mm) × 2,5 kg. Laminado = suma de las láminas.' + (od ? ' Escanee el QR en el cargue: el despacho se registra al escanear cada ítem.' : ''), M, PH - 10);
+  const nombre = 'Orden_despacho_' + (od ? od.id : today()) + '.pdf';
   const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
   const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
   window._odf = {file, nombre};
@@ -3021,6 +3042,51 @@ async function ordenDespachoPDF(){
       ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_odf.file], title:_odf.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
       <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
+}
+// ── Orden de despacho guardada: se usa en el cargue (escáner → Despacho) ──
+async function odGuardar(){
+  const {items, p} = window._od || {}; if(!items) return;
+  let od;
+  try{ od = await API.odCrear({obra: [...new Set(items.map(i => i.obra))].join(' · '), items: items.map(i => i.id), peso: Math.round(p.kg), capacidad: capCamion(), quien: (S.perfil && S.perfil.nombre) || null}); }
+  catch(e){ return toast(e && (e.code === '42P01' || e.code === 'PGRST205') ? 'Falta activar las órdenes de despacho en la base (SQL 22)' : errMsg(e), true); }
+  toast('✓ Orden de despacho N.º ' + od.id + ' guardada');
+  clearSel && clearSel();
+  ordenDespachoPDF(od);
+}
+async function odLlenarSelect(){
+  const s = $('#scOd'); if(!s) return;
+  let l = []; try{ l = await API.odAbiertas(); }catch(e){ return; }
+  if(!$('#scOd')) return;
+  s.innerHTML = `<option value="">${l.length ? 'Escanea el QR de la orden o elígela…' : 'No hay órdenes abiertas'}</option>` + l.map(o => `<option value="${o.id}">N.º ${o.id} · ${esc(o.obra || '')} · ${fmtN(o.items.length)} ítems · ${fmtKg(o.peso || 0)}</option>`).join('');
+  s.onchange = () => { if(s.value) odUsar(Number(s.value)); };
+}
+async function odUsar(id){
+  let o; try{ o = await API.od(id); }catch(e){ return toast(errMsg(e), true); }
+  if(!o) return toast('No encontré la orden de despacho ' + id, true);
+  if(o.estado !== 'abierta') return toast(`La orden ${id} ya está ${o.estado}${o.remision ? ' (remisión ' + o.remision + ')' : ''}`, true);
+  SC.od = o;
+  if(S.view !== 'scan') goScan();
+  if(SC.est !== 'desp') scSetEst('desp'); else renderScanParams();
+  toast('Orden de despacho N.º ' + id + ': escanea los ítems al subirlos al camión');
+}
+function odSoltar(){ SC.od = null; renderScanParams(); }
+async function odProgreso(){
+  const o = SC.od, el = $('#odProg'); if(!o || !el) return;
+  const {data, error} = await API.sb.from('items').select('id,op_instalacion,despachado,remision,m2,cant,vidrio').in('id', o.items);
+  if(error || !$('#odProg')) return;
+  const carg = data.filter(i => i.despachado), falt = data.filter(i => !i.despachado);
+  $('#odProg').innerHTML = `Cargados <b>${fmtN(carg.length)} de ${fmtN(data.length)}</b> · ${fmtKg(pesoTotal(carg).kg)} de ${fmtKg(pesoTotal(data).kg)}${falt.length && falt.length <= 8 ? '<br>Faltan: ' + falt.map(i => esc(i.op_instalacion)).sort(nat).join(', ') : ''}`;
+  o._falt = falt.length;
+}
+async function odTerminar(){
+  const rem = SC.rem; if(!rem) return;
+  const o = SC.od;
+  if(o){ await odProgreso();
+    if(o._falt && !confirm(`Faltan ${o._falt} ítem(s) de la orden por cargar. Se cierra la orden y los que faltan quedan sin despachar. ¿Terminar el cargue?`)) return;
+    try{ await API.odActualizar(o.id, {estado: 'cargada', remision: rem, cerrada: new Date().toISOString()}); }catch(e){ return toast(errMsg(e), true); } }
+  SC.od = null; SC.rem = '';
+  renderScanParams();
+  exportarRemision(rem);
 }
 // Número de remisión consecutivo: lo asigna la base (00-NNN); "Usar otra" permite agregar a una existente
 const remCampo = (id, val) => `<div class="field"><span class="lbl">Remisión</span><input id="${id}" inputmode="numeric" placeholder="Número" value="${esc(val || '')}" ${val ? 'readonly' : ''}>
