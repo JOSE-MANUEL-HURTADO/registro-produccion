@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.11';
+const APP_VERSION = '6.12';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -4638,6 +4638,27 @@ let wideMode = window.innerWidth >= 1100;
 window.addEventListener('resize', () => { const w = window.innerWidth >= 1100; if(w !== wideMode){ wideMode = w; if(S.view==='obra' && S.detailId) renderDetail(); } });
 
 if('serviceWorker' in navigator && !window.__DEMO__ && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+// Avisar cuando hay versión nueva publicada (la ventana del Mac puede quedar abierta días sin recargarse)
+async function buscarVersion(){
+  if(window.__DEMO__ || document.getElementById('nuevaVer')) return;
+  try{
+    const t = await (await fetch('index.html?v=' + Date.now(), {cache: 'no-store'})).text();
+    const m = t.match(/APP_VERSION = '([^']+)'/); if(!m || m[1] === APP_VERSION) return;
+    const d = document.createElement('div'); d.id = 'nuevaVer';
+    d.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--cola);color:#000;padding:10px 14px;display:flex;gap:12px;align-items:center;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.5)';
+    d.innerHTML = `<span>Hay una versión nueva de la app (<b>v${esc(m[1])}</b>)</span><button class="btn sm" style="background:#000;color:var(--cola)" onclick="actualizarApp()">Actualizar</button>`;
+    document.body.appendChild(d);
+  }catch(e){}
+}
+async function actualizarApp(){
+  if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar en el ítem abierto. ¿Descartarlos?')) return;
+  try{ const rs = await navigator.serviceWorker?.getRegistrations?.() || []; await Promise.all(rs.map(r => r.update().catch(() => {}))); }catch(e){}
+  try{ const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }catch(e){}
+  location.reload();
+}
+setTimeout(buscarVersion, 8000); setInterval(buscarVersion, 10 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') buscarVersion(); });
+window.addEventListener('focus', buscarVersion);
 document.addEventListener('DOMContentLoaded', boot);
 </script>
 </body>
