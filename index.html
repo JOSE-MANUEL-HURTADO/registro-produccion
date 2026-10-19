@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.17';
+const APP_VERSION = '6.18';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -582,15 +582,17 @@ const API = {
   },
   porFecha(campo, d1, d2){ return this.all(o => this.sb.from('items').select('id,obra,op,item,m2,ensamblador,instalador,dia_final,fecha_instalacion,remision',o).gte(campo,d1).lte(campo,d2).order('id')); },
   // Personas que ensamblaron o instalaron en los últimos 2 años (para las listas desplegables)
+  // Listas desplegables: solo quienes han ensamblado / instalado desde el 1 de enero de 2025 (los registros viejos no se tocan)
   async personasRecientes(){
-    const d = new Date(); d.setFullYear(d.getFullYear()-2);
-    const desde = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-    const [e1, e2, i1] = await Promise.all([
+    const desde = PERSONAS_DESDE;
+    const [e1, e2, e3, i1] = await Promise.all([
       this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_inicio',desde).not('ensamblador','is',null).order('id')),
       this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_final',desde).not('ensamblador','is',null).order('id')),
+      this.all(o => this.sb.from('items').select('ens_asignado',o).not('ens_asignado','is',null).order('id')).catch(() => []),
       this.all(o => this.sb.from('items').select('instalador',o).gte('fecha_instalacion',desde).not('instalador','is',null).order('id'))
     ]);
-    return [...new Set([...e1, ...e2].map(r => normNom(r.ensamblador)).concat(i1.map(r => normNom(r.instalador))).filter(Boolean))].sort(nat);
+    const u = l => [...new Set(l.map(normNom).filter(Boolean))].sort(nat);
+    return {ens: u([...e1, ...e2].map(r => r.ensamblador).concat(e3.map(r => r.ens_asignado))), inst: u(i1.map(r => r.instalador))};
   },
   async ultimoRespaldo(){
     const {data,error} = await this.sb.from('respaldos').select('cuando,origen,filas').order('cuando',{ascending:false}).limit(1);
@@ -814,13 +816,15 @@ const firmaRem = () => rolEs('gerente','asistente','cobros','conductor','recibe'
 
 // ── Lista desplegable de personas (ensambladores / instaladores) con opción de escribir un nombre nuevo ──
 const normNom = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
-function personas(){ return S.personas || [...new Set((S.ensambladores||[]).map(normNom))].filter(Boolean).sort(nat); }
+const PERSONAS_DESDE = '2025-01-01';
+const tipoPersona = id => /inst/i.test(id) ? 'inst' : 'ens';
+function personas(tipo){ return (S.personas && S.personas[tipo || 'ens']) || [...new Set((S.ensambladores||[]).map(normNom))].filter(Boolean).sort(nat); }
 function personaField(id, val, key, ph){
-  const L = personas(), v = val ? normNom(val) : '';
+  const tipo = tipoPersona(id), L = personas(tipo), v = val ? normNom(val) : '';
   const opts = (v && !L.includes(v) ? [v] : []).concat(L);
   return `<div class="pf" id="${id}">
-    <select onchange="pfSel(this,'${key||''}')"><option value="">— ${ph||'Elegir'} —</option>${opts.map(n => `<option ${n===v?'selected':''}>${esc(n)}</option>`).join('')}<option value="__otro__">✎ Otro / persona nueva…</option></select>
-    <input style="display:none" placeholder="Escribe el nombre completo" autocapitalize="characters" autocomplete="off" onchange="pfTxt(this,'${key||''}')">
+    <select onchange="pfSel(this,'${key||''}')"><option value="">— ${ph||'Elegir'} —</option>${opts.map(n => `<option ${n===v?'selected':''}>${esc(n)}</option>`).join('')}<option value="__otro__">✎ Agregar ${tipo === 'inst' ? 'instalador' : 'ensamblador'} nuevo…</option></select>
+    <input style="display:none" placeholder="Nombre completo del ${tipo === 'inst' ? 'instalador' : 'ensamblador'} nuevo" autocapitalize="characters" autocomplete="off" data-tipo="${tipo}" onchange="pfTxt(this,'${key||''}')">
   </div>`;
 }
 function pfSel(sel, key){
@@ -829,7 +833,8 @@ function pfSel(sel, key){
 }
 function pfTxt(inp, key){
   const v = normNom(inp.value);
-  if(v && S.personas && !S.personas.includes(v)){ S.personas.push(v); S.personas.sort(nat); }
+  const L = S.personas && S.personas[inp.dataset.tipo || 'ens'];
+  if(v && L && !L.includes(v)){ L.push(v); L.sort(nat); }
   if(key) dSetQ(key, v || null);
 }
 function pfVal(id){
