@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.26';
+const APP_VERSION = '6.27';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -668,7 +668,8 @@ const API = {
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
   async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
-  async pendInstalar(){ const l = await this.all(o => this.sb.from('items').select('obra,piso,instalado,acta_id', o).eq('despachado', true).order('id')); return l.filter(i => !i.instalado && !i.acta_id); },
+  async pendInstalar(){ const l = await this.all(o => this.sb.from('items').select('obra,piso,ubicacion,instalado,acta_id', o).eq('despachado', true).order('id')); return l.filter(i => !i.instalado && !i.acta_id); },
+  async pisoInstalacion(id, piso){ const {data,error} = await this.sb.rpc('asignar_piso_instalacion', {p_id:id, p_piso:piso}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
   async intercambiar(a, b){ const {error} = await this.sb.rpc('intercambiar_destino', {p_a:a, p_b:b}); if(error) throw error; },
   async progCrear(o){ const {data,error} = await this.sb.from('programaciones').insert(o).select('*').single(); if(error) throw error; return data; },
   async progLista(){ const {data,error} = await this.sb.from('programaciones').select('*').eq('estado', 'activa').order('fecha_req', {nullsFirst:false}).order('id'); if(error) throw error; return data || []; },
@@ -2317,7 +2318,7 @@ function renderScanParams(){
     ${SC.acta ? `<div class="summary" style="margin-top:8px;display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Acta N.º ${SC.acta.num}</b> · ${esc(SC.acta.obra)}</span><button class="btn sm primary" onclick="actaEstado(${SC.acta.id})">Ver / cerrar y firmar</button></div>` : ''}`;
   if(e.k === 'inst'){
     const pend = SC.instPend;
-    const pisos = pend ? [...grp(pend, i => i.piso || '(sin piso)').entries()].sort((a, b) => nat(a[0], b[0])) : [];
+    const pisos = pend ? [...new Set(pend.flatMap(i => indef(i) ? ubicPartes(i.ubicacion).map(p => 'PISO ' + Math.floor(p.cod / 100)) : [i.piso || '(sin piso)']))].sort(nat).map(p => [p]) : [];
     h = `<div class="summary" style="margin-bottom:8px;${SC.instPiso ? '' : 'border-color:var(--danger)'}">${SC.instPiso ? `Instalando en <b style="font-size:16px">${esc(SC.instPiso)}</b><br><small>Todo lo que escanees queda en este piso (la obra la toma del QR). Cambia el piso cuando subas o bajes.</small>` : '<b>Primero elige el piso donde estás instalando.</b> Sin piso no se puede escanear.'}</div>
     <div class="fgrid">
       <div class="field full"><span class="lbl">Piso</span><select id="scIPiso" onchange="instPiso(this.value)"><option value="">${pend ? (pisos.length ? 'Elegir piso…' : 'No hay nada despachado por instalar') : 'Cargando…'}</option>${pisos.map(([pi, l]) => `<option value="${esc(pi)}" ${pi === SC.instPiso ? 'selected' : ''}>${esc(pi)}</option>`).join('')}</select></div>
@@ -2414,7 +2415,20 @@ async function scCodigo(txt, manual){
         // En obra se instala cualquier unidad de la OP: queda en el piso elegido arriba (se intercambia el destino si hace falta)
         if(it.instalado){ scBeep(false); toast(`${p.sub}: ya instalado`, true); return; }
         if(!it.despachado){ scBeep(false); toast(`${p.sub}: sin despachar`, true); return; }
-        const cand = items.filter(x => x.obra === it.obra && x.despachado && !x.instalado && !x.acta_id && (x.piso || '(sin piso)') === SC.instPiso);
+        const libre = x => x.obra === it.obra && x.despachado && !x.instalado && !x.acta_id;
+        const cand = items.filter(x => libre(x) && !indef(x) && (x.piso || '(sin piso)') === SC.instPiso);
+        // Unidades sin apartamento definido (lista completa): toman el piso donde se instalan
+        const nPiso = parseInt(String(SC.instPiso).replace(/\D/g, '')), sinDef = items.filter(x => libre(x) && indef(x) && ubicPartes(x.ubicacion).some(p => Math.floor(p.cod / 100) === nPiso));
+        if(!cand.length && sinDef.length){
+          try{
+            let u = it;
+            if(!indef(it)){ const o = sinDef[0]; await API.intercambiar(it.id, o.id); [it.ubicacion, o.ubicacion] = [o.ubicacion, it.ubicacion]; [it.piso, o.piso] = [o.piso, it.piso]; }
+            const r = await API.pisoInstalacion(u.id, SC.instPiso); if(r){ it.ubicacion = r.ubicacion; it.piso = r.piso; mergeRows([r]); }
+            if(await scAplicar([it], items.length, e) === false) return;
+            scBeep(true); toast(`✓ ${p.sub} · ${e.t} → ${[it.ubicacion, it.piso].filter(Boolean).join(' · ')}`);
+          }catch(err){ scBeep(false); toast(/asignar_piso|function/.test(errMsg(err)) ? errMsg(err) + ' (¿ya corriste el SQL 32?)' : errMsg(err), true); }
+          return;
+        }
         if(!cand.length){ scBeep(false); toast(`La OP ${it.op} (${it.obra}) no tiene unidades por instalar en ${SC.instPiso}. Revisa el piso elegido o la etiqueta.`, true); return; }
         if(cand.length > 1 || cand[0].id !== it.id){ scBeep(true); scDondeInst(it, cand, items.length, e); return; }
       }
@@ -2762,6 +2776,7 @@ const actaAbierta = () => (S.actas || []).find(a => a.estado === 'abierta');
 // Filas de tablas PDF: ningún dato se recorta; si no cabe en la columna, baja a otra línea y la fila crece
 const PDF_LH = 3.4;
 // En el acta basta el lugar (ALCOBA AUX, SALA…): se quitan los números de apartamento; el piso va en su propia columna
+const indef = it => ubicPartes(it && it.ubicacion).length > 1;   // ubicación con la lista completa de apartamentos
 const lugarCorto = ub => { const o = String(ub || '').trim();
   const t = o.toUpperCase()
     .replace(/\b(?:APTOS?|APARTAMENTOS?|APT)\.?\s*\d+(?:\s*(?:[-,\/]|Y)\s*\d+)*/g, ' ')
