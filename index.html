@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.13';
+const APP_VERSION = '6.14';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -666,6 +666,7 @@ const API = {
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
   async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
+  async pendInstalar(){ const l = await this.all(o => this.sb.from('items').select('obra,piso,instalado,acta_id', o).eq('despachado', true).order('id')); return l.filter(i => !i.instalado && !i.acta_id); },
   async intercambiar(a, b){ const {error} = await this.sb.rpc('intercambiar_destino', {p_a:a, p_b:b}); if(error) throw error; },
   async progCrear(o){ const {data,error} = await this.sb.from('programaciones').insert(o).select('*').single(); if(error) throw error; return data; },
   async progLista(){ const {data,error} = await this.sb.from('programaciones').select('*').eq('estado', 'activa').order('fecha_req', {nullsFirst:false}).order('id'); if(error) throw error; return data || []; },
@@ -2192,7 +2193,7 @@ const SC_EST = [
   {k:'inst', t:'Instalación'},
   {k:'entr', t:'Entrega a obra'}
 ];
-const SC = {est:null, parcial:false, ens:'', rem:'', inst:'', od:null, fecha:null, log:[], stream:null, timer:null, last:'', lastT:0, det:null, busy:false};
+const SC = {est:null, parcial:false, ens:'', rem:'', inst:'', instObra:'', instPiso:'', instPend:null, od:null, fecha:null, log:[], stream:null, timer:null, last:'', lastT:0, det:null, busy:false};
 const SC_CAMPO = {
   conductor: [{k:'rem', t:'Recibido de remisión'}],
   entrega:   [{k:'entr', t:'Entrega a obra'}],
@@ -2222,7 +2223,8 @@ function scMotivo(it, e){
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(SC.od && !SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
-  if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
+  if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar';
+    if(SC.instPiso && (it.obra !== SC.instObra || (it.piso || '(sin piso)') !== SC.instPiso)) return 'no es de ' + SC.instPiso; return null; }
   return 'no aplica';
 }
 function scPatch(e, it){
@@ -2239,6 +2241,7 @@ function goScan(){
   S.view = 'scan'; S.sel.clear(); S.detailId = null; S.draft = null; document.body.style.overflow = '';
   if(!SC.est || !scEstaciones().some(e => e.k === SC.est)) SC.est = scEstaciones()[0].k;
   if(!SC.fecha) SC.fecha = today();
+  SC.instPiso = ''; SC.instPend = null;   // el piso de instalación se confirma cada vez que se entra al escáner
   renderScan();
 }
 function renderScan(){
@@ -2269,7 +2272,16 @@ function scGuardarParams(){
   if($('#scInst')) SC.inst = pfVal('scInst');
   if($('#scRem')) SC.rem = $('#scRem').value.trim();
   if($('#scFecha')) SC.fecha = $('#scFecha').value || today();
+  if($('#scIObra')) SC.instObra = $('#scIObra').value;
+  if($('#scIPiso')) SC.instPiso = $('#scIPiso').value;
 }
+// Instalación: obra y piso donde se está instalando (obligatorio antes de escanear)
+async function instCargarPend(){
+  try{ SC.instPend = await API.pendInstalar(); }catch(e){ SC.instPend = []; toast(errMsg(e), true); }
+  if(scEst().k === 'inst') renderScanParams();
+}
+function instObra(v){ SC.instObra = v; SC.instPiso = ''; renderScanParams(); }
+function instPiso(v){ SC.instPiso = v; renderScanParams(); }
 function scSetEst(k){ scGuardarParams(); SC.est = k; document.querySelectorAll('.sc-est .chip').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').includes(`'${k}'`))); renderScanParams(); }
 function renderScanParams(){
   const e = scEst(), box = $('#scParams'); if(!box) return;
@@ -2289,8 +2301,20 @@ function renderScanParams(){
   if(e.k === 'rec') h = `<div class="sc-note">Escanea el <b>QR del acta de entrega</b> o de la <b>remisión</b>. Verás lo que se te ha entregado y podrás firmar el recibido.</div>`;
   if(e.k === 'entr') h = `<div class="sc-note">Escanea la etiqueta de cada ítem instalado que entregas: entra al <b>acta en curso</b> de su obra. Al terminar, cierra el acta para que quien recibe revise y firme.</div>
     ${SC.acta ? `<div class="summary" style="margin-top:8px;display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Acta N.º ${SC.acta.num}</b> · ${esc(SC.acta.obra)}</span><button class="btn sm primary" onclick="actaEstado(${SC.acta.id})">Ver / cerrar y firmar</button></div>` : ''}`;
-  if(e.k === 'inst') h = `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
+  if(e.k === 'inst'){
+    const pend = SC.instPend;
+    const obras = pend ? [...new Set(pend.map(i => i.obra))].sort(nat) : [];
+    if(SC.instObra && pend && !obras.includes(SC.instObra)) SC.instObra = '';
+    const pisos = pend && SC.instObra ? [...grp(pend.filter(i => i.obra === SC.instObra), i => i.piso || '(sin piso)').entries()].sort((a, b) => nat(a[0], b[0])) : [];
+    h = `<div class="summary" style="margin-bottom:8px;${SC.instPiso ? '' : 'border-color:var(--danger)'}">${SC.instPiso ? `Instalando en <b>${esc(SC.instObra)}</b> · <b style="font-size:16px">${esc(SC.instPiso)}</b><br><small>Todo lo que escanees queda en este piso. Cambia el piso cuando subas o bajes.</small>` : '<b>Primero elige la obra y el piso donde estás instalando.</b> Sin piso no se puede escanear.'}</div>
+    <div class="fgrid">
+      <div class="field"><span class="lbl">Obra</span><select id="scIObra" onchange="instObra(this.value)"><option value="">${pend ? (obras.length ? 'Elegir obra…' : 'No hay nada despachado por instalar') : 'Cargando…'}</option>${obras.map(o => `<option ${o === SC.instObra ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>
+      <div class="field"><span class="lbl">Piso</span><select id="scIPiso" onchange="instPiso(this.value)" ${SC.instObra ? '' : 'disabled'}><option value="">Elegir piso…</option>${pisos.map(([pi, l]) => `<option value="${esc(pi)}" ${pi === SC.instPiso ? 'selected' : ''}>${esc(pi)} · ${fmtN(l.length)} por instalar</option>`).join('')}</select></div>
+    </div>`;
+    if(!pend) setTimeout(instCargarPend, 0);
+    h += `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
       <div class="field"><span class="lbl">Instalador</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
+  }
   box.innerHTML = h;
   box.querySelectorAll('input,select').forEach(x => x.addEventListener('change', scGuardarParams));
   if(e.k === 'desp' && !SC.rem) remNueva('scRem');
@@ -2361,6 +2385,7 @@ async function scCodigo(txt, manual){
   scGuardarParams();
   const e = scEst();
   if(e.k === 'ini' && !SC.ens && !p.sub){ scBeep(false); return toast('Elige el ensamblador (o escanea la etiqueta de un ítem que ya tenga ensamblador asignado en la programación)', true); }
+  if(e.k === 'inst' && !SC.instPiso){ scBeep(false); const o = $(SC.instObra ? '#scIPiso' : '#scIObra'); if(o) o.focus(); return toast('Primero elige la obra y el piso donde estás instalando', true); }
   if(e.k === 'desp' && !SC.rem){ scBeep(false); toast('Primero escribe la remisión', true); const r = $('#scRem'); if(r) r.focus(); return; }
   SC.busy = true;
   try{
@@ -2374,13 +2399,17 @@ async function scCodigo(txt, manual){
       // Etiqueta de un ítem (sub-OP): se registra de una vez, sin preguntar
       const it = items.find(x => x.op_instalacion === p.sub);
       if(!it){ scBeep(false); toast('No encontré la sub-OP ' + p.sub, true); return; }
+      if(e.k === 'inst'){
+        // En obra se instala cualquier unidad de la OP: queda en el piso elegido arriba (se intercambia el destino si hace falta)
+        if(it.instalado){ scBeep(false); toast(`${p.sub}: ya instalado`, true); return; }
+        if(!it.despachado){ scBeep(false); toast(`${p.sub}: sin despachar`, true); return; }
+        if(it.obra !== SC.instObra){ scBeep(false); toast(`${p.sub} es de la obra ${it.obra}, no de ${SC.instObra}`, true); return; }
+        const cand = items.filter(x => x.obra === it.obra && x.despachado && !x.instalado && !x.acta_id && (x.piso || '(sin piso)') === SC.instPiso);
+        if(!cand.length){ scBeep(false); toast(`La OP ${it.op} no tiene unidades por instalar en ${SC.instPiso}. Revisa el piso elegido o la etiqueta.`, true); return; }
+        if(cand.length > 1 || cand[0].id !== it.id){ scBeep(true); scDondeInst(it, cand, items.length, e); return; }
+      }
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
-      if(e.k === 'inst'){
-        // En obra se instala cualquier unidad de la OP: se pregunta dónde quedó (si hay más de una ubicación pendiente)
-        const cand = items.filter(x => x.obra === it.obra && x.despachado && !x.instalado && !x.acta_id);
-        if(cand.length > 1){ scBeep(true); scDondeInst(it, cand, items.length, e); return; }
-      }
       if(await scAplicar([it], items.length, e) === false) return;
       scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
@@ -2392,12 +2421,14 @@ async function scCodigo(txt, manual){
 }
 function scDondeInst(it, cand, tot, e){
   const lugar = x => [x.ubicacion, x.piso].filter(Boolean).join(' · ') || x.op_instalacion;
-  const l = [it, ...cand.filter(x => x.id !== it.id).sort((a, b) => nat(a.piso, b.piso) || nat(a.ubicacion, b.ubicacion))];
-  window._dI = it.id;
-  const body = `<div class="summary">Escaneaste la <b>${esc(it.op_instalacion)}</b>. ¿En qué ubicación quedó instalada?<br><small>Las unidades de la OP ${esc(it.op)} son iguales: si quedó en otra, la app le pasa esa ubicación.</small></div>
+  const propia = cand.some(x => x.id === it.id);
+  const l = [...(propia ? [it] : []), ...cand.filter(x => x.id !== it.id).sort((a, b) => nat(a.piso, b.piso) || nat(a.ubicacion, b.ubicacion))];
+  window._dI = l.length === 1 ? l[0].id : propia ? it.id : null;
+  const body = `<div class="summary">Escaneaste la <b>${esc(it.op_instalacion)}</b> en <b>${esc(SC.instPiso || '')}</b>. ${l.length === 1 ? 'Queda instalada en:' : '¿En cuál de estas ubicaciones del piso quedó?'}<br><small>Las unidades de la OP ${esc(it.op)} son iguales: la app le pasa la ubicación donde quedó.</small></div>
     <div id="dIlista" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin-top:10px">${l.map(x => `<button class="btn${x.id === it.id ? ' primary' : ''}" data-id="${x.id}" style="justify-content:flex-start;text-align:left" onclick="window._dI=${x.id};document.querySelectorAll('#dIlista .btn').forEach(b=>b.classList.toggle('primary', b.dataset.id==='${x.id}'))">${esc(lugar(x))}${x.id === it.id ? ' <small style="opacity:.7;margin-left:6px">(la de la etiqueta)</small>' : ''}</button>`).join('')}</div>`;
   openSheet('Instalación · OP ' + esc(it.op), esc(it.obra || ''), body, 'Registrar instalación', async () => {
-    const obj = cand.find(x => x.id === window._dI) || it;
+    const obj = cand.find(x => x.id === window._dI);
+    if(!obj){ toast('Toca la ubicación donde quedó instalada', true); return false; }
     try{
       if(obj.id !== it.id){
         await API.intercambiar(it.id, obj.id);
@@ -2466,6 +2497,7 @@ async function scAplicar(l, tot, e){
   SC.log.unshift({hora: nowTime(), op: sub || op, est: e.proc ? e.t + (SC.parcial ? ' +' : '') : e.t, n: l.length, tot: sub ? 1 : tot, obra: l[0].obra, prev, rem: e.k === 'desp' ? SC.rem : null});
   renderScanLog();
   if(e.k === 'desp') renderScanParams();
+  if(e.k === 'inst' && SC.instPend){ for(const it of l){ const k = SC.instPend.findIndex(x => x.obra === it.obra && x.piso === it.piso); if(k >= 0) SC.instPend.splice(k, 1); } renderScanParams(); }
 }
 async function scDeshacer(i){
   const l = SC.log[i]; if(!l || !l.prev || l.deshecho) return;
