@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.12';
+const APP_VERSION = '6.13';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2376,6 +2376,11 @@ async function scCodigo(txt, manual){
       if(!it){ scBeep(false); toast('No encontré la sub-OP ' + p.sub, true); return; }
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
+      if(e.k === 'inst'){
+        // En obra se instala cualquier unidad de la OP: se pregunta dónde quedó (si hay más de una ubicación pendiente)
+        const cand = items.filter(x => x.obra === it.obra && x.despachado && !x.instalado && !x.acta_id);
+        if(cand.length > 1){ scBeep(true); scDondeInst(it, cand, items.length, e); return; }
+      }
       if(await scAplicar([it], items.length, e) === false) return;
       scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
@@ -2384,6 +2389,26 @@ async function scCodigo(txt, manual){
     scHoja(p, items, e);
   }catch(err){ scBeep(false); toast(errMsg(err), true); }
   finally{ SC.busy = false; }
+}
+function scDondeInst(it, cand, tot, e){
+  const lugar = x => [x.ubicacion, x.piso].filter(Boolean).join(' · ') || x.op_instalacion;
+  const l = [it, ...cand.filter(x => x.id !== it.id).sort((a, b) => nat(a.piso, b.piso) || nat(a.ubicacion, b.ubicacion))];
+  window._dI = it.id;
+  const body = `<div class="summary">Escaneaste la <b>${esc(it.op_instalacion)}</b>. ¿En qué ubicación quedó instalada?<br><small>Las unidades de la OP ${esc(it.op)} son iguales: si quedó en otra, la app le pasa esa ubicación.</small></div>
+    <div id="dIlista" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin-top:10px">${l.map(x => `<button class="btn${x.id === it.id ? ' primary' : ''}" data-id="${x.id}" style="justify-content:flex-start;text-align:left" onclick="window._dI=${x.id};document.querySelectorAll('#dIlista .btn').forEach(b=>b.classList.toggle('primary', b.dataset.id==='${x.id}'))">${esc(lugar(x))}${x.id === it.id ? ' <small style="opacity:.7;margin-left:6px">(la de la etiqueta)</small>' : ''}</button>`).join('')}</div>`;
+  openSheet('Instalación · OP ' + esc(it.op), esc(it.obra || ''), body, 'Registrar instalación', async () => {
+    const obj = cand.find(x => x.id === window._dI) || it;
+    try{
+      if(obj.id !== it.id){
+        await API.intercambiar(it.id, obj.id);
+        const ub = it.ubicacion, pi = it.piso;
+        it.ubicacion = obj.ubicacion; it.piso = obj.piso; obj.ubicacion = ub; obj.piso = pi;
+        for(const x of (S.items || [])){ if(x.id === it.id){ x.ubicacion = it.ubicacion; x.piso = it.piso; } if(x.id === obj.id){ x.ubicacion = ub; x.piso = pi; } }
+      }
+      if(await scAplicar([it], tot, e) === false) return false;
+    }catch(err){ scBeep(false); toast(/intercambian|Sin permiso|function/.test(errMsg(err)) ? errMsg(err) + ' (¿ya corriste el SQL 26?)' : errMsg(err), true); return false; }
+    scBeep(true); toast(`✓ ${it.op_instalacion} · ${e.t} → ${lugar(it)}`);
+  });
 }
 function scHoja(p, items, e){
   const ok = items.filter(it => !scMotivo(it, e));
