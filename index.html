@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.15';
+const APP_VERSION = '6.16';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -853,7 +853,7 @@ function renderLogin(err){
   S.view = 'login';
   $('#app').innerHTML = `
     <div class="login"><div class="login-box">
-      ${brandHTML('Ártica · Registro de producción')}
+      ${brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
       <form id="loginForm" autocomplete="on">
         <div class="field"><span class="lbl">Correo</span><input id="lgEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="off" required></div>
         <div class="field"><span class="lbl">Contraseña</span><input id="lgPw" type="password" autocomplete="current-password" required></div>
@@ -913,7 +913,7 @@ const liveHTML = () => `<span class="live ${S.live?'':'off'}" id="live"><i></i>$
 function shell(inner){
   return `${window.__DEMO__ ? DEMO.bar() : ''}
   <header class="top">
-    ${brandHTML('Ártica · Registro de producción')}
+    ${brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
     <div class="top-r">
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(S.perfil.rol)}</span></div>
       ${puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
