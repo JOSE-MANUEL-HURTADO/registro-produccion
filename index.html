@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.22';
+const APP_VERSION = '6.23';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2698,15 +2698,17 @@ async function exportarRemision(rem){
     doc.text('Obra: ' + obra, M, y); y += 6;
     cabTabla();
     for(const f of fl){
-      nueva(10);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
       const ro = recOp.get(f.op);
       const v = [f.op, f.item, f.dis, f.med, fmtN(f.n), fmtN(f.m2, 2), f.pend ? fmtN(f.pend) + ' de ' + fmtN(f.tot) : '—', rec ? fmtN(ro ? ro.recibido : f.n) + (ro && ro.recibido < f.n ? ' (!)' : '') : ''];
+      nueva(10 + (pdfLineas(doc, cols, v) - 1) * PDF_LH + (f.pisos ? 3 : 0));
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(20);
       if(!rec){ doc.setDrawColor(120); doc.rect(X[7] + cols[7][1] - 12, y - 3.3, 10, 4.4); }
-      v.forEach((t, i) => { const c = cols[i]; doc.text(corta(t, c[1] - 3), c[2] === 'r' ? X[i] + c[1] - 1.5 : X[i] + 1.5, y, {align: c[2] === 'r' ? 'right' : 'left'}); });
-      if(f.pisos){ doc.setFontSize(7); doc.setTextColor(110); doc.text(corta('Pisos: ' + f.pisos, cols[2][1] + cols[3][1] - 3), X[2] + 1.5, y + 3.3); }
-      doc.setDrawColor(225); doc.line(M, y + (f.pisos ? 5 : 2.2), M + W, y + (f.pisos ? 5 : 2.2));
-      y += f.pisos ? 8.5 : 6;
+      const nl = pdfFila(doc, cols, X, v, y), ya = y + (nl - 1) * PDF_LH;
+      let extra = 0;
+      if(f.pisos){ doc.setFontSize(7); doc.setTextColor(110); const pl = doc.splitTextToSize('Pisos: ' + f.pisos, cols[2][1] + cols[3][1] - 3); doc.text(pl, X[2] + 1.5, ya + 3.3); extra = 2.8 + (pl.length - 1) * 2.8; }
+      doc.setDrawColor(225); doc.line(M, ya + 2.2 + extra, M + W, ya + 2.2 + extra);
+      y = ya + 6 + extra;
     }
     const n = fl.reduce((a, f) => a + f.n, 0), m2 = fl.reduce((a, f) => a + f.m2, 0);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20);
@@ -2757,6 +2759,15 @@ async function exportarRemision(rem){
 // Cada obra tiene a lo sumo un acta ABIERTA; al firmarla queda FIRMADA y lo siguiente abre el acta siguiente
 const actaNum = id => { const a = (S.actas || []).find(x => x.id === id); return a ? a.num : '—'; };
 const actaAbierta = () => (S.actas || []).find(a => a.estado === 'abierta');
+// Filas de tablas PDF: ningún dato se recorta; si no cabe en la columna, baja a otra línea y la fila crece
+const PDF_LH = 3.4;
+function pdfLineas(doc, cols, vals){ return Math.max(1, ...vals.map((t, i) => (t === '□' || t === '■') ? 1 : doc.splitTextToSize(String(t ?? ''), cols[i][1] - 3).length)); }
+function pdfFila(doc, cols, X, vals, y){
+  vals.forEach((t, i) => { const c = cols[i]; if(t === '□' || t === '■') return;
+    const x = c[2] === 'r' ? X[i] + c[1] - 1.5 : c[2] === 'c' ? X[i] + c[1] / 2 : X[i] + 1.5;
+    doc.splitTextToSize(String(t ?? ''), c[1] - 3).forEach((l, k) => doc.text(l, x, y + k * PDF_LH, {align: c[2] === 'r' ? 'right' : c[2] === 'c' ? 'center' : 'left'})); });
+  return pdfLineas(doc, cols, vals);
+}
 const pisoLbl = p => /^\d+$/.test(String(p).trim()) ? 'Piso ' + String(p).trim() : String(p);
 const actaEst = a => a.estado || (a.anulada ? 'anulada' : 'firmada');
 const actaFaltaSQL = e => e && (e.code === 'PGRST202' || e.code === '42P01' || e.code === 'PGRST205' || /actas/.test(e.message || ''));
@@ -2798,7 +2809,6 @@ async function actaVer(id){
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
   const cols = [['OP inst.', 20, 'l'], ['Ítem', 14, 'l'], ['Ubicación', 30, 'l'], ['Piso', 22, 'l'], ['Diseño', 27, 'l'], ['Medida', 24, 'l'], ['m2', 11, 'r'], ['Instalado', 19, 'r'], ['Entregado', 20.9, 'r']];
-  const ENTERO = [2, 3];   // Ubicación y Piso nunca se recortan: si no caben, bajan a otra línea
   const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
   const W = cols.reduce((s, c) => s + c[1], 0);
   const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
@@ -2840,11 +2850,10 @@ async function actaVer(id){
   for(const it of items){
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
     const vals = [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)];
-    const lin = {}; for(const i of ENTERO) lin[i] = doc.splitTextToSize(String(vals[i] ?? ''), cols[i][1] - 3);
-    const nl = Math.max(1, ...ENTERO.map(i => lin[i].length)), alto = 6 + (nl - 1) * 3.4;
+    if(it.entregado_en){ const d = new Date(it.entregado_en), p2 = n => String(n).padStart(2, '0'); vals.push(`${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`); }
+    const nl = pdfLineas(doc, cols, vals), alto = 6 + (nl - 1) * PDF_LH;
     if(y + alto - 6 > PH - 62){ doc.addPage(); encabezado(); cab(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20); }
-    vals.forEach((t, i) => { if(ENTERO.includes(i)) lin[i].forEach((l, k) => doc.text(l, X[i] + 1.5, y + k * 3.4)); else tx(t, i, y); });
-    if(it.entregado_en){ const d = new Date(it.entregado_en), p2 = n => String(n).padStart(2, '0'); tx(`${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`, 8, y); }
+    pdfFila(doc, cols, X, vals, y);
     doc.setDrawColor(225); doc.line(M, y + alto - 3.8, M + W, y + alto - 3.8); y += alto;
   }
   const m2 = items.reduce((s, i) => s + (Number(i.m2) || 0), 0), nRec = items.filter(i => i.recepcion_id).length;
@@ -3335,10 +3344,12 @@ async function pdfTabla({titulo, num, sub, info, cols, filas, pie, nombre, firma
   cab();
   for(const f of filas){
     if(f.grupo){ if(y > PH - 30){ doc.addPage(); enc(); cab(); } doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text(f.grupo, M + 1, y + 1); y += 6; continue; }
-    if(y > PH - 24){ doc.addPage(); enc(); cab(); }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
-    f.v.forEach((t, i) => { if(t === '□'){ doc.setDrawColor(110); doc.rect(X[i] + cols[i][1] / 2 - 1.8, y - 3, 3.6, 3.6); } else if(t === '■'){ doc.setFillColor(60); doc.rect(X[i] + cols[i][1] / 2 - 1.8, y - 3, 3.6, 3.6, 'F'); } else tx(t, i, y); });
-    doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
+    const nl = pdfLineas(doc, cols, f.v), alto = 6 + (nl - 1) * PDF_LH;
+    if(y + alto - 6 > PH - 24){ doc.addPage(); enc(); cab(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20); }
+    f.v.forEach((t, i) => { if(t === '□'){ doc.setDrawColor(110); doc.rect(X[i] + cols[i][1] / 2 - 1.8, y - 3, 3.6, 3.6); } else if(t === '■'){ doc.setFillColor(60); doc.rect(X[i] + cols[i][1] / 2 - 1.8, y - 3, 3.6, 3.6, 'F'); } });
+    pdfFila(doc, cols, X, f.v, y);
+    doc.setDrawColor(225); doc.line(M, y + alto - 3.8, M + W, y + alto - 3.8); y += alto;
   }
   if(pie){ y += 3; doc.setFontSize(8); doc.setTextColor(80); doc.text(doc.splitTextToSize(pie, W), M, y); }
   if(firmas){ const fy = PH - 14; doc.setDrawColor(120); doc.setFontSize(8.5); doc.setTextColor(60); const w = (W - 8 * (firmas.length - 1)) / firmas.length;
@@ -3411,7 +3422,7 @@ async function ordenDespachoPDF(od){
   const logo = await etqLogo(), cap = capCamion();
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
-  const cols = [['OP', 20, 'l'], ['Ítem', 15, 'l'], ['Diseño', 40, 'l'], ['Medida', 22, 'l'], ['Cant.', 11, 'r'], ['Destino (pisos)', 38, 'l'], ['m2', 13, 'r'], ['Vidrio', 13, 'r'], ['Peso kg', 15.9, 'r']];
+  const cols = [['OP', 20, 'l'], ['Ítem', 15, 'l'], ['Diseño', 36, 'l'], ['Medida', 25, 'l'], ['Cant.', 11, 'r'], ['Destino (pisos)', 39, 'l'], ['m2', 13, 'r'], ['Vidrio', 13, 'r'], ['Peso kg', 15.9, 'r']];
   const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
   const W = cols.reduce((a, c) => a + c[1], 0);
   const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
@@ -3439,8 +3450,10 @@ async function ordenDespachoPDF(od){
     const n = l.reduce((a, i) => a + (Number(i.cant) || 1), 0), m2g = l.reduce((a, i) => a + (Number(i.m2) || 0) * (Number(i.cant) || 1), 0);
     const pisos = [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
-    [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(n), pisos, fmtN(m2g, 2), c ? fmtN(c.mm) + ' mm' : '—', pt.kg ? fmtN(Math.round(pt.kg)) : '—'].forEach((t, i) => tx(t, i, y));
-    doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
+    const v = [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(n), pisos, fmtN(m2g, 2), c ? fmtN(c.mm) + ' mm' : '—', pt.kg ? fmtN(Math.round(pt.kg)) : '—'];
+    const alto = 6 + (pdfLineas(doc, cols, v) - 1) * PDF_LH;
+    pdfFila(doc, cols, X, v, y);
+    doc.setDrawColor(225); doc.line(M, y + alto - 3.8, M + W, y + alto - 3.8); y += alto;
   }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(fmtN(grupos.length) + ' OP', X[0] + 1.5, y); doc.text('Total', X[3] + 1.5, y); tx(fmtN(items.length), 4, y); tx(fmtN(m2, 2), 6, y); tx(fmtN(Math.round(p.kg)), 8, y);
   y += 8; doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80);
