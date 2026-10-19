@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.2';
+const APP_VERSION = '6.3';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -500,6 +500,30 @@ const yearOf = it => {
 };
 const yearsTxt = set => { const ys = [...set].filter(y => y !== 'S/F').sort(); if(!ys.length) return ''; return ys.length === 1 ? ys[0] : ys[0]+'–'+ys[ys.length-1]; };
 const stageOf = it => it.instalado ? 'INSTALADO' : (it.despachado ? 'DESPACHADO' : (it.status||'EN COLA'));
+// ── Peso: m² × (calibre del vidrio + 1 mm por los demás componentes) × 2,5 kg por mm·m² ──
+// Laminado 3+3 = 6 mm; templado / crudo = su calibre. El +1 mm cubre aluminio, herrajes, empaques…
+function calibreVidrio(txt){
+  let t = String(txt || '').toUpperCase().replace(/,/g, '.').trim();
+  if(!t) return null;
+  let m = t.match(/\((\d{1,2}(?:\.\d)?)\s*MM\)/); if(m) return {mm: +m[1], aprox: false};
+  t = t.replace(/\d*PVB[\s.]*\d*(?:\.\d+)?/g, ' ');                       // el PVB no cuenta
+  const suma = s => [...s.matchAll(/(?<![\d.])(\d{1,2}(?:\.\d)?)(?![\d.])/g)].reduce((a, x) => a + +x[1], 0);
+  if(/^D\.?\s*A\b/.test(t) || t.includes('/')){                                  // doble vidrio: se quita la cámara
+    const v = suma(t.replace(/ESP\s*[\d.]+/g, ' ').replace(/\/\s*[\d.]+\s*\//g, '/'));
+    if(v) return {mm: v, aprox: false};
+  }
+  const N = '(\\d{1,2}(?:\\.\\d)?)';
+  m = t.match(new RegExp(N + '\\s*(?:MM)?\\s*\\+[A-Z .+]*?' + N + '(?:\\s*(?:MM)?\\s*[A-Z .]*\\+[A-Z .]*?' + N + '(?![\\d.]))?'));
+  if(m) return {mm: +m[1] + +m[2] + (m[3] ? +m[3] : 0), aprox: false};
+  m = t.match(new RegExp(N + '\\s*MM'));
+  if(m){ const v = +m[1]; return /^LAM/.test(t) ? {mm: 2 * v, aprox: true} : {mm: v, aprox: false}; }
+  m = t.match(/^LAM.*?(?<![\d.])(\d{1,2})$/); if(m) return {mm: 2 * +m[1], aprox: true};
+  return null;
+}
+const pesoItem = it => { const c = calibreVidrio(it.vidrio), m2 = Number(it.m2);
+  if(!c || !(m2 > 0)) return null; return m2 * (c.mm + 1) * 2.5 * (Number(it.cant) || 1); };
+const pesoTotal = l => { let kg = 0, sin = 0; for(const it of l){ const p = pesoItem(it); if(p == null) sin++; else kg += p; } return {kg, sin}; };
+const fmtKg = kg => fmtN(Math.round(kg)) + ' kg';
 const estaEnsamblado = it => !!it.dia_final || ['ENSAMBLADO','DESPACHADO'].includes(it.status) || !!it.despachado;
 const deriveStatus = it => it.despachado ? 'DESPACHADO' : (it.dia_final ? 'ENSAMBLADO' : ((it.ensamblador||it.dia_inicio) ? 'PRODUCCIÓN' : 'EN COLA'));
 const ICON = {
@@ -1676,7 +1700,7 @@ function rowHTML(it){
     <div class="c-item"><b>${esc(it.item||'—')}</b><div>${esc(it.ubicacion||'')}</div></div>
     <div class="c-op mono">${esc(it.op_instalacion||it.op||'')}</div>
     <div class="c-piso">${esc(it.piso||'')}</div>
-    <div class="c-dis"><div>${esc(it.diseno||'')}</div><span>${fmtN(it.ancho)} × ${fmtN(it.alto)}</span></div>
+    <div class="c-dis"><div>${esc(it.diseno||'')}</div><span>${fmtN(it.ancho)} × ${fmtN(it.alto)}${pesoItem(it) != null ? ' · ' + fmtKg(pesoItem(it)) : ''}</span></div>
     <div class="c-proc">${procPills(it)}</div>
     <div class="c-ens">${it.ensamblador ? esc(it.ensamblador) : '<span>Sin ensamblador</span>'}</div>
     <div class="c-st"><span class="tag"><i style="background:${STAGES[st].c}"></i>${STAGES[st].t}</span>${sub}</div>
@@ -1722,11 +1746,12 @@ function renderSelbar(){
   const box = $('#selbar'); if(!box) return;
   if(!S.sel.size){ box.innerHTML = ''; return; }
   box.innerHTML = `<div class="selbar">
-    <div class="count"><b>${fmtN(S.sel.size)}</b>selec.</div>
+    <div class="count"><b>${fmtN(S.sel.size)}</b>selec. · ${(() => { const p = pesoTotal(selItems()); return fmtKg(p.kg) + (p.sin ? '*' : ''); })()}</div>
     <div class="acts">
       ${puedeRegistrar() ? `<button class="btn sm" onclick="sheetProcesos()">Procesos</button>
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
+      <button class="btn sm" onclick="ordenDespacho()">Orden de despacho</button>
       <button class="btn sm" onclick="sheetDespacho()">Despacho</button>
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
       ${registraCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
@@ -1781,7 +1806,7 @@ function renderDetail(){
   const it = byId(S.detailId), d = S.draft;
   const scroll = box.querySelector('.d-body') ? box.querySelector('.d-body').scrollTop : 0;
   const info = [['Obra',it.obra],['OP',it.op],['OP instalación',it.op_instalacion],['Piso',it.piso],['Sistema',it.sistema],['Serie',it.serie],
-    ['Ancho × alto',`${fmtN(it.ancho)} × ${fmtN(it.alto)}`],['M²',fmtN(it.m2,2)],['Fecha OP',fmtD(it.fecha_op)],['Cant.',fmtN(it.cant)]];
+    ['Ancho × alto',`${fmtN(it.ancho)} × ${fmtN(it.alto)}`],['M²',fmtN(it.m2,2)],['Peso', (() => { const c = calibreVidrio(it.vidrio), p = pesoItem(it); return p == null ? 'Sin calibre de vidrio' : `${fmtKg(p)} · vidrio ${fmtN(c.mm)} mm${c.aprox ? ' (estimado)' : ''}`; })()],['Fecha OP',fmtD(it.fecha_op)],['Cant.',fmtN(it.cant)]];
   const seg3 = (k) => `<div class="seg">${[['','—'],['+','+'],['X','X']].map(([v,t]) => `<button class="${(d[k]||'')===v?'on':''} ${v==='+'?'p':''}" onclick="dSet('${k}',${v?`'${v}'`:'null'})">${t}</button>`).join('')}</div>`;
   const st = stageOf({...it, ...d, status:deriveStatus(d)});
   box.innerHTML = `<div class="detail">
@@ -2097,7 +2122,8 @@ function sheetDespacho(){
     ${warn(ya, 'ya estaban despachados; se reemplazará su fecha y remisión.')}
     ${ya ? `<div class="anular"><div><b>¿Hay que cancelarlo?</b> Cancela el despacho de los ${fmtN(ya)} ítems seleccionados que ya están despachados (pide el motivo).</div>
       <button class="btn sm" onclick="despCancelar(selItems().filter(i => i.despachado), 'Cancelar despacho')">Cancelar despacho</button></div>` : ''}
-    <div class="summary" id="gSum">Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>.</div>`;
+    <div class="summary" id="gSum">Vas a registrar el despacho de <b>${fmtN(items.length)} ítems</b>.</div>
+    <div class="sc-note">Peso estimado de la carga: <b>${fmtKg(pesoTotal(items).kg)}</b>${pesoTotal(items).sin ? ` (${fmtN(pesoTotal(items).sin)} sin calibre)` : ''}</div>`;
   openSheet('Registrar despacho', subSel(sel.length), body, `Despachar ${fmtN(items.length)}`, async () => {
     const f = $('#gFecha').value, r = $('#gRem').value.trim();
     if(!f){ toast('Falta la fecha de despacho', true); return false; }
@@ -2924,6 +2950,78 @@ function despCancelar(items, titulo){
   dcSum();
 }
 function dcSum(){ const b = $('#dcSum'); if(b) b.innerHTML = `Se cancelará${window._dcSel.size===1?'':'n'} <b>${fmtN(window._dcSel.size)}</b> ítem${window._dcSel.size===1?'':'s'}`; }
+// ── Orden de despacho (cargue): ítems seleccionados, peso total y si caben en el camión ──
+const capCamion = () => { try{ return Number(localStorage.getItem('cap_camion')) || 3500; }catch(e){ return 3500; } };
+function ordenDespacho(){
+  const sel = selItems(), items = sel.filter(estaEnsamblado).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
+  const noEns = sel.length - items.length;
+  if(!items.length) return toast('Ninguno de los ítems seleccionados está ensamblado', true);
+  const ya = items.filter(i => i.despachado).length;
+  const p = pesoTotal(items), m2 = items.reduce((a, i) => a + (Number(i.m2) || 0) * (Number(i.cant) || 1), 0);
+  const porOp = [...grp(items, i => i.op).entries()].map(([op, l]) => ({op, n: l.length, kg: pesoTotal(l).kg, dis: [...new Set(l.map(i => i.diseno).filter(Boolean))].join(' / ')}));
+  const sinCal = items.filter(i => pesoItem(i) == null);
+  const body = `<div class="summary" style="font-size:15px"><b>${fmtKg(p.kg)}</b> · ${fmtN(items.length)} ítems · ${fmtN(m2, 1)} m²${p.sin ? ` · <b>${fmtN(p.sin)} sin calibre</b> (no suman)` : ''}</div>
+    <div class="fgrid" style="margin-top:8px"><div class="field"><span class="lbl">Capacidad del camión (kg)</span><input id="odCap" type="number" inputmode="numeric" value="${capCamion()}"></div>
+      <div class="field"><span class="lbl">Ocupación</span><div id="odBar" style="padding-top:6px"></div></div></div>
+    ${warn(noEns, 'no están ensamblados y se dejaron por fuera.')}
+    ${warn(ya, 'ya están despachados.')}
+    ${sinCal.length ? `<div class="warn">Sin calibre de vidrio: ${sinCal.slice(0, 6).map(i => esc(i.op_instalacion) + (i.vidrio ? ' (' + esc(i.vidrio) + ')' : '')).join(', ')}${sinCal.length > 6 ? '…' : ''}</div>` : ''}
+    <div style="max-height:30vh;overflow:auto;margin-top:8px">${porOp.map(o => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(o.op)}</b> · ${esc(o.dis)} · ${fmtN(o.n)} und</span><b>${fmtKg(o.kg)}</b></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn" style="flex:1" onclick="ordenDespachoPDF()">${ICON.down} PDF orden de cargue</button>
+      ${puedeRegistrar() ? `<button class="btn" style="flex:1" onclick="closeSheet(); sheetDespacho()">Despachar estos</button>` : ''}</div>`;
+  window._od = {items, p, m2};
+  openSheet('Orden de despacho', subSel(sel.length), body, 'Listo', async () => {});
+  const bar = () => { const cap = Number($('#odCap').value) || 0; try{ localStorage.setItem('cap_camion', cap); }catch(e){}
+    const pct = cap ? p.kg / cap * 100 : 0, over = pct > 100;
+    $('#odBar').innerHTML = `<div style="height:10px;background:var(--surface3);position:relative"><div style="position:absolute;inset:0 auto 0 0;width:${Math.min(100, pct)}%;background:${over ? 'var(--danger,#d9534f)' : 'var(--inst,#4caf50)'}"></div></div>
+      <div style="font-size:12px;margin-top:4px">${cap ? `<b style="color:${over ? 'var(--danger,#d9534f)' : 'inherit'}">${fmtN(pct, 0)} %</b> ${over ? '· <b>NO CABE</b>, sobran ' + fmtKg(p.kg - cap) : '· quedan ' + fmtKg(cap - p.kg)}` : 'Escribe la capacidad'}</div>`; };
+  $('#odCap').oninput = bar; bar();
+}
+async function ordenDespachoPDF(){
+  const {items, p, m2} = window._od || {}; if(!items) return;
+  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); }catch(e){ return toast(errMsg(e), true); }
+  const logo = await etqLogo(), cap = capCamion();
+  const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
+  const PW = 215.9, PH = 279.4, M = 14;
+  const cols = [['OP inst.', 22, 'l'], ['Ítem', 16, 'l'], ['Ubicación', 36, 'l'], ['Piso', 13, 'l'], ['Diseño', 38, 'l'], ['Medida', 22, 'l'], ['m2', 12, 'r'], ['Vidrio', 13, 'r'], ['Peso kg', 15.9, 'r']];
+  const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
+  const W = cols.reduce((a, c) => a + c[1], 0);
+  const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
+  const tx = (t, i, y) => { const c = cols[i]; doc.text(corta(t, c[1] - 3), c[2] === 'r' ? X[i] + c[1] - 1.5 : X[i] + 1.5, y, {align: c[2] === 'r' ? 'right' : 'left'}); };
+  let y, pag = 0;
+  const enc = () => { pag++;
+    if(logo){ const h = 12; doc.addImage(logo.url, 'PNG', M, 12, h * logo.r, h); }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20); doc.text('ORDEN DE DESPACHO', PW - M, 17, {align:'right'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90); doc.text('Fecha: ' + fmtD(today()) + (pag > 1 ? '   ·   Hoja ' + pag : ''), PW - M, 23, {align:'right'});
+    doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(M, 30, PW - M, 30); y = 37; };
+  const cab = () => { doc.setFillColor(238); doc.rect(M, y - 4.2, W, 6.2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(40); cols.forEach((c, i) => tx(c[0], i, y)); y += 6; };
+  enc();
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(20);
+  doc.text('Obra: ' + [...new Set(items.map(i => i.obra))].join(' · '), M, y); y += 5.5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  doc.text(`Peso total: ${fmtKg(p.kg)}   ·   ${fmtN(items.length)} ítems   ·   ${fmtN(m2, 1)} m2   ·   Camión: ${fmtKg(cap)} (${fmtN(cap ? p.kg / cap * 100 : 0, 0)} %)${p.kg > cap ? '  — NO CABE' : ''}`, M, y); y += 7;
+  cab();
+  for(const it of items){
+    if(y > PH - 40){ doc.addPage(); enc(); cab(); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
+    const c = calibreVidrio(it.vidrio), kg = pesoItem(it);
+    [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), c ? fmtN(c.mm) + ' mm' : '—', kg == null ? '—' : fmtN(Math.round(kg))].forEach((t, i) => tx(t, i, y));
+    doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
+  }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y); tx(fmtN(Math.round(p.kg)), 8, y);
+  const fy = PH - 26; doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.setDrawColor(120);
+  [['Cargó', M], ['Conductor', M + 64], ['Placa del vehículo', M + 128]].forEach(([t, x]) => { doc.line(x, fy, x + 56, fy); doc.text(t, x, fy + 4.5); });
+  doc.setFontSize(7); doc.setTextColor(140); doc.text('Peso estimado: m2 × (calibre del vidrio + 1 mm) × 2,5 kg. Laminado = suma de las láminas.', M, PH - 10);
+  const nombre = 'Orden_despacho_' + today() + '.pdf';
+  const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
+  const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  window._odf = {file, nombre};
+  openSheet('Orden de despacho', fmtKg(p.kg) + ' · ' + fmtN(items.length) + ' ítems', `<div style="display:flex;flex-direction:column;gap:8px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_odf.file], title:_odf.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
+}
 // Número de remisión consecutivo: lo asigna la base (00-NNN); "Usar otra" permite agregar a una existente
 const remCampo = (id, val) => `<div class="field"><span class="lbl">Remisión</span><input id="${id}" inputmode="numeric" placeholder="Número" value="${esc(val || '')}" ${val ? 'readonly' : ''}>
   <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn sm ghost" onclick="remNueva('${id}')">Nueva</button><button type="button" class="btn sm ghost" onclick="remManual('${id}')">Usar otra</button></div></div>`;
