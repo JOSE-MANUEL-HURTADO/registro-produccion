@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.8';
+const APP_VERSION = '6.9';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3095,12 +3095,17 @@ function prBarras(dias, porDia){
 const PG = {lista:null, items:null, err:null, cargando:false};
 const listoEns = it => !faltaProc(it).length;
 function progNueva(){
-  const sel = selItems(), items = sel.filter(i => !i.despachado && !i.dia_final).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
-  if(!items.length) return toast('Los ítems seleccionados ya están ensamblados o despachados', true);
-  const otra = items.filter(i => i.programacion_id).length;
+  // "Programado" (PRG) es la marca de que la OP ya se mandó a producción: lo que ya la tiene no se vuelve a programar
+  const sel = selItems(), vivos = sel.filter(i => !i.despachado && !i.dia_final);
+  const yaProg = vivos.filter(i => i.programado === 'X' || i.programacion_id);
+  const items = vivos.filter(i => !(i.programado === 'X' || i.programacion_id)).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
+  if(!items.length) return toast(yaProg.length ? 'Los ítems seleccionados ya están programados (o en proceso)' : 'Los ítems seleccionados ya están ensamblados o despachados', true);
+  const otra = 0;
   const ops = [...grp(items, i => i.op).entries()];
   const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
-    ${warn(sel.length - items.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
+    ${warn(sel.length - vivos.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
+    ${warn(yaProg.length, 'ya estaban programados (PRG en X) y se dejaron por fuera, para no mandarlos dos veces a producción.')}
+    <div class="sc-note">Al crear la programación, estos ítems quedan con <b>Programado (PRG) en X</b> automáticamente.</div>
     ${warn(otra, 'ya estaban en otra programación; pasan a esta.')}
     <div class="fgrid"><div class="field"><span class="lbl">Fecha requerida (obra)</span><input type="date" id="pgFecha" value="${addDays(today(), 14)}"></div>
       <div class="field"><span class="lbl">Notas</span><input id="pgNotas" placeholder="Ej. piso 3 y 4 primero"></div></div>
@@ -3110,7 +3115,8 @@ function progNueva(){
     let pg;
     try{
       pg = await API.progCrear({obra: [...new Set(items.map(i => i.obra))].join(' · '), fecha_req: f, notas, n_items: items.length, quien: (S.perfil && S.perfil.nombre) || null});
-      const rows = await API.update(items.map(i => i.id), {programacion_id: pg.id}); mergeRows(rows);
+      const rows = await API.update(items.map(i => i.id), {programacion_id: pg.id, programado: 'X'}); mergeRows(rows);
+      for(const i of items){ i.programado = 'X'; i.programacion_id = pg.id; }
     }catch(e){ toast(e && (e.code === '42P01' || e.code === 'PGRST205' || /programacion/.test(e.message || '')) ? 'Falta activar la programación en la base (SQL 25)' : errMsg(e), true); return false; }
     toast('✓ Programación N.º ' + pg.id + ' creada'); clearSel(); PG.lista = null;
     setTimeout(() => progPDF(pg, items), 60);
@@ -3148,7 +3154,7 @@ function renderProgBox(recargar){
     h += `<div class="pl-card"><div class="pl-head"><span class="n">N.º ${pg.id} · ${esc(pg.obra || '')}</span><span class="m">${pg.fecha_req ? `<b style="${riesgo ? 'color:var(--danger)' : ''}">${fmtD(pg.fecha_req)}</b><br>${dias < 0 ? 'vencida hace ' + fmtN(-dias) + ' d' : dias === 0 ? 'hoy' : 'en ' + fmtN(dias) + ' d'}` : 'sin fecha'}</span></div>
       <div style="padding:10px 14px;font-size:12px">
         ${pg.notas ? `<div style="margin-bottom:6px;color:var(--text2)">${esc(pg.notas)}</div>` : ''}
-        ${PROCS.map(([k, t, ab]) => { const x = l.filter(i => i[k] === 'X' || i.dia_final || i.despachado).length, pc = Math.round(x / n * 100);
+        ${PROCS.filter(([k]) => k !== 'programado').map(([k, t, ab]) => { const x = l.filter(i => i[k] === 'X' || i.dia_final || i.despachado).length, pc = Math.round(x / n * 100);
           return `<div style="display:grid;grid-template-columns:34px 1fr 64px;gap:8px;align-items:center;margin:3px 0" title="${t}: ${x} de ${l.length}"><span>${ab}</span><div style="height:8px;background:var(--surface3)"><div style="height:8px;width:${pc}%;background:${pc === 100 ? 'var(--inst)' : 'var(--cola)'}"></div></div><span style="text-align:right">${fmtN(x)}/${fmtN(l.length)}</span></div>`; }).join('')}
         <div style="margin-top:8px">Listos para ensamble <b>${fmtN(listos)}</b> · asignados <b>${fmtN(asig)}</b> · en ensamble <b>${fmtN(enCurso)}</b> · ensamblados <b>${fmtN(ens)}</b> de ${fmtN(l.length)}</div>
       </div>
@@ -3260,21 +3266,21 @@ function progPDF(pg, items){
     for(const l of [...grp(lo, i => i.op).values()].sort((a, b) => nat(a[0].op, b[0].op))){
       const it = l[0], c = calibreVidrio(it.vidrio);
       const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
-      filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.map(([k]) => marca(k))]});
+      filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
     }
   }
   pdfTabla({titulo: 'PROGRAMACIÓN DE OBRA', num: pg.id, sub: (pg.obra || '') + (pg.fecha_req ? ' · requerida para el ' + fmtD(pg.fecha_req) : ''),
     info: `${fmtN(items.length)} unidades · ${fmtN(new Set(items.map(i => i.op)).size)} OP${pg.notas ? ' · ' + pg.notas : ''}. Cada proceso marca su casilla al terminar la OP completa (cuadro relleno = ya está en X en la app).`,
-    cols: [['OP', 18, 'l'], ['Ítem', 16, 'l'], ['Diseño', 48, 'l'], ['Medida', 22, 'l'], ['Vidrio', 50, 'l'], ['Cant.', 11, 'r'], ['Pisos', 26, 'l'], ['m2', 13, 'r'], ...PROCS.map(([,, ab]) => [ab, 10.9, 'c'])],
+    cols: [['OP', 18, 'l'], ['Ítem', 16, 'l'], ['Diseño', 50, 'l'], ['Medida', 22, 'l'], ['Vidrio', 56, 'l'], ['Cant.', 11, 'r'], ['Pisos', 28, 'l'], ['m2', 13, 'r'], ...PROCS.filter(([k]) => k !== 'programado').map(([,, ab]) => [ab, 10.7, 'c'])],
     filas, pie: 'Prioridad: esta programación va primero. Al terminar cada proceso regístrelo en la app (escáner) para que el ensamble no se bloquee.',
-    nombre: 'Programacion_' + pg.id + '.pdf', firmas: ['Corte', 'Troquelado', 'Mecanizado', 'Programado']});
+    nombre: 'Programacion_' + pg.id + '.pdf', firmas: ['Corte', 'Troquelado', 'Mecanizado', 'Vidrio']});
 }
 function lineaPDF(ens){
   const l = (PG.items || []).filter(i => i.ens_asignado === ens && !i.dia_final && !i.despachado);
   const fecha = id => (PG.lista.find(p => p.id === id) || {}).fecha_req || '';
   const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => nat(fecha(a[0].programacion_id) || '9', fecha(b[0].programacion_id) || '9') || nat(a[0].op, b[0].op))
     .map(f => { const i0 = f[0]; return {v: [fecha(i0.programacion_id) ? fmtD(fecha(i0.programacion_id)) : '—', 'N.º ' + i0.programacion_id, i0.obra, i0.op, i0.diseno, i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) : '', fmtN(f.length), f.map(i => i.op_instalacion.split('.').pop()).join(', '), pisosTxt(f), fmtN(f.filter(i => !i.dia_inicio && listoEns(i)).length), '□']}; });
-  pdfTabla({titulo: 'LÍNEA DE ENSAMBLE', sub: ens + ' · ' + fmtD(today()), info: `${fmtN(l.length)} unidades asignadas, en orden de prioridad (fecha requerida). "Listos" = con cortado, troquelado, mecanizado y programado completos.`,
+  pdfTabla({titulo: 'LÍNEA DE ENSAMBLE', sub: ens + ' · ' + fmtD(today()), info: `${fmtN(l.length)} unidades asignadas, en orden de prioridad (fecha requerida). "Listos" = con cortado, troquelado y mecanizado completos (y programados).`,
     cols: [['Para', 20, 'l'], ['Prog.', 16, 'l'], ['Obra', 46, 'l'], ['OP', 18, 'l'], ['Diseño', 48, 'l'], ['Medida', 22, 'l'], ['Cant.', 11, 'r'], ['Unidades (.n)', 30, 'l'], ['Pisos', 20, 'l'], ['Listos', 13, 'r'], ['Hecho', 11.4, 'c']],
     filas, pie: 'Al iniciar y terminar cada unidad, escanee su etiqueta en la app (Inicio / Ensamble terminado).', nombre: 'Linea_' + ens.replace(/\W+/g, '_') + '.pdf', firmas: ['Ensamblador', 'Supervisor']});
 }
