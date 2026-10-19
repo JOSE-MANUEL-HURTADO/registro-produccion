@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.29';
+const APP_VERSION = '6.30';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -962,11 +962,8 @@ function resumenObras(){
     if(!it.despachado) o.porDesp++;
     if(!it.instalado) o.porInst++;
   }
-  for(const it of (S.porEnt || [])){
-    let o = m.get(it.obra);
-    if(!o){ o = {obra:it.obra, n:0, 'EN COLA':0, 'PRODUCCIÓN':0, 'ENSAMBLADO':0, 'DESPACHADO':0, porDesp:0, porInst:0}; m.set(it.obra,o); }
-    o.porEnt = (o.porEnt || 0) + 1;
-  }
+  // Por entregar: solo de las obras activas (las ya cerradas no aparecen aquí)
+  for(const it of (S.porEnt || [])){ const o = m.get(it.obra); if(o) o.porEnt = (o.porEnt || 0) + 1; }
   return [...m.values()].sort((a,b) => nat(a.obra,b.obra));
 }
 
@@ -1601,7 +1598,7 @@ function obraCard(o){
   const seg = ['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'];
   const bar = seg.map(k => o[k] ? `<i style="width:${o[k]/o.n*100}%;background:${STAGES[k].c}"></i>` : '').join('');
   return `<button class="obra-card" onclick="openObra(decodeURIComponent('${encodeURIComponent(o.obra)}'))">
-    <div><div class="oc-name">${esc(o.obra)}</div><div class="oc-meta">${o.n ? fmtN(o.n) + ' ítems pendientes' : 'Todo instalado'}</div></div>
+    <div><div class="oc-name">${esc(o.obra)}</div><div class="oc-meta">${fmtN(o.n)} ítems pendientes</div></div>
     <div class="bar">${bar}</div>
     <div class="oc-nums">
       <div><b style="color:var(--cola)">${fmtN(o['EN COLA'])}</b><span>En cola</span></div>
