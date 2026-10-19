@@ -452,7 +452,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.4';
+const APP_VERSION = '6.5';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -659,6 +659,7 @@ const API = {
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
   async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
+  async intercambiar(a, b){ const {error} = await this.sb.rpc('intercambiar_destino', {p_a:a, p_b:b}); if(error) throw error; },
   async odCrear(o){ const {data,error} = await this.sb.from('ordenes_despacho').insert(o).select('*').single(); if(error) throw error; return data; },
   async odAbiertas(){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('estado', 'abierta').order('id', {ascending:false}); if(error) throw error; return data || []; },
   async od(id){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
@@ -2199,7 +2200,7 @@ function scMotivo(it, e){
   if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', '); return null; }
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
-  if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(SC.od && !SC.od.items.includes(it.id)) return 'no está en la orden de despacho'; return null; }
+  if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(SC.od && !SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
   return 'no aplica';
@@ -2356,7 +2357,7 @@ async function scCodigo(txt, manual){
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
       if(await scAplicar([it], items.length, e) === false) return;
-      scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num : ''}`);
+      scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
     }
     scBeep(true);
@@ -2382,6 +2383,23 @@ function scHoja(p, items, e){
 }
 // Registra y guarda lo que había antes, para poder deshacer desde la lista de la sesión
 async function scAplicar(l, tot, e){
+  if(e.k === 'desp' && SC.od){
+    // Cualquier unidad de la OP sirve: si la escaneada no estaba en la orden, toma el destino de una planeada pendiente
+    const pend = SC.od._pend || {};
+    for(const it of l){
+      if(SC.od.items.includes(it.id)) { pend[it.op] = (pend[it.op] || []).filter(x => x.id !== it.id); continue; }
+      const lst = (pend[it.op] || []).filter(x => !l.some(y => y.id === x.id));
+      const obj = lst[0]; if(!obj) continue;
+      await API.intercambiar(it.id, obj.id);
+      const ub = it.ubicacion, pi = it.piso;
+      it.ubicacion = obj.ubicacion; it.piso = obj.piso;
+      for(const x of (S.items || [])){ if(x.id === it.id){ x.ubicacion = obj.ubicacion; x.piso = obj.piso; } if(x.id === obj.id){ x.ubicacion = ub; x.piso = pi; } }
+      SC.od.items = SC.od.items.map(x => x === obj.id ? it.id : x);
+      pend[it.op] = (pend[it.op] || []).filter(x => x.id !== obj.id);
+      await API.odActualizar(SC.od.id, {items: SC.od.items});
+      toast(`${it.op_instalacion} va para ${[obj.ubicacion, obj.piso].filter(Boolean).join(' · ') || 'el destino de ' + obj.op_instalacion}`);
+    }
+  }
   if(e.k === 'entr'){
     const ids = l.map(it => it.id), res = await API.entregar(ids);
     const r = Array.isArray(res) ? res.filter(x => x.n) : [];
@@ -2976,7 +2994,7 @@ function ordenDespacho(){
   if(!items.length) return toast('Ninguno de los ítems seleccionados está ensamblado', true);
   const ya = items.filter(i => i.despachado).length;
   const p = pesoTotal(items), m2 = items.reduce((a, i) => a + (Number(i.m2) || 0) * (Number(i.cant) || 1), 0);
-  const porOp = [...grp(items, i => i.op).entries()].map(([op, l]) => ({op, n: l.length, kg: pesoTotal(l).kg, dis: [...new Set(l.map(i => i.diseno).filter(Boolean))].join(' / ')}));
+  const porOp = [...grp(items, i => i.op).entries()].map(([op, l]) => ({op, n: l.length, kg: pesoTotal(l).kg, dis: [...new Set(l.map(i => i.diseno).filter(Boolean))].join(' / '), pisos: [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ')}));
   const sinCal = items.filter(i => pesoItem(i) == null);
   const body = `<div class="summary" style="font-size:15px"><b>${fmtKg(p.kg)}</b> · ${fmtN(items.length)} ítems · ${fmtN(m2, 1)} m²${p.sin ? ` · <b>${fmtN(p.sin)} sin calibre</b> (no suman)` : ''}</div>
     <div class="fgrid" style="margin-top:8px"><div class="field"><span class="lbl">Capacidad del camión (kg)</span><input id="odCap" type="number" inputmode="numeric" value="${capCamion()}"></div>
@@ -2984,7 +3002,7 @@ function ordenDespacho(){
     ${warn(noEns, 'no están ensamblados y se dejaron por fuera.')}
     ${warn(ya, 'ya están despachados.')}
     ${sinCal.length ? `<div class="warn">Sin calibre de vidrio: ${sinCal.slice(0, 6).map(i => esc(i.op_instalacion) + (i.vidrio ? ' (' + esc(i.vidrio) + ')' : '')).join(', ')}${sinCal.length > 6 ? '…' : ''}</div>` : ''}
-    <div style="max-height:30vh;overflow:auto;margin-top:8px">${porOp.map(o => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(o.op)}</b> · ${esc(o.dis)} · ${fmtN(o.n)} und</span><b>${fmtKg(o.kg)}</b></div>`).join('')}</div>
+    <div style="max-height:30vh;overflow:auto;margin-top:8px">${porOp.map(o => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(o.op)}</b> · ${esc(o.dis)} · ${fmtN(o.n)} und${o.pisos ? ' · ' + esc(o.pisos) : ''}</span><b>${fmtKg(o.kg)}</b></div>`).join('')}</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${puedeRegistrar() ? `<button class="btn primary" style="flex:1" onclick="odGuardar()">Guardar orden e imprimir</button>` : `<button class="btn" style="flex:1" onclick="ordenDespachoPDF()">${ICON.down} PDF orden de cargue</button>`}</div>
     <div class="sc-note" style="margin-top:6px">La orden no despacha nada: el despacho y la remisión se crean cuando se escanea cada ítem al subirlo al camión.</div>`;
@@ -3002,7 +3020,7 @@ async function ordenDespachoPDF(od){
   const logo = await etqLogo(), cap = capCamion();
   const doc = new jspdf.jsPDF({unit:'mm', format:'letter'});
   const PW = 215.9, PH = 279.4, M = 14;
-  const cols = [['OP inst.', 22, 'l'], ['Ítem', 16, 'l'], ['Ubicación', 36, 'l'], ['Piso', 13, 'l'], ['Diseño', 38, 'l'], ['Medida', 22, 'l'], ['m2', 12, 'r'], ['Vidrio', 13, 'r'], ['Peso kg', 15.9, 'r']];
+  const cols = [['OP', 20, 'l'], ['Ítem', 15, 'l'], ['Diseño', 40, 'l'], ['Medida', 22, 'l'], ['Cant.', 11, 'r'], ['Destino (pisos)', 38, 'l'], ['m2', 13, 'r'], ['Vidrio', 13, 'r'], ['Peso kg', 15.9, 'r']];
   const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
   const W = cols.reduce((a, c) => a + c[1], 0);
   const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
@@ -3023,14 +3041,19 @@ async function ordenDespachoPDF(od){
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
   doc.text(`Peso total: ${fmtKg(p.kg)}   ·   ${fmtN(items.length)} ítems   ·   ${fmtN(m2, 1)} m2   ·   Camión: ${fmtKg(cap)} (${fmtN(cap ? p.kg / cap * 100 : 0, 0)} %)${p.kg > cap ? '  — NO CABE' : ''}`, M, y); y += 7;
   cab();
-  for(const it of items){
+  const grupos = [...grp(items, i => i.op).values()].sort((a, b) => nat(a[0].op, b[0].op));
+  for(const l of grupos){
     if(y > PH - 40){ doc.addPage(); enc(); cab(); }
+    const it = l[0], c = calibreVidrio(it.vidrio), pt = pesoTotal(l);
+    const n = l.reduce((a, i) => a + (Number(i.cant) || 1), 0), m2g = l.reduce((a, i) => a + (Number(i.m2) || 0) * (Number(i.cant) || 1), 0);
+    const pisos = [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
-    const c = calibreVidrio(it.vidrio), kg = pesoItem(it);
-    [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), c ? fmtN(c.mm) + ' mm' : '—', kg == null ? '—' : fmtN(Math.round(kg))].forEach((t, i) => tx(t, i, y));
+    [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(n), pisos, fmtN(m2g, 2), c ? fmtN(c.mm) + ' mm' : '—', pt.kg ? fmtN(Math.round(pt.kg)) : '—'].forEach((t, i) => tx(t, i, y));
     doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
   }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y); tx(fmtN(Math.round(p.kg)), 8, y);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(fmtN(grupos.length) + ' OP', X[0] + 1.5, y); doc.text('Total', X[3] + 1.5, y); tx(fmtN(items.length), 4, y); tx(fmtN(m2, 2), 6, y); tx(fmtN(Math.round(p.kg)), 8, y);
+  y += 8; doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80);
+  doc.text(doc.splitTextToSize('Las unidades de una misma OP son iguales: cargue cualquiera de ellas. Al escanearla, la app le asigna el destino (ubicación y piso) que corresponde a este despacho.', W), M, y);
   const fy = PH - 26; doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60); doc.setDrawColor(120);
   [['Cargó', M], ['Conductor', M + 64], ['Placa del vehículo', M + 128]].forEach(([t, x]) => { doc.line(x, fy, x + 56, fy); doc.text(t, x, fy + 4.5); });
   doc.setFontSize(7); doc.setTextColor(140); doc.text('Peso estimado: m2 × (calibre del vidrio + 1 mm) × 2,5 kg. Laminado = suma de las láminas.' + (od ? ' Escanee el QR en el cargue: el despacho se registra al escanear cada ítem.' : ''), M, PH - 10);
@@ -3072,10 +3095,12 @@ async function odUsar(id){
 function odSoltar(){ SC.od = null; renderScanParams(); }
 async function odProgreso(){
   const o = SC.od, el = $('#odProg'); if(!o || !el) return;
-  const {data, error} = await API.sb.from('items').select('id,op_instalacion,despachado,remision,m2,cant,vidrio').in('id', o.items);
+  const {data, error} = await API.sb.from('items').select('id,op,op_instalacion,ubicacion,piso,despachado,remision,m2,cant,vidrio').in('id', o.items);
   if(error || !$('#odProg')) return;
   const carg = data.filter(i => i.despachado), falt = data.filter(i => !i.despachado);
-  $('#odProg').innerHTML = `Cargados <b>${fmtN(carg.length)} de ${fmtN(data.length)}</b> · ${fmtKg(pesoTotal(carg).kg)} de ${fmtKg(pesoTotal(data).kg)}${falt.length && falt.length <= 8 ? '<br>Faltan: ' + falt.map(i => esc(i.op_instalacion)).sort(nat).join(', ') : ''}`;
+  o._pend = {}; for(const i of falt.sort((a, b) => nat(a.op_instalacion, b.op_instalacion))) (o._pend[i.op] = o._pend[i.op] || []).push(i);
+  const porOp = Object.entries(o._pend).sort((a, b) => nat(a[0], b[0])).map(([op, l]) => `${esc(op)} ×${l.length}`);
+  $('#odProg').innerHTML = `Cargados <b>${fmtN(carg.length)} de ${fmtN(data.length)}</b> · ${fmtKg(pesoTotal(carg).kg)} de ${fmtKg(pesoTotal(data).kg)}${porOp.length ? '<br>Faltan: ' + porOp.slice(0, 10).join(', ') + (porOp.length > 10 ? '…' : '') : ''}`;
   o._falt = falt.length;
 }
 async function odTerminar(){
