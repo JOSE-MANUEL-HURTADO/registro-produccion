@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.9';
+const APP_VERSION = '6.10';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3161,7 +3161,8 @@ function renderProgBox(recargar){
       <div style="display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap">
         <button class="btn sm" onclick="progPDFid(${pg.id})">${ICON.down} PDF</button>
         ${puedeRegistrar() ? `<button class="btn sm" onclick="progAsignar(${pg.id})">Asignar ensambladores</button>
-        <button class="btn sm ghost" onclick="progCerrar(${pg.id})">Cerrar</button>` : ''}</div></div>`;
+        <button class="btn sm ghost" onclick="progCerrar(${pg.id})">Cerrar</button>
+        <button class="btn sm ghost" style="color:var(--danger)" onclick="progCerrar(${pg.id}, true)">Anular</button>` : ''}</div></div>`;
   }
   h += `</div>`;
   // Líneas de ensamble
@@ -3180,10 +3181,23 @@ function renderProgBox(recargar){
     : '<div class="empty">Aún no hay ítems asignados a ensambladores. Usa <b>Asignar ensambladores</b> en una programación.</div>';
   box.innerHTML = h;
 }
-async function progCerrar(id){
-  if(!confirm(`¿Cerrar la programación N.º ${id}? Deja de aparecer aquí (los ítems no cambian).`)) return;
-  try{ await API.progActualizar(id, {estado: 'cerrada'}); }catch(e){ return toast(errMsg(e), true); }
-  toast('✓ Programación cerrada'); progCargar();
+// Cerrar / anular: lo que no ha arrancado ningún proceso se libera (PRG vuelve a vacío) para poder reprogramarlo;
+// lo que ya tiene cortado, troquelado, mecanizado o ensamble queda programado (ya está en proceso)
+const arranco = i => i.cortado === 'X' || i.troquelado === 'X' || i.mecanizado === 'X' || i.ensamblador || i.dia_inicio || i.dia_final || i.despachado;
+function progCerrar(id, anular){
+  const l = (PG.items || []).filter(i => i.programacion_id === id);
+  const libres = l.filter(i => !arranco(i)), enProc = l.length - libres.length;
+  const verbo = anular ? 'Anular' : 'Cerrar';
+  const body = `<div class="sc-note" style="margin-bottom:8px">${anular ? 'La programación queda anulada' : 'La programación se da por terminada'} y deja de aparecer aquí.</div>
+    ${libres.length ? `<div class="warn"><b>${fmtN(libres.length)}</b> ítem${libres.length===1?'':'s'} sin ningún proceso iniciado ${libres.length===1?'se libera':'se liberan'}: <b>Programado (PRG) vuelve a vacío</b> y ${libres.length===1?'sale':'salen'} de la línea de su ensamblador, para poder programarlos de nuevo.</div>` : ''}
+    ${enProc ? `<div class="sc-note" style="margin-top:6px"><b>${fmtN(enProc)}</b> ítem${enProc===1?'':'s'} ${enProc===1?'ya tiene':'ya tienen'} algún proceso o ensamble: ${enProc===1?'sigue':'siguen'} con Programado en X.</div>` : ''}`;
+  openSheet(verbo + ' programación N.º ' + id, '', body, verbo, async () => {
+    try{
+      if(libres.length){ const rows = await API.update(libres.map(i => i.id), {programado: null, programacion_id: null, ens_asignado: null}); mergeRows(rows); }
+      await API.progActualizar(id, {estado: anular ? 'anulada' : 'cerrada'});
+    }catch(e){ toast(errMsg(e), true); return false; }
+    toast(`✓ Programación ${anular ? 'anulada' : 'cerrada'}${libres.length ? ' · ' + libres.length + ' ítem' + (libres.length===1?'':'s') + ' liberado' + (libres.length===1?'':'s') : ''}`); progCargar();
+  });
 }
 // Asignar: por OP, cuántas unidades le tocan a cada ensamblador (se prefieren las que ya tienen los procesos listos)
 function progAsignar(id){
