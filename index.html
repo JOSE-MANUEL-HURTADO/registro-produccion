@@ -101,7 +101,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .oc-meta{color:var(--muted);font-size:12px;margin-top:3px;}
 .bar{display:flex;height:6px;background:var(--surface3);overflow:hidden;}
 .bar i{display:block;height:100%;}
-.oc-nums{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.oc-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
 .oc-nums div{display:flex;flex-direction:column;gap:2px;}
 .oc-nums b{font-size:18px;font-weight:500;}
 .oc-nums span{font-family:var(--sans);font-size:9.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.28';
+const APP_VERSION = '6.29';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -651,6 +651,8 @@ const API = {
     for(let i=0; i<ids.length; i+=150){ const {data,error} = await this.sb.from('items').select('id,obra,item,op_instalacion').in('id', ids.slice(i,i+150)); if(error) throw error; out = out.concat(data); }
     return out;
   },
+  // Instalado y aún sin entregar en un acta (desde que existen las actas en la app)
+  async porEntregar(){ try{ return await this.all(o => this.sb.from('items').select('obra,piso', o).eq('instalado', true).is('acta_id', null).gte('fecha_instalacion', ENTREGA_DESDE).order('id')); }catch(e){ console.warn('por entregar', e); return []; } },
   activos(){ return this.all(o => this.sb.from('items').select(MIN_COLS,o).or('despachado.eq.false,instalado.eq.false').order('id')); },
   async actas(obra){ const {data,error} = await this.sb.from('actas').select('*').eq('obra', obra).order('num'); if(error) throw error; return data || []; },
   async acta(id){ const {data,error} = await this.sb.from('actas').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
@@ -947,7 +949,7 @@ function shell(inner){
 // ════════════════════════════════════════════════════════════════
 //  INICIO — OBRAS ACTIVAS
 // ════════════════════════════════════════════════════════════════
-async function loadActivos(){ S.activos = await API.activos(); }
+async function loadActivos(){ const [a, e] = await Promise.all([API.activos(), API.porEntregar()]); S.activos = a; S.porEnt = e; }
 
 function resumenObras(){
   const m = new Map();
@@ -959,6 +961,11 @@ function resumenObras(){
     o[st] = (o[st]||0)+1;
     if(!it.despachado) o.porDesp++;
     if(!it.instalado) o.porInst++;
+  }
+  for(const it of (S.porEnt || [])){
+    let o = m.get(it.obra);
+    if(!o){ o = {obra:it.obra, n:0, 'EN COLA':0, 'PRODUCCIÓN':0, 'ENSAMBLADO':0, 'DESPACHADO':0, porDesp:0, porInst:0}; m.set(it.obra,o); }
+    o.porEnt = (o.porEnt || 0) + 1;
   }
   return [...m.values()].sort((a,b) => nat(a.obra,b.obra));
 }
@@ -1003,10 +1010,10 @@ function renderHome(){
   if(S.homeTab === 'cobros') return renderCobros();
   const anual = S.homeTab === 'anio';
   const res = resumenObras();
-  const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a), {d:0,i:0});
+  const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a.e+=(o.porEnt||0), a), {d:0,i:0,e:0});
   const sub = anual
     ? `Año de producción (DIA INICIO), igual que el dashboard · los ítems en cola se ubican por su FECHA OP · ${liveHTML()}`
-    : `${res.length} obras · ${fmtN(tot.d)} ítems por despachar · ${fmtN(tot.i)} por instalar · ${liveHTML()}`;
+    : `${res.length} obras · ${fmtN(tot.d)} ítems por despachar · ${fmtN(tot.i)} por instalar · ${fmtN(tot.e)} instalados por entregar · ${liveHTML()}`;
   const legend = anual
     ? [['var(--cola)','En cola'],['var(--ens)','En planta'],['var(--desp)','Despachado sin instalar'],['var(--inst)','Instalado']]
     : ['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'].map(k => [STAGES[k].c, k==='DESPACHADO' ? 'Despachado sin instalar' : STAGES[k].t]);
@@ -1594,13 +1601,14 @@ function obraCard(o){
   const seg = ['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'];
   const bar = seg.map(k => o[k] ? `<i style="width:${o[k]/o.n*100}%;background:${STAGES[k].c}"></i>` : '').join('');
   return `<button class="obra-card" onclick="openObra(decodeURIComponent('${encodeURIComponent(o.obra)}'))">
-    <div><div class="oc-name">${esc(o.obra)}</div><div class="oc-meta">${fmtN(o.n)} ítems pendientes</div></div>
+    <div><div class="oc-name">${esc(o.obra)}</div><div class="oc-meta">${o.n ? fmtN(o.n) + ' ítems pendientes' : 'Todo instalado'}</div></div>
     <div class="bar">${bar}</div>
     <div class="oc-nums">
       <div><b style="color:var(--cola)">${fmtN(o['EN COLA'])}</b><span>En cola</span></div>
       <div><b>${fmtN(o['PRODUCCIÓN']+o['ENSAMBLADO'])}</b><span>Planta</span></div>
       <div><b>${fmtN(o.porDesp)}</b><span>Por desp.</span></div>
       <div><b>${fmtN(o.porInst)}</b><span>Por inst.</span></div>
+      <div title="Instalados que aún no están en un acta de entrega"><b style="${o.porEnt ? 'color:var(--inst)' : ''}">${fmtN(o.porEnt || 0)}</b><span>Por entregar</span></div>
     </div></button>`;
 }
 
@@ -1650,6 +1658,8 @@ const com = it => S.com.get(it.id) || {};
 const porCobrarD = it => it.despachado && !com(it).cobrado_despacho;
 const porCobrarI = it => it.instalado && !com(it).cobrado_instalacion;
 
+const ENTREGA_DESDE = '2026-01-01';   // lo instalado antes se entregó en papel
+const porEntregar = it => it.instalado && !it.acta_id && String(it.fecha_instalacion || '') >= ENTREGA_DESDE;
 const isPend = it => !(it.despachado && it.instalado);
 const FILTROS = [
   ['PEND','Pendientes', it => isPend(it)],
@@ -1658,6 +1668,7 @@ const FILTROS = [
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
   ['DESPACHADO','Por instalar', it => it.despachado && !it.instalado],
   ['INSTALADO','Instalados', it => it.instalado],
+  ['ENTREGAR','Por entregar', it => porEntregar(it)],
   ['TODOS','Todos', () => true],
   ['COB_D','Por cobrar despacho', porCobrarD, true],
   ['COB_I','Por cobrar instalación', porCobrarI, true]
