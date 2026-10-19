@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.23';
+const APP_VERSION = '6.24';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2761,6 +2761,13 @@ const actaNum = id => { const a = (S.actas || []).find(x => x.id === id); return
 const actaAbierta = () => (S.actas || []).find(a => a.estado === 'abierta');
 // Filas de tablas PDF: ningún dato se recorta; si no cabe en la columna, baja a otra línea y la fila crece
 const PDF_LH = 3.4;
+// En el acta basta el lugar (ALCOBA AUX, SALA…): se quitan los números de apartamento; el piso va en su propia columna
+const lugarCorto = ub => { const o = String(ub || '').trim();
+  const t = o.toUpperCase()
+    .replace(/\b(?:APTOS?|APARTAMENTOS?|APT)\.?\s*\d+(?:\s*(?:[-,\/]|Y)\s*\d+)*/g, ' ')
+    .replace(/(^|\s)\d{3,4}(?:\s*(?:[-,\/]|Y)\s*\d{3,4})*(?=\s|$)/g, ' ')
+    .replace(/\s+/g, ' ').replace(/^[\s\-,·]+|[\s\-,·]+$/g, '').trim();
+  return t || o; };
 function pdfLineas(doc, cols, vals){ return Math.max(1, ...vals.map((t, i) => (t === '□' || t === '■') ? 1 : doc.splitTextToSize(String(t ?? ''), cols[i][1] - 3).length)); }
 function pdfFila(doc, cols, X, vals, y){
   vals.forEach((t, i) => { const c = cols[i]; if(t === '□' || t === '■') return;
@@ -2849,7 +2856,7 @@ async function actaVer(id){
   cab();
   for(const it of items){
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
-    const vals = [it.op_instalacion || it.op, it.item, it.ubicacion, it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)];
+    const vals = [it.op_instalacion || it.op, it.item, lugarCorto(it.ubicacion), it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)];
     if(it.entregado_en){ const d = new Date(it.entregado_en), p2 = n => String(n).padStart(2, '0'); vals.push(`${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`); }
     const nl = pdfLineas(doc, cols, vals), alto = 6 + (nl - 1) * PDF_LH;
     if(y + alto - 6 > PH - 62){ doc.addPage(); encabezado(); cab(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20); }
@@ -2922,7 +2929,7 @@ async function actaEstado(id){
       ${items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
       ${rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}`
     : est === 'firmada' ? `<div class="summary">✓ <b>Firmada</b>${recs[0] ? ` por <b>${esc(recs[0].nombre)}</b>${recs[0].cargo ? ' · ' + esc(recs[0].cargo) : ''} el ${new Date(recs[0].creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})}` : ''} · ${fmtN(items.length)} ítem${items.length===1?'':'s'} recibidos</div>` : ''}
-    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · <b>' + esc(pisoLbl(it.piso)) + '</b>' : ''}${it.ubicacion ? ' · ' + esc(it.ubicacion) : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
+    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · <b>' + esc(pisoLbl(it.piso)) + '</b>' : ''}${it.ubicacion ? ' · ' + esc(lugarCorto(it.ubicacion)) : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
     ${esInterno() && items.length ? `<button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta${abierta ? ' (borrador)' : ''}</button>` : ''}`;
   openSheet('Acta de entrega N.º ' + a.num, esc(a.obra) + (abierta ? ' · en curso' : ' · ' + fmtD(a.fecha)), body, 'Listo', async () => {});
 }
@@ -2937,7 +2944,7 @@ async function actaFirmar(id){
   const fuera = window._actaFuera = new Set();
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const body = `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
-    <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(i.ubicacion) : ''}</span></label>`).join('')}</div>
+    <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(lugarCorto(i.ubicacion)) : ''}</span></label>`).join('')}</div>
     <div class="sc-note" id="afSum"></div>
     <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" autocomplete="off"></div>
     <div class="fgrid"><div class="field"><span class="lbl">Cargo</span><input id="fCar" placeholder="Residente, interventor…"></div>
