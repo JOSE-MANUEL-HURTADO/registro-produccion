@@ -373,7 +373,7 @@ body.ro .ck{visibility:hidden;}
 @keyframes up{from{transform:translateY(100%);}to{transform:none;}}
 .selbar .count{font-family:var(--sans);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--cola);white-space:nowrap;}
 .selbar .count b{font-family:var(--mono);font-size:18px;font-weight:500;letter-spacing:0;margin-right:4px;}
-.selbar .acts{display:flex;gap:6px;overflow-x:auto;flex:1;scrollbar-width:none;}
+.selbar .acts{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
 .selbar .acts::-webkit-scrollbar{display:none;}
 .selbar .btn{flex-shrink:0;background:var(--surface2);}
 @media(max-width:640px){.selbar{flex-wrap:wrap;}.selbar .acts{order:3;flex-basis:100%;}}
@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.10';
+const APP_VERSION = '6.11';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1771,10 +1771,10 @@ function renderSelbar(){
   box.innerHTML = `<div class="selbar">
     <div class="count"><b>${fmtN(S.sel.size)}</b>selec. · ${(() => { const p = pesoTotal(selItems()); return fmtKg(p.kg) + (p.sin ? '*' : ''); })()}</div>
     <div class="acts">
-      ${puedeRegistrar() ? `<button class="btn sm" onclick="sheetProcesos()">Procesos</button>
+      ${puedeRegistrar() ? `<button class="btn sm" onclick="progNueva()">Programar</button>
+      <button class="btn sm" onclick="sheetProcesos()">Procesos</button>
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
-      <button class="btn sm" onclick="progNueva()">Programar</button>
       <button class="btn sm" onclick="ordenDespacho()">Orden de despacho</button>
       ${isGerente() ? `<button class="btn sm" onclick="sheetDespacho()">Despacho manual</button>` : ''}
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
