@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.16';
+const APP_VERSION = '6.17';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3148,10 +3148,11 @@ const listoEns = it => !faltaProc(it).length;
 function progNueva(){
   // "Programado" (PRG) es la marca de que la OP ya se mandó a producción: lo que ya la tiene no se vuelve a programar
   const sel = selItems(), vivos = sel.filter(i => !i.despachado && !i.dia_final);
-  const yaProg = vivos.filter(i => i.programado === 'X' || i.programacion_id);
-  const items = vivos.filter(i => !(i.programado === 'X' || i.programacion_id)).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
+  // La casilla PRG manda: si se le quitó a mano, el ítem se puede volver a programar (sale de la programación anterior)
+  const yaProg = vivos.filter(i => i.programado === 'X');
+  const items = vivos.filter(i => i.programado !== 'X').sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
   if(!items.length) return toast(yaProg.length ? 'Los ítems seleccionados ya están programados (o en proceso)' : 'Los ítems seleccionados ya están ensamblados o despachados', true);
-  const otra = 0;
+  const otra = items.filter(i => i.programacion_id).length;
   const ops = [...grp(items, i => i.op).entries()];
   const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
     ${warn(sel.length - vivos.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
@@ -3166,7 +3167,7 @@ function progNueva(){
     let pg;
     try{
       pg = await API.progCrear({obra: [...new Set(items.map(i => i.obra))].join(' · '), fecha_req: f, notas, n_items: items.length, quien: (S.perfil && S.perfil.nombre) || null});
-      const rows = await API.update(items.map(i => i.id), {programacion_id: pg.id, programado: 'X'}); mergeRows(rows);
+      const rows = await API.update(items.map(i => i.id), {programacion_id: pg.id, programado: 'X', ens_asignado: null}); mergeRows(rows);
       for(const i of items){ i.programado = 'X'; i.programacion_id = pg.id; }
     }catch(e){ toast(e && (e.code === '42P01' || e.code === 'PGRST205' || /programacion/.test(e.message || '')) ? 'Falta activar la programación en la base (SQL 25)' : errMsg(e), true); return false; }
     toast('✓ Programación N.º ' + pg.id + ' creada'); clearSel(); PG.lista = null;
