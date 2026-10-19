@@ -32,8 +32,10 @@ begin
   if a.despachado or b.despachado or a.instalado or b.instalado then raise exception 'No se intercambian unidades ya despachadas o instaladas'; end if;
   insert into public.intercambios_destino (op, item_a, op_inst_a, item_b, op_inst_b, ubic_a, piso_a, ubic_b, piso_b)
     values (a.op, a.id, a.op_instalacion, b.id, b.op_instalacion, a.ubicacion, a.piso, b.ubicacion, b.piso);
+  perform set_config('elp.swap', '1', true);   -- ver SQL 24 (proteger_items)
   update public.items set ubicacion = b.ubicacion, piso = b.piso where id = a.id;
   update public.items set ubicacion = a.ubicacion, piso = a.piso where id = b.id;
+  perform set_config('elp.swap', '', true);
 end; $$;
 revoke all on function public.intercambiar_destino(bigint, bigint) from public, anon;
 grant execute on function public.intercambiar_destino(bigint, bigint) to authenticated;

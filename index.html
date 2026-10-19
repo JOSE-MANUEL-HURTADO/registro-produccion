@@ -161,6 +161,12 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .st-tile span{font-size:12px;color:var(--muted);}
 .st-tile.on{background:var(--surface3);border-color:var(--text2);}
 .st-tile.on .t{color:var(--text);}
+.pr-tiles{grid-template-columns:repeat(6,1fr);}
+@media(max-width:900px){.pr-tiles{grid-template-columns:1fr 1fr 1fr;}.pr-tiles .st-tile:last-child{grid-column:auto;}}
+@media(max-width:520px){.pr-tiles{grid-template-columns:1fr 1fr;}}
+.pr-chart{overflow-x:auto;background:var(--surface);border:1px solid var(--border);padding:10px 10px 4px;}
+.pr-bar{fill:var(--inst);}.pr-base{stroke:var(--border);stroke-width:1;}.pr-dom{fill:var(--muted);opacity:.4;}
+.pr-ax{font-size:10px;fill:var(--muted);font-family:var(--mono);}.pr-val{font-size:10px;fill:var(--text2);font-family:var(--mono);}
 .pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:10px;align-items:start;}
 @media(max-width:520px){.pl-grid{grid-template-columns:1fr;}}
 .pl-card{background:var(--surface);border:1px solid var(--border);}
@@ -452,7 +458,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.5';
+const APP_VERSION = '6.6';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -474,7 +480,7 @@ const STAGES = {
   'DESPACHADO':{c:'var(--desp)', t:'Despachado'},
   'INSTALADO': {c:'var(--inst)', t:'Instalado'}
 };
-const MIN_COLS = 'id,obra,status,despachado,instalado,m2,fecha_op,dia_inicio,hora_inicio,dia_final,ensamblador,op,fecha_despacho';
+const MIN_COLS = 'id,obra,status,despachado,instalado,m2,cant,fecha_op,dia_inicio,hora_inicio,dia_final,ensamblador,op,fecha_despacho,cortado,troquelado,mecanizado,programado,vidrio_proc,prealistado';
 const ANUAL_COLS = 'id,obra,fecha_op,dia_inicio,fecha_despacho,status,despachado,instalado';
 const EDITABLE = ['cortado','troquelado','mecanizado','programado','vidrio_proc','prealistado','ensamblador','dia_inicio','hora_inicio','dia_final','hora_final','despachado','fecha_despacho','remision','instalado','fecha_instalacion','instalador'];
 
@@ -664,6 +670,7 @@ const API = {
   async odAbiertas(){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('estado', 'abierta').order('id', {ascending:false}); if(error) throw error; return data || []; },
   async od(id){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
   async odActualizar(id, patch){ const {error} = await this.sb.from('ordenes_despacho').update(patch).eq('id', id); if(error) throw error; },
+  async procesosHechos(d1, d2){ const {data,error} = await this.sb.rpc('procesos_hechos', {p_desde:d1, p_hasta:d2}); if(error) throw error; return data || []; },
   async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
@@ -966,6 +973,7 @@ function setHomeTab(t){ S.homeTab = t; renderHome(); }
 
 function renderHome(){
   if(S.homeTab === 'planta') return renderPlanta();
+  if(S.homeTab === 'procesos') return renderProcesos();
   if(S.homeTab === 'cobros' && !registraCobros()) S.homeTab = 'activas';
   if(S.homeTab === 'cobros') return renderCobros();
   const anual = S.homeTab === 'anio';
@@ -999,6 +1007,7 @@ function homeTabs(){
   const t = S.homeTab;
   return `<button class="tab ${t==='activas'?'on':''}" onclick="setHomeTab('activas')">Obras activas</button>
       <button class="tab ${t==='planta'?'on':''}" onclick="setHomeTab('planta')">Planta</button>
+      <button class="tab ${t==='procesos'?'on':''}" onclick="setHomeTab('procesos')">Procesos</button>
       <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>
       ${registraCobros() ? `<button class="tab ${t==='cobros'?'on':''}" onclick="setHomeTab('cobros')">Cobros</button>` : ''}`;
 }
@@ -1006,6 +1015,7 @@ function refreshHomeBox(){
   S.plCache = null;
   if(S.homeTab === 'anio') renderAnualBox();
   else if(S.homeTab === 'planta') renderPlantaBox();
+  else if(S.homeTab === 'procesos') renderProcesosBox();
   else if(S.homeTab === 'cobros') renderCobrosBox();
   else renderObrasBox(resumenObras());
 }
@@ -1029,8 +1039,9 @@ function rangoPer(){
 }
 function perLabel(){ const [a,b] = rangoPer(); const k = S.plPer.k;
   return k==='hoy' ? 'hoy' : k==='ayer' ? 'ayer' : a===b ? 'el '+fmtD(a) : `del ${fmtD(a)} al ${fmtD(b)}`; }
-function setPer(k){ S.plPer = {...(S.plPer||{}), k}; if(k==='rango' && !S.plPer.d1){ S.plPer.d1 = addDays(today(),-1); S.plPer.d2 = today(); } renderPlantaBox(); }
-function setPerFecha(i, v){ if(!v) return; S.plPer['d'+i] = v; renderPlantaBox(); }
+const perRefresh = () => S.homeTab === 'procesos' ? renderProcesosBox() : renderPlantaBox();
+function setPer(k){ S.plPer = {...(S.plPer||{}), k}; if(k==='rango' && !S.plPer.d1){ S.plPer.d1 = addDays(today(),-6); S.plPer.d2 = today(); } perRefresh(); }
+function setPerFecha(i, v){ if(!v) return; S.plPer['d'+i] = v; perRefresh(); }
 function setEnsModo(m){ S.plEnsModo = m; renderPlantaBox(); }
 // Consulta por fecha (todas las obras, incluidas las terminadas); se guarda hasta el próximo cambio
 async function plFecha(campo){
@@ -2986,6 +2997,89 @@ function despCancelar(items, titulo){
   dcSum();
 }
 function dcSum(){ const b = $('#dcSum'); if(b) b.innerHTML = `Se cancelará${window._dcSel.size===1?'':'n'} <b>${fmtN(window._dcSel.size)}</b> ítem${window._dcSel.size===1?'':'s'}`; }
+// ════════════════════════════════════════════════════════════════
+//  PROCESOS — desempeño por proceso: lo hecho en el periodo (por día y por obra) y lo que falta
+// ════════════════════════════════════════════════════════════════
+function renderProcesos(){
+  if(!S.plPer) S.plPer = {k:'7d'};
+  if(!S.prSel) S.prSel = 'cortado';
+  $('#app').innerHTML = shell(`${respaldoHTML()}
+    <div class="tabs">${homeTabs()}</div>
+    <div class="home-head">
+      <div><div class="h1">Procesos</div><div class="h1-sub">Lo que cada proceso dejó en X en el periodo · y lo que tiene por hacer · ${liveHTML()}</div></div>
+      <div class="search">${ICON.search}<input id="qObra" placeholder="Filtrar por obra u OP…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
+    </div>
+    <div id="prPer"></div>
+    <div class="st-tiles pr-tiles" id="stTiles"></div>
+    <div id="obrasBox"></div>`);
+  const inp = $('#qObra'); inp.oninput = () => { S.q = inp.value; renderProcesosBox(); };
+  renderProcesosBox();
+}
+function setPrSel(k){ S.prSel = k; renderProcesosBox(); }
+async function prCargar(a, b){
+  const key = a + '|' + b; S.prCache = S.prCache || {};
+  if(S.prCache[key]) return;
+  S.prCache[key] = {loading: true};
+  try{ S.prCache[key].rows = await API.procesosHechos(a, b); }
+  catch(e){ S.prCache[key] = {err: e && (e.code === 'PGRST202' || /procesos_hechos/.test(e.message || '')) ? 'Falta activar las fechas de los procesos en la base (SQL 24).' : errMsg(e)}; }
+  if(S.view === 'home' && S.homeTab === 'procesos') renderProcesosBox();
+}
+function renderProcesosBox(){
+  const pb = $('#prPer'); if(pb) pb.innerHTML = perBar();
+  const [a, b] = rangoPer(), key = a + '|' + b, c = S.prCache && S.prCache[key];
+  if(!c) prCargar(a, b);
+  const q = S.q.trim().toUpperCase(), okQ = r => !q || [r.obra, r.op].some(v => v && String(v).toUpperCase().includes(q));
+  const rows = c && c.rows ? c.rows.filter(okQ) : null;
+  // Por hacer: ítems activos sin ensamblar ni despachar que aún no tienen el proceso en X
+  const vivos = (S.activos || []).filter(i => !i.despachado && !i.dia_final && okQ(i));
+  const tiles = $('#stTiles');
+  if(tiles) tiles.innerHTML = PROCS.map(([k, t]) => {
+    const l = rows ? rows.filter(r => r.proceso === k) : null, n = l ? l.reduce((s, r) => s + r.n, 0) : null;
+    const m2 = l ? l.reduce((s, r) => s + Number(r.m2 || 0), 0) : 0, pend = vivos.filter(i => i[k] !== 'X').length;
+    return `<button class="st-tile ${S.prSel===k?'on':''}" style="--c:var(--inst)" onclick="setPrSel('${k}')">
+      <span class="t">${t}</span><b>${n == null ? '—' : fmtN(n)}</b><span>${l ? fmtN(m2, 1) + ' m² · ' : ''}por hacer ${fmtN(pend)}</span></button>`;
+  }).join('');
+  const box = $('#obrasBox'); if(!box) return;
+  if(c && c.err){ box.innerHTML = `<div class="warn">${esc(c.err)}</div>`; return; }
+  if(!rows){ box.innerHTML = '<div class="loading"><div class="spin"></div>Buscando</div>'; return; }
+  const k = S.prSel, nom = (PROCS.find(p => p[0] === k) || [])[1] || k;
+  const l = rows.filter(r => r.proceso === k);
+  const n = l.reduce((s, r) => s + r.n, 0), m2 = l.reduce((s, r) => s + Number(r.m2 || 0), 0);
+  // Por día
+  const dias = []; for(let d = a; d <= b && dias.length < 400; d = addDays(d, 1)) dias.push(d);
+  const porDia = new Map(); for(const r of l){ const v = porDia.get(r.dia) || {n: 0, m2: 0}; v.n += r.n; v.m2 += Number(r.m2 || 0); porDia.set(r.dia, v); }
+  const habiles = dias.filter(d => new Date(d + 'T12:00:00').getDay() !== 0).length || 1;
+  let h = `<div class="section-t">${esc(nom)} ${perLabel()} · ${fmtN(n)} ítem${n===1?'':'s'} · ${fmtN(m2, 1)} m²${dias.length > 1 ? ` · promedio ${fmtN(n / habiles, 1)} por día (lun–sáb)` : ''}</div>`;
+  if(dias.length > 1) h += prBarras(dias, porDia);
+  // Por obra → OP
+  const obras = [...grp(l, r => r.obra).entries()].map(([o, rs]) => ({obra: o, n: rs.reduce((s, r) => s + r.n, 0), m2: rs.reduce((s, r) => s + Number(r.m2 || 0), 0),
+    ops: [...grp(rs, r => r.op).entries()].map(([op, x]) => ({op, n: x.reduce((s, r) => s + r.n, 0), m2: x.reduce((s, r) => s + Number(r.m2 || 0), 0)})).sort((p, q) => nat(p.op, q.op))}))
+    .sort((p, q) => q.n - p.n);
+  const pend = [...grp(vivos.filter(i => i[k] !== 'X'), i => i.obra).entries()].map(([o, is]) => ({obra: o, n: is.length, m2: is.reduce((s, i) => s + (Number(i.m2) || 0), 0)})).sort((p, q) => q.n - p.n);
+  h += `<div class="pl-grid" style="margin-top:12px">
+    <div class="pl-card"><div class="pl-head"><span class="n">Hecho</span><span class="m"><b>${fmtN(n)}</b> · ${fmtN(m2, 1)} m²</span></div>
+      ${obras.length ? obras.map(o => `<button class="pl-row" onclick="openObra(decodeURIComponent('${encQ(o.obra)}'))"><span class="o">${esc(o.obra)}</span><span class="k">${fmtN(o.n)}</span>
+        <span class="d">${fmtN(o.m2, 1)} m² · ${o.ops.slice(0, 6).map(x => 'OP ' + esc(x.op) + ' ×' + x.n).join(', ')}${o.ops.length > 6 ? '…' : ''}</span></button>`).join('') : `<div class="empty" style="padding:14px">Nada en ${esc(nom.toLowerCase())} ${perLabel()}.</div>`}</div>
+    <div class="pl-card"><div class="pl-head"><span class="n sin">Por hacer</span><span class="m"><b>${fmtN(pend.reduce((s, x) => s + x.n, 0))}</b> · ${fmtN(pend.reduce((s, x) => s + x.m2, 0), 1)} m²</span></div>
+      ${pend.length ? pend.slice(0, 15).map(o => `<button class="pl-row" onclick="openObra(decodeURIComponent('${encQ(o.obra)}'))"><span class="o">${esc(o.obra)}</span><span class="k">${fmtN(o.n)}</span><span class="d">${fmtN(o.m2, 1)} m² sin ${esc(nom.toLowerCase())}</span></button>`).join('') : '<div class="empty" style="padding:14px">Al día.</div>'}</div>
+  </div>`;
+  box.innerHTML = h;
+}
+// Barras por día (una serie): altura = ítems; tocar o pasar el cursor muestra el detalle
+function prBarras(dias, porDia){
+  const cw = (($('#obrasBox') || {}).clientWidth || 360) - 22;
+  const W = Math.max(cw, dias.length * 22), H = 150, PB = 22, PT = 14;
+  const max = Math.max(1, ...dias.map(d => (porDia.get(d) || {}).n || 0));
+  const bw = W / dias.length, w = Math.max(4, Math.min(28, bw - 4));
+  const bars = dias.map((d, i) => { const v = porDia.get(d) || {n: 0, m2: 0}, hh = v.n ? Math.max(3, (H - PB - PT) * v.n / max) : 0, x = i * bw + (bw - w) / 2, y = H - PB - hh;
+    const dom = new Date(d + 'T12:00:00').getDay() === 0;
+    const lbl = dias.length <= 14 || i % Math.ceil(dias.length / 10) === 0 ? `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle" class="pr-ax">${d.slice(8)}/${d.slice(5, 7)}</text>` : '';
+    return `<g><title>${fmtD(d)}: ${fmtN(v.n)} ítems · ${fmtN(v.m2, 1)} m²</title><rect x="${i * bw}" y="0" width="${bw}" height="${H - PB}" fill="transparent"/>
+      ${hh ? `<path d="M${x},${H - PB} V${y + 3} q0,-3 3,-3 h${w - 6} q3,0 3,3 V${H - PB} Z" class="pr-bar"/>` : ''}
+      ${v.n && dias.length <= 21 ? `<text x="${x + w / 2}" y="${y - 3}" text-anchor="middle" class="pr-val">${v.n}</text>` : ''}${lbl}${dom ? `<rect x="${x}" y="${H - PB + 1}" width="${w}" height="2" class="pr-dom"/>` : ''}</g>`; }).join('');
+  return `<div class="pr-chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block" role="img" aria-label="Ítems por día">
+    <line x1="0" y1="${H - PB}" x2="${W}" y2="${H - PB}" class="pr-base"/>${bars}</svg></div>`;
+}
 // ── Orden de despacho (cargue): ítems seleccionados, peso total y si caben en el camión ──
 const capCamion = () => { try{ return Number(localStorage.getItem('cap_camion')) || 3500; }catch(e){ return 3500; } };
 function ordenDespacho(){
