@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.7';
+const APP_VERSION = '6.8';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -667,6 +667,11 @@ const API = {
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
   async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
   async intercambiar(a, b){ const {error} = await this.sb.rpc('intercambiar_destino', {p_a:a, p_b:b}); if(error) throw error; },
+  async progCrear(o){ const {data,error} = await this.sb.from('programaciones').insert(o).select('*').single(); if(error) throw error; return data; },
+  async progLista(){ const {data,error} = await this.sb.from('programaciones').select('*').eq('estado', 'activa').order('fecha_req', {nullsFirst:false}).order('id'); if(error) throw error; return data || []; },
+  async prog(id){ const {data,error} = await this.sb.from('programaciones').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
+  async progActualizar(id, patch){ const {error} = await this.sb.from('programaciones').update(patch).eq('id', id); if(error) throw error; },
+  async progItems(ids){ if(!ids.length) return []; return this.all(o => this.sb.from('items').select('*', o).in('programacion_id', ids).order('id')); },
   async odCrear(o){ const {data,error} = await this.sb.from('ordenes_despacho').insert(o).select('*').single(); if(error) throw error; return data; },
   async odAbiertas(){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('estado', 'abierta').order('id', {ascending:false}); if(error) throw error; return data || []; },
   async od(id){ const {data,error} = await this.sb.from('ordenes_despacho').select('*').eq('id', id).maybeSingle(); if(error) throw error; return data; },
@@ -975,6 +980,7 @@ function setHomeTab(t){ S.homeTab = t; renderHome(); }
 function renderHome(){
   if(S.homeTab === 'planta') return renderPlanta();
   if(S.homeTab === 'procesos') return renderProcesos();
+  if(S.homeTab === 'prog') return renderProg();
   if(S.homeTab === 'cobros' && !registraCobros()) S.homeTab = 'activas';
   if(S.homeTab === 'cobros') return renderCobros();
   const anual = S.homeTab === 'anio';
@@ -1009,6 +1015,7 @@ function homeTabs(){
   return `<button class="tab ${t==='activas'?'on':''}" onclick="setHomeTab('activas')">Obras activas</button>
       <button class="tab ${t==='planta'?'on':''}" onclick="setHomeTab('planta')">Planta</button>
       <button class="tab ${t==='procesos'?'on':''}" onclick="setHomeTab('procesos')">Procesos</button>
+      <button class="tab ${t==='prog'?'on':''}" onclick="setHomeTab('prog')">Programación</button>
       <button class="tab ${t==='anio'?'on':''}" onclick="setHomeTab('anio')">Por año</button>
       ${registraCobros() ? `<button class="tab ${t==='cobros'?'on':''}" onclick="setHomeTab('cobros')">Cobros</button>` : ''}`;
 }
@@ -1017,6 +1024,7 @@ function refreshHomeBox(){
   if(S.homeTab === 'anio') renderAnualBox();
   else if(S.homeTab === 'planta') renderPlantaBox();
   else if(S.homeTab === 'procesos') renderProcesosBox();
+  else if(S.homeTab === 'prog') renderProgBox(true);
   else if(S.homeTab === 'cobros') renderCobrosBox();
   else renderObrasBox(resumenObras());
 }
@@ -1766,6 +1774,7 @@ function renderSelbar(){
       ${puedeRegistrar() ? `<button class="btn sm" onclick="sheetProcesos()">Procesos</button>
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
+      <button class="btn sm" onclick="progNueva()">Programar</button>
       <button class="btn sm" onclick="ordenDespacho()">Orden de despacho</button>
       ${isGerente() ? `<button class="btn sm" onclick="sheetDespacho()">Despacho manual</button>` : ''}
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
@@ -1821,7 +1830,7 @@ function renderDetail(){
   const it = byId(S.detailId), d = S.draft;
   const scroll = box.querySelector('.d-body') ? box.querySelector('.d-body').scrollTop : 0;
   const info = [['Obra',it.obra],['OP',it.op],['OP instalación',it.op_instalacion],['Piso',it.piso],['Sistema',it.sistema],['Serie',it.serie],
-    ['Ancho × alto',`${fmtN(it.ancho)} × ${fmtN(it.alto)}`],['M²',fmtN(it.m2,2)],['Peso', (() => { const c = calibreVidrio(it.vidrio), p = pesoItem(it); return p == null ? 'Sin calibre de vidrio' : `${fmtKg(p)} · vidrio ${fmtN(c.mm)} mm${c.aprox ? ' (estimado)' : ''}`; })()],['Fecha OP',fmtD(it.fecha_op)],['Cant.',fmtN(it.cant)]];
+    ['Ancho × alto',`${fmtN(it.ancho)} × ${fmtN(it.alto)}`],['M²',fmtN(it.m2,2)],['Peso', (() => { const c = calibreVidrio(it.vidrio), p = pesoItem(it); return p == null ? 'Sin calibre de vidrio' : `${fmtKg(p)} · vidrio ${fmtN(c.mm)} mm${c.aprox ? ' (estimado)' : ''}`; })()],['Fecha OP',fmtD(it.fecha_op)],['Cant.',fmtN(it.cant)]].concat(it.programacion_id ? [['Programación', 'N.º ' + it.programacion_id + (it.ens_asignado ? ' · línea de ' + it.ens_asignado : '')]] : []);
   const seg3 = (k) => `<div class="seg">${[['','—'],['+','+'],['X','X']].map(([v,t]) => `<button class="${(d[k]||'')===v?'on':''} ${v==='+'?'p':''}" onclick="dSet('${k}',${v?`'${v}'`:'null'})">${t}</button>`).join('')}</div>`;
   const st = stageOf({...it, ...d, status:deriveStatus(d)});
   box.innerHTML = `<div class="detail">
@@ -2208,16 +2217,17 @@ function scParse(txt){
 function scMotivo(it, e){
   if(e.proc){ if(it[e.k] === 'X') return 'ya completo'; if(SC.parcial && it[e.k] === '+') return 'ya parcial'; return null; }
   if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
-    const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', '); return null; }
+    const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', ');
+    if(!SC.ens && !it.ens_asignado) return 'sin ensamblador (elígelo arriba)'; return null; }
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(SC.od && !SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar'; return null; }
   return 'no aplica';
 }
-function scPatch(e){
+function scPatch(e, it){
   if(e.proc) return {[e.k]: SC.parcial ? '+' : 'X'};
-  if(e.k === 'ini') return {ensamblador: SC.ens, dia_inicio: today(), hora_inicio: nowTime()};
+  if(e.k === 'ini') return {ensamblador: SC.ens || (it && it.ens_asignado) || null, dia_inicio: today(), hora_inicio: nowTime()};
   if(e.k === 'fin') return {dia_final: today(), hora_final: nowTime()};
   if(e.k === 'desp') return {despachado: true, fecha_despacho: SC.fecha, remision: SC.rem};
   if(e.k === 'inst') return {instalado: true, fecha_instalacion: SC.fecha, instalador: SC.inst || null};
@@ -2265,7 +2275,7 @@ function renderScanParams(){
   const e = scEst(), box = $('#scParams'); if(!box) return;
   let h = '';
   if(e.proc) h = `<label class="switch"><span>Registrar como <b>parcial (+)</b> en lugar de completo (X)</span><button class="tgl ${SC.parcial?'on':''}" onclick="SC.parcial=!SC.parcial; this.classList.toggle('on')"></button></label>`;
-  if(e.k === 'ini') h = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('scEns', SC.ens, '', 'Elegir')}</div><div class="sc-note">Fecha y hora de inicio: el momento del escaneo.</div>`;
+  if(e.k === 'ini') h = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('scEns', SC.ens, '', 'El asignado en la programación')}</div><div class="sc-note">Fecha y hora de inicio: el momento del escaneo. Si no eliges ensamblador, se usa el que tiene asignado el ítem en la programación.</div>`;
   if(e.k === 'fin') h = `<div class="sc-note">Fecha y hora final: el momento del escaneo.</div>`;
   if(e.k === 'desp') h = `${SC.od ? `<div class="summary" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="flex:1"><b>Orden de despacho N.º ${SC.od.id}</b> · ${esc(SC.od.obra || '')}<br><small id="odProg">…</small></span>
         <button class="btn sm" onclick="odSoltar()">Cambiar</button></div>`
@@ -2350,7 +2360,7 @@ async function scCodigo(txt, manual){
   if(esCampo() && !rolEs('entrega')){ scBeep(false); return toast(rolEs('conductor') ? 'Escanea el QR de la remisión' : 'Escanea el QR del acta o de la remisión', true); }
   scGuardarParams();
   const e = scEst();
-  if(e.k === 'ini' && !SC.ens){ scBeep(false); return toast('Primero elige el ensamblador', true); }
+  if(e.k === 'ini' && !SC.ens && !p.sub){ scBeep(false); return toast('Elige el ensamblador (o escanea la etiqueta de un ítem que ya tenga ensamblador asignado en la programación)', true); }
   if(e.k === 'desp' && !SC.rem){ scBeep(false); toast('Primero escribe la remisión', true); const r = $('#scRem'); if(r) r.focus(); return; }
   SC.busy = true;
   try{
@@ -2426,7 +2436,7 @@ async function scAplicar(l, tot, e){
   }
   const prev = l.map(it => { const pt = scPatch(e); const ns = deriveStatus({...it, ...pt}); if(ns !== it.status) pt.status = ns;
     const pv = {}; for(const k of Object.keys(pt)) pv[k] = it[k] ?? null; return {id:it.id, pv}; });
-  await applyGroup(l, () => scPatch(e));
+  await applyGroup(l, it => scPatch(e, it));
   const op = l[0].op || '', sub = l.length === 1 ? l[0].op_instalacion : null;
   SC.log.unshift({hora: nowTime(), op: sub || op, est: e.proc ? e.t + (SC.parcial ? ' +' : '') : e.t, n: l.length, tot: sub ? 1 : tot, obra: l[0].obra, prev, rem: e.k === 'desp' ? SC.rem : null});
   renderScanLog();
@@ -3078,6 +3088,195 @@ function prBarras(dias, porDia){
       ${v.n && dias.length <= 21 ? `<text x="${x + w / 2}" y="${y - 3}" text-anchor="middle" class="pr-val">${v.n}</text>` : ''}${lbl}${dom ? `<rect x="${x}" y="${H - PB + 1}" width="${w}" height="2" class="pr-dom"/>` : ''}</g>`; }).join('');
   return `<div class="pr-chart"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block" role="img" aria-label="Ítems por día">
     <line x1="0" y1="${H - PB}" x2="${W}" y2="${H - PB}" class="pr-base"/>${bars}</svg></div>`;
+}
+// ════════════════════════════════════════════════════════════════
+//  PROGRAMACIÓN DE OBRA — qué entra primero a producción y para cuándo; líneas de ensamble por ensamblador
+// ════════════════════════════════════════════════════════════════
+const PG = {lista:null, items:null, err:null, cargando:false};
+const listoEns = it => !faltaProc(it).length;
+function progNueva(){
+  const sel = selItems(), items = sel.filter(i => !i.despachado && !i.dia_final).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
+  if(!items.length) return toast('Los ítems seleccionados ya están ensamblados o despachados', true);
+  const otra = items.filter(i => i.programacion_id).length;
+  const ops = [...grp(items, i => i.op).entries()];
+  const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
+    ${warn(sel.length - items.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
+    ${warn(otra, 'ya estaban en otra programación; pasan a esta.')}
+    <div class="fgrid"><div class="field"><span class="lbl">Fecha requerida (obra)</span><input type="date" id="pgFecha" value="${addDays(today(), 14)}"></div>
+      <div class="field"><span class="lbl">Notas</span><input id="pgNotas" placeholder="Ej. piso 3 y 4 primero"></div></div>
+    <div style="max-height:28vh;overflow:auto;margin-top:6px">${ops.map(([op, l]) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(op)}</b> · ${esc(l[0].diseno || '')} · ${[...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ')}</span><b>${fmtN(l.length)}</b></div>`).join('')}</div>`;
+  openSheet('Programación de obra', subSel(sel.length), body, 'Crear programación', async () => {
+    const f = $('#pgFecha').value || null, notas = $('#pgNotas').value.trim() || null;
+    let pg;
+    try{
+      pg = await API.progCrear({obra: [...new Set(items.map(i => i.obra))].join(' · '), fecha_req: f, notas, n_items: items.length, quien: (S.perfil && S.perfil.nombre) || null});
+      const rows = await API.update(items.map(i => i.id), {programacion_id: pg.id}); mergeRows(rows);
+    }catch(e){ toast(e && (e.code === '42P01' || e.code === 'PGRST205' || /programacion/.test(e.message || '')) ? 'Falta activar la programación en la base (SQL 25)' : errMsg(e), true); return false; }
+    toast('✓ Programación N.º ' + pg.id + ' creada'); clearSel(); PG.lista = null;
+    setTimeout(() => progPDF(pg, items), 60);
+  });
+}
+async function progCargar(){
+  if(PG.cargando) return; PG.cargando = true;
+  try{ PG.lista = await API.progLista(); PG.items = await API.progItems(PG.lista.map(p => p.id)); PG.err = null; }
+  catch(e){ PG.err = e && (e.code === '42P01' || e.code === 'PGRST205' || /programacion/.test(e.message || '')) ? 'Falta activar la programación en la base (SQL 25).' : errMsg(e); }
+  PG.cargando = false;
+  if(S.view === 'home' && S.homeTab === 'prog') renderProgBox();
+}
+function renderProg(){
+  $('#app').innerHTML = shell(`${respaldoHTML()}
+    <div class="tabs">${homeTabs()}</div>
+    <div class="home-head"><div><div class="h1">Programación</div><div class="h1-sub">Qué entra primero a producción, para cuándo, y la línea de cada ensamblador · ${liveHTML()}</div></div>
+      <div class="sc-note" style="max-width:420px">Para programar: entra a la obra, filtra por OP o piso, selecciona y toca <b>Programar</b>.</div></div>
+    <div id="obrasBox"></div>`);
+  renderProgBox(true);
+}
+function renderProgBox(recargar){
+  const box = $('#obrasBox'); if(!box) return;
+  if(recargar || !PG.lista){ if(!PG.lista) box.innerHTML = '<div class="loading"><div class="spin"></div>Cargando</div>'; if(recargar || !PG.lista) progCargar(); if(!PG.lista) return; }
+  if(PG.err){ box.innerHTML = `<div class="warn">${esc(PG.err)}</div>`; return; }
+  if(!PG.lista.length){ box.innerHTML = '<div class="empty">No hay programaciones activas.</div>'; return; }
+  const porProg = grp(PG.items || [], i => i.programacion_id);
+  const hoy = today();
+  let h = `<div class="section-t">Programaciones activas · por fecha requerida</div><div class="pl-grid">`;
+  for(const pg of PG.lista){
+    const l = porProg.get(pg.id) || [], n = l.length || 1;
+    const ens = l.filter(i => i.dia_final || i.despachado).length, enCurso = l.filter(i => (i.ensamblador || i.dia_inicio) && !i.dia_final && !i.despachado).length;
+    const listos = l.filter(i => !i.ensamblador && !i.dia_inicio && listoEns(i)).length, asig = l.filter(i => i.ens_asignado && !i.dia_inicio).length;
+    const dias = pg.fecha_req ? Math.round((Date.parse(pg.fecha_req) - Date.parse(hoy)) / 864e5) : null;
+    const riesgo = dias != null && dias <= 3 && ens < l.length;
+    h += `<div class="pl-card"><div class="pl-head"><span class="n">N.º ${pg.id} · ${esc(pg.obra || '')}</span><span class="m">${pg.fecha_req ? `<b style="${riesgo ? 'color:var(--danger)' : ''}">${fmtD(pg.fecha_req)}</b><br>${dias < 0 ? 'vencida hace ' + fmtN(-dias) + ' d' : dias === 0 ? 'hoy' : 'en ' + fmtN(dias) + ' d'}` : 'sin fecha'}</span></div>
+      <div style="padding:10px 14px;font-size:12px">
+        ${pg.notas ? `<div style="margin-bottom:6px;color:var(--text2)">${esc(pg.notas)}</div>` : ''}
+        ${PROCS.map(([k, t, ab]) => { const x = l.filter(i => i[k] === 'X' || i.dia_final || i.despachado).length, pc = Math.round(x / n * 100);
+          return `<div style="display:grid;grid-template-columns:34px 1fr 64px;gap:8px;align-items:center;margin:3px 0" title="${t}: ${x} de ${l.length}"><span>${ab}</span><div style="height:8px;background:var(--surface3)"><div style="height:8px;width:${pc}%;background:${pc === 100 ? 'var(--inst)' : 'var(--cola)'}"></div></div><span style="text-align:right">${fmtN(x)}/${fmtN(l.length)}</span></div>`; }).join('')}
+        <div style="margin-top:8px">Listos para ensamble <b>${fmtN(listos)}</b> · asignados <b>${fmtN(asig)}</b> · en ensamble <b>${fmtN(enCurso)}</b> · ensamblados <b>${fmtN(ens)}</b> de ${fmtN(l.length)}</div>
+      </div>
+      <div style="display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap">
+        <button class="btn sm" onclick="progPDFid(${pg.id})">${ICON.down} PDF</button>
+        ${puedeRegistrar() ? `<button class="btn sm" onclick="progAsignar(${pg.id})">Asignar ensambladores</button>
+        <button class="btn sm ghost" onclick="progCerrar(${pg.id})">Cerrar</button>` : ''}</div></div>`;
+  }
+  h += `</div>`;
+  // Líneas de ensamble
+  const vivos = (PG.items || []).filter(i => i.ens_asignado && !i.dia_final && !i.despachado);
+  const lineas = [...grp(vivos, i => i.ens_asignado).entries()].sort((a, b) => nat(a[0], b[0]));
+  const fecha = id => (PG.lista.find(p => p.id === id) || {}).fecha_req || '9999';
+  h += `<div class="section-t" style="margin-top:18px">Líneas de ensamble</div>`;
+  h += lineas.length ? `<div class="pl-grid">${lineas.map(([ens, l]) => {
+    const pend = l.filter(i => !i.dia_inicio), curso = l.filter(i => i.dia_inicio);
+    const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => nat(fecha(a[0].programacion_id), fecha(b[0].programacion_id)) || nat(a[0].op, b[0].op));
+    return `<div class="pl-card"><div class="pl-head"><span class="n">${esc(ens)}</span><span class="m"><b>${fmtN(pend.length)}</b> por iniciar · ${fmtN(curso.length)} en curso</span></div>
+      ${filas.map(f => { const i0 = f[0], pi = f.filter(i => !i.dia_inicio).length, ok = f.filter(i => !i.dia_inicio && listoEns(i)).length;
+        return `<button class="pl-row" onclick="openObra(decodeURIComponent('${encQ(i0.obra)}'), false, '', {estado:'TODOS', op:decodeURIComponent('${encQ(i0.op)}'), q:''})"><span class="o">${esc(i0.obra)} · <em>OP ${esc(i0.op)}</em></span><span class="k">${fmtN(f.length)}</span>
+          <span class="d">N.º ${i0.programacion_id} · para ${fmtD(fecha(i0.programacion_id))} · ${pi ? `${fmtN(pi)} por iniciar (${fmtN(ok)} con procesos listos)` : 'todas iniciadas'}</span></button>`; }).join('')}
+      <div style="padding:8px 14px"><button class="btn sm" onclick="lineaPDF(decodeURIComponent('${encQ(ens)}'))">${ICON.down} PDF línea</button></div></div>`; }).join('')}</div>`
+    : '<div class="empty">Aún no hay ítems asignados a ensambladores. Usa <b>Asignar ensambladores</b> en una programación.</div>';
+  box.innerHTML = h;
+}
+async function progCerrar(id){
+  if(!confirm(`¿Cerrar la programación N.º ${id}? Deja de aparecer aquí (los ítems no cambian).`)) return;
+  try{ await API.progActualizar(id, {estado: 'cerrada'}); }catch(e){ return toast(errMsg(e), true); }
+  toast('✓ Programación cerrada'); progCargar();
+}
+// Asignar: por OP, cuántas unidades le tocan a cada ensamblador (se prefieren las que ya tienen los procesos listos)
+function progAsignar(id){
+  const l = (PG.items || []).filter(i => i.programacion_id === id && !i.dia_inicio && !i.ensamblador && !i.despachado);
+  if(!l.length) return toast('Todos los ítems de esta programación ya iniciaron ensamble', true);
+  const ops = [...grp(l, i => i.op).entries()].sort((a, b) => nat(a[0], b[0]));
+  window._pa = {id, ops};
+  const body = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('paEns', '', '', 'Elegir')}</div>
+    <div class="sc-note" style="margin:4px 0 8px">Escribe cuántas unidades de cada OP le asignas. Se toman primero las que tienen los procesos completos.</div>
+    <div style="max-height:44vh;overflow:auto">${ops.map(([op, is], k) => { const sin = is.filter(i => !i.ens_asignado), ok = sin.filter(listoEns).length;
+      const ya = [...grp(is.filter(i => i.ens_asignado), i => i.ens_asignado).entries()].map(([e, x]) => esc(e) + ' ' + x.length).join(', ');
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span style="flex:1"><b>${esc(op)}</b> · ${esc(is[0].diseno || '')}<br><small>sin asignar ${fmtN(sin.length)} (${fmtN(ok)} listos)${ya ? ' · ' + ya : ''}</small></span>
+        <input type="number" min="0" max="${sin.length}" value="0" data-k="${k}" class="paQ" inputmode="numeric" style="width:70px;min-height:38px;padding:6px 8px;text-align:right">
+        <button class="btn sm ghost" onclick="document.querySelector('.paQ[data-k=\\'${k}\\']').value=${sin.length}">Todas</button></div>`; }).join('')}</div>
+    <button class="btn sm ghost" style="margin-top:8px" onclick="progQuitarAsig(${id})">Quitar todas las asignaciones sin iniciar</button>`;
+  openSheet('Asignar ensambladores · N.º ' + id, 'Línea de trabajo de cada ensamblador', body, 'Asignar', async () => {
+    const ens = pfVal('paEns'); if(!ens){ toast('Elige el ensamblador', true); return false; }
+    const ids = [];
+    ops.forEach(([op, is], k) => { const q = Math.max(0, Math.round(Number(document.querySelector(`.paQ[data-k="${k}"]`).value) || 0)); if(!q) return;
+      const sin = is.filter(i => !i.ens_asignado).sort((a, b) => (listoEns(b) - listoEns(a)) || nat(a.op_instalacion, b.op_instalacion));
+      sin.slice(0, q).forEach(i => ids.push(i.id)); });
+    if(!ids.length){ toast('No asignaste ninguna cantidad', true); return false; }
+    try{ const rows = await API.update(ids, {ens_asignado: ens}); mergeRows(rows); for(const r of rows){ const x = PG.items.find(i => i.id === r.id); if(x) Object.assign(x, r); } }
+    catch(e){ toast(errMsg(e), true); return false; }
+    toast(`✓ ${ids.length} ítem${ids.length===1?'':'s'} asignado${ids.length===1?'':'s'} a ${ens}`); renderProgBox();
+  });
+}
+async function progQuitarAsig(id){
+  const ids = (PG.items || []).filter(i => i.programacion_id === id && i.ens_asignado && !i.dia_inicio).map(i => i.id);
+  if(!ids.length) return toast('No hay asignaciones sin iniciar', true);
+  if(!confirm(`¿Quitar la asignación de ${ids.length} ítem(s)?`)) return;
+  try{ const rows = await API.update(ids, {ens_asignado: null}); for(const r of rows){ const x = PG.items.find(i => i.id === r.id); if(x) Object.assign(x, r); } }catch(e){ return toast(errMsg(e), true); }
+  closeSheet(); renderProgBox(); toast('✓ Asignaciones quitadas');
+}
+async function progPDFid(id){ const pg = PG.lista.find(p => p.id === id) || await API.prog(id); progPDF(pg, (PG.items || []).filter(i => i.programacion_id === id)); }
+// PDF tabla genérica (logo, título, columnas, filas) → hoja para compartir
+async function pdfTabla({titulo, num, sub, info, cols, filas, pie, nombre, firmas}){
+  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); }catch(e){ return toast(errMsg(e), true); }
+  const logo = await etqLogo();
+  const doc = new jspdf.jsPDF({unit:'mm', format:'letter', orientation:'landscape'});
+  const PW = 279.4, PH = 215.9, M = 12;
+  const X = []; { let x = M; for(const c of cols){ X.push(x); x += c[1]; } }
+  const W = cols.reduce((a, c) => a + c[1], 0);
+  const corta = (t, max) => { t = String(t ?? ''); if(doc.getTextWidth(t) <= max) return t; while(t && doc.getTextWidth(t + '…') > max) t = t.slice(0, -1); return t + '…'; };
+  const tx = (t, i, y) => { const c = cols[i]; const x = c[2] === 'r' ? X[i] + c[1] - 1.5 : c[2] === 'c' ? X[i] + c[1] / 2 : X[i] + 1.5; doc.text(corta(t, c[1] - 2), x, y, {align: c[2] === 'r' ? 'right' : c[2] === 'c' ? 'center' : 'left'}); };
+  let y, pag = 0;
+  const enc = () => { pag++;
+    if(logo){ const h = 11; doc.addImage(logo.url, 'PNG', M, 10, h * logo.r, h); }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20); doc.text(titulo + (num ? ' N.º ' + num : ''), PW - M, 15, {align:'right'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90); doc.text((sub || '') + (pag > 1 ? '   ·   Hoja ' + pag : ''), PW - M, 21, {align:'right'});
+    doc.setDrawColor(180); doc.setLineWidth(0.3); doc.line(M, 26, PW - M, 26); y = 32; };
+  const cab = () => { doc.setFillColor(238); doc.rect(M, y - 4.2, W, 6.2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(40); cols.forEach((c, i) => tx(c[0], i, y)); y += 6; };
+  enc();
+  if(info){ doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(20); const t = doc.splitTextToSize(info, W); doc.text(t, M, y); y += t.length * 4.4 + 3; }
+  cab();
+  for(const f of filas){
+    if(f.grupo){ if(y > PH - 30){ doc.addPage(); enc(); cab(); } doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text(f.grupo, M + 1, y + 1); y += 6; continue; }
+    if(y > PH - 24){ doc.addPage(); enc(); cab(); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
+    f.v.forEach((t, i) => { if(t === '□'){ doc.setDrawColor(110); doc.rect(X[i] + cols[i][1] / 2 - 1.8, y - 3, 3.6, 3.6); } else if(t === '■'){ doc.setFillColor(60); doc.rect(X[i] + cols[i][1] / 2 - 1.8, y - 3, 3.6, 3.6, 'F'); } else tx(t, i, y); });
+    doc.setDrawColor(225); doc.line(M, y + 2.2, M + W, y + 2.2); y += 6;
+  }
+  if(pie){ y += 3; doc.setFontSize(8); doc.setTextColor(80); doc.text(doc.splitTextToSize(pie, W), M, y); }
+  if(firmas){ const fy = PH - 14; doc.setDrawColor(120); doc.setFontSize(8.5); doc.setTextColor(60); const w = (W - 8 * (firmas.length - 1)) / firmas.length;
+    firmas.forEach((t, i) => { const x = M + i * (w + 8); doc.line(x, fy, x + w, fy); doc.text(t, x, fy + 4.5); }); }
+  const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
+  const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  window._pt = {file, nombre};
+  openSheet(titulo + (num ? ' N.º ' + num : ''), esc(sub || ''), `<div style="display:flex;flex-direction:column;gap:8px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_pt.file], title:_pt.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
+}
+const pisosTxt = l => [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
+function progPDF(pg, items){
+  const filas = [];
+  for(const [obra, lo] of [...grp(items, i => i.obra).entries()].sort((a, b) => nat(a[0], b[0]))){
+    if(new Set(items.map(i => i.obra)).size > 1) filas.push({grupo: 'Obra: ' + obra});
+    for(const l of [...grp(lo, i => i.op).values()].sort((a, b) => nat(a[0].op, b[0].op))){
+      const it = l[0], c = calibreVidrio(it.vidrio);
+      const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
+      filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.map(([k]) => marca(k))]});
+    }
+  }
+  pdfTabla({titulo: 'PROGRAMACIÓN DE OBRA', num: pg.id, sub: (pg.obra || '') + (pg.fecha_req ? ' · requerida para el ' + fmtD(pg.fecha_req) : ''),
+    info: `${fmtN(items.length)} unidades · ${fmtN(new Set(items.map(i => i.op)).size)} OP${pg.notas ? ' · ' + pg.notas : ''}. Cada proceso marca su casilla al terminar la OP completa (cuadro relleno = ya está en X en la app).`,
+    cols: [['OP', 18, 'l'], ['Ítem', 16, 'l'], ['Diseño', 48, 'l'], ['Medida', 22, 'l'], ['Vidrio', 50, 'l'], ['Cant.', 11, 'r'], ['Pisos', 26, 'l'], ['m2', 13, 'r'], ...PROCS.map(([,, ab]) => [ab, 10.9, 'c'])],
+    filas, pie: 'Prioridad: esta programación va primero. Al terminar cada proceso regístrelo en la app (escáner) para que el ensamble no se bloquee.',
+    nombre: 'Programacion_' + pg.id + '.pdf', firmas: ['Corte', 'Troquelado', 'Mecanizado', 'Programado']});
+}
+function lineaPDF(ens){
+  const l = (PG.items || []).filter(i => i.ens_asignado === ens && !i.dia_final && !i.despachado);
+  const fecha = id => (PG.lista.find(p => p.id === id) || {}).fecha_req || '';
+  const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => nat(fecha(a[0].programacion_id) || '9', fecha(b[0].programacion_id) || '9') || nat(a[0].op, b[0].op))
+    .map(f => { const i0 = f[0]; return {v: [fecha(i0.programacion_id) ? fmtD(fecha(i0.programacion_id)) : '—', 'N.º ' + i0.programacion_id, i0.obra, i0.op, i0.diseno, i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) : '', fmtN(f.length), f.map(i => i.op_instalacion.split('.').pop()).join(', '), pisosTxt(f), fmtN(f.filter(i => !i.dia_inicio && listoEns(i)).length), '□']}; });
+  pdfTabla({titulo: 'LÍNEA DE ENSAMBLE', sub: ens + ' · ' + fmtD(today()), info: `${fmtN(l.length)} unidades asignadas, en orden de prioridad (fecha requerida). "Listos" = con cortado, troquelado, mecanizado y programado completos.`,
+    cols: [['Para', 20, 'l'], ['Prog.', 16, 'l'], ['Obra', 46, 'l'], ['OP', 18, 'l'], ['Diseño', 48, 'l'], ['Medida', 22, 'l'], ['Cant.', 11, 'r'], ['Unidades (.n)', 30, 'l'], ['Pisos', 20, 'l'], ['Listos', 13, 'r'], ['Hecho', 11.4, 'c']],
+    filas, pie: 'Al iniciar y terminar cada unidad, escanee su etiqueta en la app (Inicio / Ensamble terminado).', nombre: 'Linea_' + ens.replace(/\W+/g, '_') + '.pdf', firmas: ['Ensamblador', 'Supervisor']});
 }
 // ── Orden de despacho (cargue): ítems seleccionados, peso total y si caben en el camión ──
 const capCamion = () => { try{ return Number(localStorage.getItem('cap_camion')) || 3500; }catch(e){ return 3500; } };
