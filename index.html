@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.19';
+const APP_VERSION = '6.20';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -818,7 +818,18 @@ const firmaRem = () => rolEs('gerente','asistente','cobros','conductor','recibe'
 const normNom = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
 const PERSONAS_DESDE = '2026-01-01';
 const tipoPersona = id => /inst/i.test(id) ? 'inst' : 'ens';
-function personas(tipo){ return (S.personas && S.personas[tipo || 'ens']) || [...new Set((S.ensambladores||[]).map(normNom))].filter(Boolean).sort(nat); }
+function personas(tipo){ return (S.personas && S.personas[tipo || 'ens']) || []; }
+// Carga las listas al entrar (y reintenta); mientras tanto los desplegables quedan vacíos, nunca con la lista histórica completa
+async function cargarPersonas(){
+  for(let k = 0; k < 3 && !S.personas; k++){
+    try{ S.personas = await API.personasRecientes(); }catch(e){ console.warn('personas', e); await new Promise(r => setTimeout(r, 2000)); }
+  }
+  // refresca los desplegables que ya estén abiertos en pantalla
+  document.querySelectorAll('.pf').forEach(w => { const sel = w.querySelector('select'); if(!sel || sel.style.display === 'none') return;
+    const v = sel.value, ph = sel.options[0] ? sel.options[0].text : '— Elegir —', tipo = tipoPersona(w.id), L = personas(tipo);
+    const opts = (v && v !== '__otro__' && !L.includes(v) ? [v] : []).concat(L);
+    sel.innerHTML = `<option value="">${esc(ph)}</option>${opts.map(n => `<option ${n === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}<option value="__otro__">✎ Agregar ${tipo === 'inst' ? 'instalador' : 'ensamblador'} nuevo…</option>`; });
+}
 function personaField(id, val, key, ph){
   const tipo = tipoPersona(id), L = personas(tipo), v = val ? normNom(val) : '';
   const opts = (v && !L.includes(v) ? [v] : []).concat(L);
@@ -897,7 +908,7 @@ async function afterLogin(ses){
   loadOrdenes();
   if(isGerente()) loadRespaldo();
   if(rolEs('cobros')) S.homeTab = 'cobros';
-  if(registraInst()) API.personasRecientes().then(l => S.personas = l).catch(e => console.warn('personas', e));
+  if(registraInst()) cargarPersonas();
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
   window.addEventListener('popstate', onPop);
   history.replaceState({v:'home'}, '');
