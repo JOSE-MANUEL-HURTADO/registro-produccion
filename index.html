@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.32';
+const APP_VERSION = '6.33';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1029,10 +1029,10 @@ function renderHome(){
   if(S.homeTab === 'cobros') return renderCobros();
   const anual = S.homeTab === 'anio';
   const res = resumenObras();
-  const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a.e+=(o.porEnt||0), a), {d:0,i:0,e:0});
+  const tot = res.reduce((a,o)=>(a.d+=o.porDesp, a.i+=o.porInst, a.e+=(o.porEnt||0), a.c+=o['EN COLA'], a.p+=o['PRODUCCIÓN'], a.en+=o['ENSAMBLADO'], a.ds+=o['DESPACHADO'], a), {d:0,i:0,e:0,c:0,p:0,en:0,ds:0});
   const sub = anual
     ? `Año de producción (DIA INICIO), igual que el dashboard · los ítems en cola se ubican por su FECHA OP · ${liveHTML()}`
-    : `${res.length} obras · ${fmtN(tot.d)} ítems por despachar · ${fmtN(tot.i)} por instalar · ${fmtN(tot.e)} instalados por entregar · ${liveHTML()}`;
+    : `${res.length} obras · ${fmtN(tot.c)} en cola · ${fmtN(tot.p)} en ensamble · ${fmtN(tot.en)} ensamblados por despachar · ${fmtN(tot.ds)} despachados por instalar · ${fmtN(tot.e)} instalados por entregar · ${liveHTML()}`;
   const legend = anual
     ? [['var(--cola)','En cola'],['var(--ens)','En planta'],['var(--desp)','Despachado sin instalar'],['var(--inst)','Instalado']]
     : ['EN COLA','PRODUCCIÓN','ENSAMBLADO','DESPACHADO'].map(k => [STAGES[k].c, k==='DESPACHADO' ? 'Despachado sin instalar' : STAGES[k].t]);
