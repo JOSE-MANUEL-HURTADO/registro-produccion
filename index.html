@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.41';
+const APP_VERSION = '6.42';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2346,7 +2346,8 @@ function renderScanParams(){
       : `<div class="field"><span class="lbl">Orden de despacho</span><div style="display:flex;gap:6px"><select id="scOd" style="flex:1"><option value="">Escanea el QR de la orden o elígela…</option></select></div></div>
         <div class="sc-note" style="margin-bottom:6px">Sin orden se puede cargar igual, pero con orden la app te avisa si un ítem no va en ese camión y te muestra lo que falta.</div>`}
     <div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
-      ${remCampo('scRem', SC.rem)}</div>
+      ${SC.od && SC.od.remision ? `<div class="field"><span class="lbl">Remisión de la orden</span><input id="scRem" value="${esc(SC.od.remision)}" readonly>
+        <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn sm ghost" onclick="odOtroCamion()">No cupo: otro camión (remisión nueva)</button></div></div>` : remCampo('scRem', SC.rem)}</div>
     <div class="sc-note">El despacho y la remisión quedan registrados <b>al escanear cada ítem</b> que sube al camión.</div>
     ${SC.rem && SC.log.some(l => l.rem === SC.rem && !l.deshecho) ? `<button class="btn primary" style="width:100%;margin-top:8px" onclick="odTerminar()">Terminar cargue · remisión ${esc(SC.rem)}</button>` : ''}`;
   if(e.k === 'rem') h = `<div class="sc-note">Escanea el <b>QR de la remisión</b> al llegar a la obra. Quien recibe revisa las cantidades por OP, anota novedades y firma en la pantalla.</div>`;
@@ -2555,6 +2556,8 @@ async function scAplicar(l, tot, e){
   const prev = l.map(it => { const pt = scPatch(e); const ns = deriveStatus({...it, ...pt}); if(ns !== it.status) pt.status = ns;
     const pv = {}; for(const k of Object.keys(pt)) pv[k] = it[k] ?? null; return {id:it.id, pv}; });
   await applyGroup(l, it => scPatch(e, it));
+  // La primera carga fija la remisión de la orden: todo lo que se cargue después de esa orden sale con la misma
+  if(e.k === 'desp' && SC.od && !SC.od.remision && SC.rem){ SC.od.remision = SC.rem; try{ await API.odActualizar(SC.od.id, {remision: SC.rem}); }catch(err){ console.warn(err); } }
   const op = l[0].op || '', sub = l.length === 1 ? l[0].op_instalacion : null;
   SC.log.unshift({hora: nowTime(), op: sub || op, est: e.proc ? e.t + (SC.parcial ? ' +' : '') : e.t, n: l.length, tot: sub ? 1 : tot, obra: l[0].obra, prev, rem: e.k === 'desp' ? SC.rem : null});
   renderScanLog();
@@ -3572,12 +3575,23 @@ async function odUsar(id){
   let o; try{ o = await API.od(id); }catch(e){ return toast(errMsg(e), true); }
   if(!o) return toast('No encontré la orden de despacho ' + id, true);
   if(o.estado !== 'abierta') return toast(`La orden ${id} ya está ${o.estado}${o.remision ? ' (remisión ' + o.remision + ')' : ''}`, true);
-  SC.od = o;
+  // Una sola remisión por orden: si ya se cargó algo, se sigue con la misma remisión aunque sea otra hora, otro día u otro usuario
+  if(!o.remision){ try{ const {data} = await API.sb.from('items').select('remision').in('id', o.items).eq('despachado', true).not('remision', 'is', null).limit(1); if(data && data[0]) o.remision = data[0].remision; }catch(e){} }
+  SC.od = o; if(o.remision) SC.rem = o.remision;
   if(S.view !== 'scan') goScan();
   if(SC.est !== 'desp') scSetEst('desp'); else renderScanParams();
   toast('Orden de despacho N.º ' + id + ': escanea los ítems al subirlos al camión');
 }
 function odSoltar(){ SC.od = null; renderScanParams(); }
+// El camión va lleno (por volumen o peso): lo que falte de la orden sale en otro camión con remisión nueva
+async function odOtroCamion(){
+  const o = SC.od; if(!o) return;
+  if(!confirm(`La remisión ${o.remision} queda con lo que ya se cargó.\n\nLo que falta de la orden N.º ${o.id} sale en otro camión con una remisión nueva. ¿Continuar?`)) return;
+  let n; try{ n = await API.siguienteRemision(); }catch(e){ return toast(errMsg(e), true); }
+  try{ await API.odActualizar(o.id, {remision: n}); }catch(e){ return toast(errMsg(e), true); }
+  o.remision = n; SC.rem = n; renderScanParams(); renderScanLog();
+  toast('Remisión nueva ' + n + ' para el siguiente camión');
+}
 // ── Órdenes de despacho pendientes: ver avance, reimprimir, cargar o anular ──
 async function odLista(){
   openSheet('Órdenes de despacho pendientes', 'Abiertas, aún sin terminar el cargue', '<div class="loading"><div class="spin"></div>Cargando</div>', 'Cerrar', async () => {});
