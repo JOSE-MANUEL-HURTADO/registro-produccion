@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.43';
+const APP_VERSION = '6.44';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -679,7 +679,9 @@ const API = {
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
   async cancelados(rem){ const {data,error} = await this.sb.from('despachos_cancelados').select('op_instalacion,op,motivo,cuando,quien').eq('remision', rem).order('id'); if(error) throw error; return data || []; },
-  async pendInstalar(){ const l = await this.all(o => this.sb.from('items').select('obra,piso,ubicacion,instalado,acta_id', o).eq('despachado', true).order('id')); return l.filter(i => !i.instalado && !i.acta_id); },
+  // Solo lo despachado sin instalar (filtrado en la base: rápido aunque haya años de historia)
+  async pendInstalar(){ const l = await this.all(o => this.sb.from('items').select('obra,piso,ubicacion', o).eq('despachado', true).or('instalado.is.null,instalado.eq.false').is('acta_id', null).order('id'));
+    return l.filter(i => !(S.cerradas && S.cerradas.has(i.obra))); },
   async pisoInstalacion(id, piso){ const {data,error} = await this.sb.rpc('asignar_piso_instalacion', {p_id:id, p_piso:piso}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
   async intercambiar(a, b){ const {error} = await this.sb.rpc('intercambiar_destino', {p_a:a, p_b:b}); if(error) throw error; },
   async progCrear(o){ const {data,error} = await this.sb.from('programaciones').insert(o).select('*').single(); if(error) throw error; return data; },
@@ -2356,10 +2358,12 @@ function renderScanParams(){
     ${SC.acta ? `<div class="summary" style="margin-top:8px;display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Acta N.º ${SC.acta.num}</b> · ${esc(SC.acta.obra)}</span><button class="btn sm primary" onclick="actaEstado(${SC.acta.id})">Ver / cerrar y firmar</button></div>` : ''}`;
   if(e.k === 'inst'){
     const pend = SC.instPend;
-    const pisos = pend ? [...new Set(pend.flatMap(i => indef(i) ? ubicPartes(i.ubicacion).map(p => 'PISO ' + Math.floor(p.cod / 100)) : [i.piso || '(sin piso)']))].sort(nat).map(p => [p]) : [];
+    // Pisos 1 a 40 de una vez (no hay que esperar); se suman los nombres especiales que traiga la base (PH, SÓTANO…)
+    const base = Array.from({length: 40}, (_, k) => 'PISO ' + (k + 1));
+    const pisos = [...new Set(base.concat(pend ? pend.flatMap(i => indef(i) ? ubicPartes(i.ubicacion).map(p => 'PISO ' + Math.floor(p.cod / 100)) : [i.piso || '(sin piso)']) : []))].sort(nat).map(p => [p]);
     h = `<div class="summary" style="margin-bottom:8px;${SC.instPiso ? '' : 'border-color:var(--danger)'}">${SC.instPiso ? `Instalando en <b style="font-size:16px">${esc(SC.instPiso)}</b><br><small>Todo lo que escanees queda en este piso (la obra la toma del QR). Cambia el piso cuando subas o bajes.</small>` : '<b>Primero elige el piso donde estás instalando.</b> Sin piso no se puede escanear.'}</div>
     <div class="fgrid">
-      <div class="field full"><span class="lbl">Piso</span><select id="scIPiso" onchange="instPiso(this.value)"><option value="">${pend ? (pisos.length ? 'Elegir piso…' : 'No hay nada despachado por instalar') : 'Cargando…'}</option>${pisos.map(([pi, l]) => `<option value="${esc(pi)}" ${pi === SC.instPiso ? 'selected' : ''}>${esc(pi)}</option>`).join('')}</select></div>
+      <div class="field full"><span class="lbl">Piso</span><select id="scIPiso" onchange="instPiso(this.value)"><option value="">Elegir piso…</option>${pisos.map(([pi, l]) => `<option value="${esc(pi)}" ${pi === SC.instPiso ? 'selected' : ''}>${esc(pi)}</option>`).join('')}</select></div>
     </div>`;
     if(!pend) setTimeout(instCargarPend, 0);
     h += `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
