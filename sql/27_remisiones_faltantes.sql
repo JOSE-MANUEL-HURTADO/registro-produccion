@@ -23,6 +23,8 @@ with malos as (
   from public.items
   where despachado
     and (remision is null or trim(remision) = '' or trim(remision) ~ '^[0\s\-\./]+$')
+    -- nunca tocar una remisión que ya tiene recibido firmado (ver SQL 34)
+    and not exists (select 1 from public.recepciones_remision r where r.remision = items.remision)
 ), grupos as (
   select obra, fecha_despacho,
          row_number() over (partition by fecha_despacho order by obra) as n
