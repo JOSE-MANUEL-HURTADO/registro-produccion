@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.38';
+const APP_VERSION = '6.39';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3242,7 +3242,9 @@ function progNueva(){
   const items = vivos.filter(i => i.programado !== 'X').sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
   if(!items.length) return toast(yaProg.length ? 'Los ítems seleccionados ya están programados (o en proceso)' : 'Los ítems seleccionados ya están ensamblados o despachados', true);
   const otra = items.filter(i => i.programacion_id).length;
-  const ops = [...grp(items, i => i.op).entries()].sort((a, b) => ordenPlanta(a[1][0], b[1][0]));
+  const nSis = new Map(); for(const i of items){ const k = sistemaDe(i); nSis.set(k, (nSis.get(k) || 0) + 1); }
+  const ops = [...grp(items, i => i.op).entries()].sort((a, b) => { const sa = sistemaDe(a[1][0]), sb = sistemaDe(b[1][0]);
+    return (sa !== sb ? (nSis.get(sb) - nSis.get(sa) || nat(sa, sb)) : 0) || b[1].length - a[1].length || ordenPlanta(a[1][0], b[1][0]); });
   const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
     ${warn(sel.length - vivos.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
     ${warn(yaProg.length, 'ya estaban programados (PRG en X) y se dejaron por fuera, para no mandarlos dos veces a producción.')}
@@ -3440,9 +3442,10 @@ function progPDF(pg, items){
   for(const [obra, lo] of [...grp(items, i => i.obra).entries()].sort((a, b) => nat(a[0], b[0]))){
     if(new Set(items.map(i => i.obra)).size > 1) filas.push({grupo: 'Obra: ' + obra});
     // Agrupado por sistema: cada proceso trabaja un mismo material seguido, sin cambiar de perfil
-    for(const [sis, ls] of [...grp(lo, sistemaDe).entries()].sort((a, b) => nat(a[0], b[0]))){
+    // Sistemas con más unidades primero; dentro de cada uno, las OP de mayor cantidad primero (corte de varias a la vez)
+    for(const [sis, ls] of [...grp(lo, sistemaDe).entries()].sort((a, b) => b[1].length - a[1].length || nat(a[0], b[0]))){
     filas.push({grupo: 'Sistema ' + sis + ' · ' + fmtN(ls.length) + ' und · ' + fmtN(ls.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1) + ' m²'});
-    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => ordenPlanta(a[0], b[0]))){
+    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => b.length - a.length || ordenPlanta(a[0], b[0]))){
       const it = l[0], c = calibreVidrio(it.vidrio);
       const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
       filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
