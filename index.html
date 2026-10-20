@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.36';
+const APP_VERSION = '6.37';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3424,7 +3424,7 @@ async function pdfTabla({titulo, num, sub, info, cols, filas, pie, nombre, firma
 }
 // Sistema (perfilería) del ítem: el de la base, o el diseño sin la configuración de naves (-XO, -OXXO…)
 const sistemaDe = it => { const s0 = String(it.sistema || '').trim(); if(s0) return s0.toUpperCase();
-  return String(it.diseno || '').toUpperCase().replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim() || 'SIN SISTEMA'; };
+  return String(it.diseno || '').toUpperCase().replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\.\s+/g, '.').replace(/\s+/g, ' ').trim() || 'SIN SISTEMA'; };
 const pisosTxt = l => [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
 function progPDF(pg, items){
   const filas = [];
