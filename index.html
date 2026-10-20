@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.37';
+const APP_VERSION = '6.38';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3242,7 +3242,7 @@ function progNueva(){
   const items = vivos.filter(i => i.programado !== 'X').sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
   if(!items.length) return toast(yaProg.length ? 'Los ítems seleccionados ya están programados (o en proceso)' : 'Los ítems seleccionados ya están ensamblados o despachados', true);
   const otra = items.filter(i => i.programacion_id).length;
-  const ops = [...grp(items, i => i.op).entries()].sort((a, b) => nat(sistemaDe(a[1][0]), sistemaDe(b[1][0])) || nat(a[0], b[0]));
+  const ops = [...grp(items, i => i.op).entries()].sort((a, b) => ordenPlanta(a[1][0], b[1][0]));
   const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
     ${warn(sel.length - vivos.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
     ${warn(yaProg.length, 'ya estaban programados (PRG en X) y se dejaron por fuera, para no mandarlos dos veces a producción.')}
@@ -3422,9 +3422,18 @@ async function pdfTabla({titulo, num, sub, info, cols, filas, pie, nombre, firma
       <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
 }
-// Sistema (perfilería) del ítem: el de la base, o el diseño sin la configuración de naves (-XO, -OXXO…)
-const sistemaDe = it => { const s0 = String(it.sistema || '').trim(); if(s0) return s0.toUpperCase();
-  return String(it.diseno || '').toUpperCase().replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\.\s+/g, '.').replace(/\s+/g, ' ').trim() || 'SIN SISTEMA'; };
+// Sistema del ítem: solo el nombre (ABSOLUTE, SIENA, ELI, E.GLASS…), sin la descripción que trae el diseño
+const sistemaDe = it => { const s0 = String(it.sistema || '').trim();
+  let t = (s0 || String(it.diseno || '')).toUpperCase().replace(/\.\s+/g, '.').trim();
+  t = t.split(/\s*-\s*/)[0];                        // antes del primer guion (configuración, variante)
+  t = t.replace(/([A-ZÁÉÍÓÚÑ]{2,})\.\S*/, '$1');      // ABSOLUTE.T → ABSOLUTE · ELI.053/… → ELI (E.GLASS se conserva)
+  const w = []; for(const x of t.split(/\s+/)){ if(/[\d\/]/.test(x)) break; w.push(x); }   // SIENA F1.T → SIENA
+  return w.join(' ').trim() || 'SIN SISTEMA'; };
+// Diseño sin la configuración de naves (-XO, -OX…): SIENA F1.T -XO y -OX quedan juntos
+const disBase = it => String(it.diseno || '').toUpperCase().replace(/\.\s+/g, '.').replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+// Orden de trabajo en planta: sistema → diseño (sin sentido de apertura) → configuración → medida → OP
+const ordenPlanta = (a, b) => nat(sistemaDe(a), sistemaDe(b)) || nat(disBase(a), disBase(b)) || nat(a.diseno || '', b.diseno || '')
+  || (Number(a.ancho) || 0) - (Number(b.ancho) || 0) || (Number(a.alto) || 0) - (Number(b.alto) || 0) || nat(a.op || '', b.op || '');
 const pisosTxt = l => [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
 function progPDF(pg, items){
   const filas = [];
@@ -3433,7 +3442,7 @@ function progPDF(pg, items){
     // Agrupado por sistema: cada proceso trabaja un mismo material seguido, sin cambiar de perfil
     for(const [sis, ls] of [...grp(lo, sistemaDe).entries()].sort((a, b) => nat(a[0], b[0]))){
     filas.push({grupo: 'Sistema ' + sis + ' · ' + fmtN(ls.length) + ' und · ' + fmtN(ls.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1) + ' m²'});
-    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => nat(a[0].op, b[0].op))){
+    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => ordenPlanta(a[0], b[0]))){
       const it = l[0], c = calibreVidrio(it.vidrio);
       const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
       filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
