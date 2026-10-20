@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.39';
+const APP_VERSION = '6.40';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3244,7 +3244,7 @@ function progNueva(){
   const otra = items.filter(i => i.programacion_id).length;
   const nSis = new Map(); for(const i of items){ const k = sistemaDe(i); nSis.set(k, (nSis.get(k) || 0) + 1); }
   const ops = [...grp(items, i => i.op).entries()].sort((a, b) => { const sa = sistemaDe(a[1][0]), sb = sistemaDe(b[1][0]);
-    return (sa !== sb ? (nSis.get(sb) - nSis.get(sa) || nat(sa, sb)) : 0) || b[1].length - a[1].length || ordenPlanta(a[1][0], b[1][0]); });
+    return (sa !== sb ? (nSis.get(sb) - nSis.get(sa) || nat(sa, sb)) : 0) || cuerpos(a[1][0]) - cuerpos(b[1][0]) || b[1].length - a[1].length || ordenPlanta(a[1][0], b[1][0]); });
   const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
     ${warn(sel.length - vivos.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
     ${warn(yaProg.length, 'ya estaban programados (PRG en X) y se dejaron por fuera, para no mandarlos dos veces a producción.')}
@@ -3433,6 +3433,8 @@ const sistemaDe = it => { const s0 = String(it.sistema || '').trim();
   return w.join(' ').trim() || 'SIN SISTEMA'; };
 // Diseño sin la configuración de naves (-XO, -OX…): SIENA F1.T -XO y -OX quedan juntos
 const disBase = it => String(it.diseno || '').toUpperCase().replace(/\.\s+/g, '.').replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+// Cuerpos = cantidad de X y O de la configuración del diseño (-XO = 2, -OXXO = 4, -XO//O = 3). Sin configuración: al final
+const cuerpos = it => { const m = String(it.diseno || '').toUpperCase().match(/-\s*([XO\/\s]+)$/); const n = m ? (m[1].match(/[XO]/g) || []).length : 0; return n || 99; };
 // Orden de trabajo en planta: sistema → diseño (sin sentido de apertura) → configuración → medida → OP
 const ordenPlanta = (a, b) => nat(sistemaDe(a), sistemaDe(b)) || nat(disBase(a), disBase(b)) || nat(a.diseno || '', b.diseno || '')
   || (Number(a.ancho) || 0) - (Number(b.ancho) || 0) || (Number(a.alto) || 0) - (Number(b.alto) || 0) || nat(a.op || '', b.op || '');
@@ -3445,10 +3447,10 @@ function progPDF(pg, items){
     // Sistemas con más unidades primero; dentro de cada uno, las OP de mayor cantidad primero (corte de varias a la vez)
     for(const [sis, ls] of [...grp(lo, sistemaDe).entries()].sort((a, b) => b[1].length - a[1].length || nat(a[0], b[0]))){
     filas.push({grupo: 'Sistema ' + sis + ' · ' + fmtN(ls.length) + ' und · ' + fmtN(ls.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1) + ' m²'});
-    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => b.length - a.length || ordenPlanta(a[0], b[0]))){
+    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => cuerpos(a[0]) - cuerpos(b[0]) || b.length - a.length || ordenPlanta(a[0], b[0]))){
       const it = l[0], c = calibreVidrio(it.vidrio);
       const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
-      filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
+      filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno + (cuerpos(it) < 99 ? ' (' + cuerpos(it) + ' c.)' : ''), it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
     }
     }
   }
