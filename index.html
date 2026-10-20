@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.35';
+const APP_VERSION = '6.36';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1639,7 +1639,7 @@ function obraCard(o){
 // ════════════════════════════════════════════════════════════════
 async function openObra(name, fromPop, anio, pf){
   S.view = 'obra'; S.obra = name; S.items = []; S.sel.clear(); S.detailId = null; S.draft = null;
-  S.f = {estado: pf ? pf.estado : (anio ? 'TODOS' : 'PEND'), pisos:new Set(), ops:new Set(pf && pf.op ? [pf.op] : []), anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null}; S.limit = 300;
+  S.f = {estado: pf ? pf.estado : (anio ? 'TODOS' : 'PEND'), pisos:new Set(), sis:new Set(), ops:new Set(pf && pf.op ? [pf.op] : []), anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null}; S.limit = 300;
   if(!fromPop) history.pushState({v:'obra', obra:name, anio:anio||'', pf:pf||null}, '');
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
@@ -1700,6 +1700,7 @@ function baseMatch(it){
   const q = S.f.q.trim().toUpperCase();
   return (!S.f.pisos.size || S.f.pisos.has(it.piso||''))
     && (!S.f.ops.size || S.f.ops.has(it.op||''))
+    && (!S.f.sis || !S.f.sis.size || S.f.sis.has(sistemaDe(it)))
     && (!S.f.anio || yearOf(it) === S.f.anio)
     && (!S.f.rng || (it[S.f.rng.campo] && it[S.f.rng.campo] >= S.f.rng.d1 && it[S.f.rng.campo] <= S.f.rng.d2))
     && (!q || [it.item,it.ubicacion,it.op_instalacion,it.op,it.diseno,it.ensamblador,it.instalador,it.remision].some(v => v && String(v).toUpperCase().includes(q)));
@@ -1731,6 +1732,7 @@ function renderObra(){
           <select id="fAnio"><option value="">Todos los años</option>${years.map(y=>`<option value="${y}" ${y===S.f.anio?'selected':''}>${y==='S/F'?'Sin fecha':'Año '+y} (${fmtN(ycount.get(y))})</option>`).join('')}</select>
           <button id="fPiso" class="msel" onclick="mselAbrir('pisos')">${mselTxt('pisos')}</button>
           <button id="fOp" class="msel" onclick="mselAbrir('ops')">${mselTxt('ops')}</button>
+          <button id="fSis" class="msel" onclick="mselAbrir('sis')">${mselTxt('sis')}</button>
           <span id="ordenBox"></span>
         </div>
         <div class="list-head" id="listHead"></div>
@@ -3240,7 +3242,7 @@ function progNueva(){
   const items = vivos.filter(i => i.programado !== 'X').sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
   if(!items.length) return toast(yaProg.length ? 'Los ítems seleccionados ya están programados (o en proceso)' : 'Los ítems seleccionados ya están ensamblados o despachados', true);
   const otra = items.filter(i => i.programacion_id).length;
-  const ops = [...grp(items, i => i.op).entries()];
+  const ops = [...grp(items, i => i.op).entries()].sort((a, b) => nat(sistemaDe(a[1][0]), sistemaDe(b[1][0])) || nat(a[0], b[0]));
   const body = `<div class="summary"><b>${fmtN(items.length)} ítems</b> · ${fmtN(ops.length)} OP · ${fmtN(items.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1)} m² · ${fmtKg(pesoTotal(items).kg)}</div>
     ${warn(sel.length - vivos.length, 'ya están ensamblados o despachados y se dejaron por fuera.')}
     ${warn(yaProg.length, 'ya estaban programados (PRG en X) y se dejaron por fuera, para no mandarlos dos veces a producción.')}
@@ -3248,7 +3250,7 @@ function progNueva(){
     ${warn(otra, 'ya estaban en otra programación; pasan a esta.')}
     <div class="fgrid"><div class="field"><span class="lbl">Fecha requerida (obra)</span><input type="date" id="pgFecha" value="${addDays(today(), 14)}"></div>
       <div class="field"><span class="lbl">Notas</span><input id="pgNotas" placeholder="Ej. piso 3 y 4 primero"></div></div>
-    <div style="max-height:28vh;overflow:auto;margin-top:6px">${ops.map(([op, l]) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(op)}</b> · ${esc(l[0].diseno || '')} · ${[...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ')}</span><b>${fmtN(l.length)}</b></div>`).join('')}</div>`;
+    <div style="max-height:28vh;overflow:auto;margin-top:6px">${ops.map(([op, l]) => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><small style="color:var(--text2)">${esc(sistemaDe(l[0]))}</small><br><b>${esc(op)}</b> · ${esc(l[0].diseno || '')} · ${[...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ')}</span><b>${fmtN(l.length)}</b></div>`).join('')}</div>`;
   openSheet('Programación de obra', subSel(sel.length), body, 'Crear programación', async () => {
     const f = $('#pgFecha').value || null, notas = $('#pgNotas').value.trim() || null;
     let pg;
@@ -3420,19 +3422,26 @@ async function pdfTabla({titulo, num, sub, info, cols, filas, pie, nombre, firma
       <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
 }
+// Sistema (perfilería) del ítem: el de la base, o el diseño sin la configuración de naves (-XO, -OXXO…)
+const sistemaDe = it => { const s0 = String(it.sistema || '').trim(); if(s0) return s0.toUpperCase();
+  return String(it.diseno || '').toUpperCase().replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim() || 'SIN SISTEMA'; };
 const pisosTxt = l => [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
 function progPDF(pg, items){
   const filas = [];
   for(const [obra, lo] of [...grp(items, i => i.obra).entries()].sort((a, b) => nat(a[0], b[0]))){
     if(new Set(items.map(i => i.obra)).size > 1) filas.push({grupo: 'Obra: ' + obra});
-    for(const l of [...grp(lo, i => i.op).values()].sort((a, b) => nat(a[0].op, b[0].op))){
+    // Agrupado por sistema: cada proceso trabaja un mismo material seguido, sin cambiar de perfil
+    for(const [sis, ls] of [...grp(lo, sistemaDe).entries()].sort((a, b) => nat(a[0], b[0]))){
+    filas.push({grupo: 'Sistema ' + sis + ' · ' + fmtN(ls.length) + ' und · ' + fmtN(ls.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1) + ' m²'});
+    for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => nat(a[0].op, b[0].op))){
       const it = l[0], c = calibreVidrio(it.vidrio);
       const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
       filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
     }
+    }
   }
   pdfTabla({titulo: 'PROGRAMACIÓN DE OBRA', num: pg.id, sub: (pg.obra || '') + (pg.fecha_req ? ' · requerida para el ' + fmtD(pg.fecha_req) : ''),
-    info: `${fmtN(items.length)} unidades · ${fmtN(new Set(items.map(i => i.op)).size)} OP${pg.notas ? ' · ' + pg.notas : ''}. Cada proceso marca su casilla al terminar la OP completa (cuadro relleno = ya está en X en la app).`,
+    info: `${fmtN(items.length)} unidades · ${fmtN(new Set(items.map(i => i.op)).size)} OP · ${fmtN(new Set(items.map(sistemaDe)).size)} sistema(s)${pg.notas ? ' · ' + pg.notas : ''}. Organizada por sistema para no cambiar de material entre OP. Cada proceso marca su casilla al terminar la OP completa (cuadro relleno = ya está en X en la app).`,
     cols: [['OP', 18, 'l'], ['Ítem', 16, 'l'], ['Diseño', 50, 'l'], ['Medida', 22, 'l'], ['Vidrio', 56, 'l'], ['Cant.', 11, 'r'], ['Pisos', 28, 'l'], ['m2', 13, 'r'], ...PROCS.filter(([k]) => k !== 'programado').map(([,, ab]) => [ab, 10.7, 'c'])],
     filas, pie: 'Prioridad: esta programación va primero. Al terminar cada proceso regístrelo en la app (escáner) para que el ensamble no se bloquee.',
     nombre: 'Programacion_' + pg.id + '.pdf', firmas: ['Corte', 'Troquelado', 'Mecanizado', 'Vidrio']});
@@ -3862,12 +3871,13 @@ async function verOrden(op){
 }
 function updOrdenBox(){ const b = $('#ordenBox'); const op = S.f && S.f.ops && S.f.ops.size === 1 ? [...S.f.ops][0] : ''; if(b) b.innerHTML = op ? ordenBtnHTML(op, 'Orden ' + esc(opNum(op) || '')) : ''; }
 // Filtros de varios pisos / varias OP a la vez
-const mselTxt = k => { const sz = S.f[k].size, nom = k === 'pisos' ? ['Todos los pisos', 'piso', 'pisos'] : ['Todas las OP', 'OP', 'OP'];
+const mselTxt = k => { if(!S.f[k]) S.f[k] = new Set(); const sz = S.f[k].size, nom = k === 'pisos' ? ['Todos los pisos', 'piso', 'pisos'] : k === 'sis' ? ['Todos los sistemas', 'sistema', 'sistemas'] : ['Todas las OP', 'OP', 'OP'];
   return esc(!sz ? nom[0] : sz <= 2 ? [...S.f[k]].sort(nat).join(', ') : sz + ' ' + nom[2]) + ' ▾'; };
 function mselAbrir(k){
-  const campo = k === 'pisos' ? 'piso' : 'op', fe = FILTROS.find(f => f[0] === S.f.estado)[2];
-  const cnt = new Map(); for(const it of S.items) if(fe(it)){ const v = it[campo] || ''; if(v) cnt.set(v, (cnt.get(v) || 0) + 1); }
-  const vals = [...new Set(S.items.map(i => i[campo] || '').filter(Boolean))].sort(nat);
+  const val = k === 'pisos' ? (i => i.piso || '') : k === 'sis' ? sistemaDe : (i => i.op || ''), fe = FILTROS.find(f => f[0] === S.f.estado)[2];
+  if(!S.f[k]) S.f[k] = new Set();
+  const cnt = new Map(); for(const it of S.items) if(fe(it)){ const v = val(it); if(v) cnt.set(v, (cnt.get(v) || 0) + 1); }
+  const vals = [...new Set(S.items.map(val).filter(Boolean))].sort(nat);
   const sel = window._msel = new Set(S.f[k]);
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const body = `<div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn sm" onclick="document.querySelectorAll('.mselC').forEach(c => { c.checked = true; _msel.add(c.value); })">Todos</button>
@@ -3875,9 +3885,9 @@ function mselAbrir(k){
     <div style="max-height:52vh;overflow:auto">${vals.map(v => `<label style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">
       <input type="checkbox" class="mselC" value="${esc(v)}" ${ck} ${sel.has(v) ? 'checked' : ''} onchange="this.checked ? _msel.add(this.value) : _msel.delete(this.value)">
       <span style="flex:1">${k === 'ops' ? 'OP ' : ''}${esc(v)}</span><small style="opacity:.7">${fmtN(cnt.get(v) || 0)}</small></label>`).join('')}</div>`;
-  openSheet(k === 'pisos' ? 'Filtrar pisos' : 'Filtrar OP', 'Marca uno o varios · el número es cuántos ítems hay en el estado elegido', body, 'Aplicar', async () => {
+  openSheet(k === 'pisos' ? 'Filtrar pisos' : k === 'sis' ? 'Filtrar sistemas' : 'Filtrar OP', 'Marca uno o varios · el número es cuántos ítems hay en el estado elegido', body, 'Aplicar', async () => {
     S.f[k] = new Set(sel); S.limit = 300;
-    $('#fPiso').innerHTML = mselTxt('pisos'); $('#fOp').innerHTML = mselTxt('ops');
+    $('#fPiso').innerHTML = mselTxt('pisos'); $('#fOp').innerHTML = mselTxt('ops'); if($('#fSis')) $('#fSis').innerHTML = mselTxt('sis');
     updOrdenBox(); renderChips(); renderList();
   });
 }
