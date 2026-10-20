@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.33';
+const APP_VERSION = '6.34';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2006,6 +2006,7 @@ function ensambleOk(it, d){
 async function dSave(){
   const it = byId(S.detailId), d = S.draft;
   if(d.instalado && !d.fecha_instalacion) return toast('Falta la fecha de instalación', true);
+  if(d.instalado && !String(d.instalador || '').trim()) return toast('Falta el instalador', true);
   if(d.instalado && !it.instalado && !d.despachado) return toast('No se puede instalar: el ítem no está despachado', true);
   if(puedeRegistrar()){
   if(d.despachado && !d.fecha_despacho) return toast('Falta la fecha de despacho', true);
@@ -2226,6 +2227,7 @@ function sheetInstalacion(){
   openSheet('Registrar instalación', subSel(sel.length), body, `Instalar ${fmtN(items.length)}`, async () => {
     const f = $('#gFecha').value, ins = pfVal('gInst');
     if(!f){ toast('Falta la fecha de instalación', true); return false; }
+    if(!ins){ toast('Elige el instalador', true); return false; }
     await applyGroup(items, () => ({instalado:true, fecha_instalacion:f, instalador:nz(ins)}));
   });
 }
@@ -2358,7 +2360,7 @@ function renderScanParams(){
     </div>`;
     if(!pend) setTimeout(instCargarPend, 0);
     h += `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
-      <div class="field"><span class="lbl">Instalador</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
+      <div class="field"><span class="lbl">Instalador (obligatorio)</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
   }
   box.innerHTML = h;
   box.querySelectorAll('input,select').forEach(x => x.addEventListener('change', scGuardarParams));
@@ -2430,6 +2432,7 @@ async function scCodigo(txt, manual){
   scGuardarParams();
   const e = scEst();
   if(e.k === 'ini' && !SC.ens && !p.sub){ scBeep(false); return toast('Elige el ensamblador (o escanea la etiqueta de un ítem que ya tenga ensamblador asignado en la programación)', true); }
+  if(e.k === 'inst' && !SC.inst){ scBeep(false); return toast('Primero elige el instalador', true); }
   if(e.k === 'inst' && !SC.instPiso){ scBeep(false); const o = $('#scIPiso'); if(o) o.focus(); return toast('Primero elige el piso donde estás instalando', true); }
   if(e.k === 'desp' && !SC.rem){ scBeep(false); toast('Primero escribe la remisión', true); const r = $('#scRem'); if(r) r.focus(); return; }
   SC.busy = true;
