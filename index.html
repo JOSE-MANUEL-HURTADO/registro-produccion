@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.44';
+const APP_VERSION = '6.45';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -590,7 +590,7 @@ const API = {
       this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_inicio',desde).not('ensamblador','is',null).order('id')),
       this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_final',desde).not('ensamblador','is',null).order('id')),
       this.all(o => this.sb.from('items').select('ens_asignado',o).not('ens_asignado','is',null).order('id')).catch(() => []),
-      this.all(o => this.sb.from('items').select('instalador',o).gte('fecha_instalacion',desde).not('instalador','is',null).order('id'))
+      this.all(o => this.sb.from('items').select('instalador',o).gte('fecha_instalacion',INSTALADORES_DESDE).not('instalador','is',null).order('id'))
     ]);
     const u = l => [...new Set(l.map(normNom).filter(Boolean))].sort(nat);
     return {ens: u([...e1, ...e2].map(r => r.ensamblador).concat(e3.map(r => r.ens_asignado))), inst: u(i1.map(r => r.instalador))};
@@ -830,7 +830,8 @@ const firmaRem = () => rolEs('gerente','asistente','cobros','conductor','recibe'
 
 // ── Lista desplegable de personas (ensambladores / instaladores) con opción de escribir un nombre nuevo ──
 const normNom = v => String(v ?? '').trim().replace(/\s+/g,' ').toUpperCase();
-const PERSONAS_DESDE = '2026-01-01';
+const PERSONAS_DESDE = '2026-01-01';        // ensambladores
+const INSTALADORES_DESDE = '2026-07-01';    // instaladores: solo quienes han instalado desde julio
 const tipoPersona = id => /inst/i.test(id) ? 'inst' : 'ens';
 function personas(tipo){ return (S.personas && S.personas[tipo || 'ens']) || []; }
 // Carga las listas al entrar (y reintenta); mientras tanto los desplegables quedan vacíos, nunca con la lista histórica completa
