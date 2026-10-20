@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.31';
+const APP_VERSION = '6.32';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -653,7 +653,12 @@ const API = {
     return out;
   },
   // Instalado y aún sin entregar en un acta (desde que existen las actas en la app)
-  async porEntregar(){ try{ return await this.all(o => this.sb.from('items').select('id,obra,op,m2,piso,fecha_instalacion', o).eq('instalado', true).is('acta_id', null).gte('fecha_instalacion', ENTREGA_DESDE).order('id')); }catch(e){ console.warn('por entregar', e); return []; } },
+  // Por entregar cuenta desde la instalación más antigua que ya se entregó con acta en la app (lo anterior se entregó en papel)
+  async porEntregar(){ try{
+    const {data} = await this.sb.from('items').select('fecha_instalacion').not('acta_id', 'is', null).not('fecha_instalacion', 'is', null).order('fecha_instalacion').limit(1);
+    S.entDesde = (data && data[0] && data[0].fecha_instalacion) || today();
+    return await this.all(o => this.sb.from('items').select('id,obra,op,m2,piso,fecha_instalacion', o).eq('instalado', true).is('acta_id', null).gte('fecha_instalacion', S.entDesde).order('id'));
+  }catch(e){ console.warn('por entregar', e); return []; } },
   async cerradas(){ const {data,error} = await this.sb.from('obras_cerradas').select('obra,cerrada_en,quien'); if(error) throw error; return data || []; },
   async cerrarObra(obra){ const {error} = await this.sb.from('obras_cerradas').upsert({obra, quien: (S.perfil && S.perfil.nombre) || null}, {onConflict:'obra'}); if(error) throw error; },
   async reabrirObra(obra){ const {error} = await this.sb.from('obras_cerradas').delete().eq('obra', obra); if(error) throw error; },
@@ -1675,8 +1680,7 @@ const com = it => S.com.get(it.id) || {};
 const porCobrarD = it => it.despachado && !com(it).cobrado_despacho;
 const porCobrarI = it => it.instalado && !com(it).cobrado_instalacion;
 
-const ENTREGA_DESDE = '2026-01-01';   // lo instalado antes se entregó en papel
-const porEntregar = it => it.instalado && !it.acta_id && String(it.fecha_instalacion || '') >= ENTREGA_DESDE;
+const porEntregar = it => it.instalado && !it.acta_id && String(it.fecha_instalacion || '') >= (S.entDesde || today());
 const isPend = it => !(it.despachado && it.instalado);
 const FILTROS = [
   ['PEND','Pendientes', it => isPend(it)],
