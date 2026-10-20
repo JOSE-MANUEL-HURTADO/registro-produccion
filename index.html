@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.42';
+const APP_VERSION = '6.43';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2341,8 +2341,8 @@ function renderScanParams(){
   if(e.proc) h = `<label class="switch"><span>Registrar como <b>parcial (+)</b> en lugar de completo (X)</span><button class="tgl ${SC.parcial?'on':''}" onclick="SC.parcial=!SC.parcial; this.classList.toggle('on')"></button></label>`;
   if(e.k === 'ini') h = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('scEns', SC.ens, '', 'El asignado en la programación')}</div><div class="sc-note">Fecha y hora de inicio: el momento del escaneo. Si no eliges ensamblador, se usa el que tiene asignado el ítem en la programación.</div>`;
   if(e.k === 'fin') h = `<div class="sc-note">Fecha y hora final: el momento del escaneo.</div>`;
-  if(e.k === 'desp') h = `${SC.od ? `<div class="summary" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="flex:1"><b>Orden de despacho N.º ${SC.od.id}</b> · ${esc(SC.od.obra || '')}<br><small id="odProg">…</small></span>
-        <button class="btn sm" onclick="odSoltar()">Cambiar</button></div>`
+  if(e.k === 'desp') h = `${SC.od ? `<div class="summary" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Orden de despacho N.º ${SC.od.id}</b> · ${esc(SC.od.obra || '')}</span>
+        <button class="btn sm" onclick="odSoltar()">Cambiar</button></div><div id="odProg" style="font-size:13px;margin-top:6px">Cargando lo que falta…</div></div>`
       : `<div class="field"><span class="lbl">Orden de despacho</span><div style="display:flex;gap:6px"><select id="scOd" style="flex:1"><option value="">Escanea el QR de la orden o elígela…</option></select></div></div>
         <div class="sc-note" style="margin-bottom:6px">Sin orden se puede cargar igual, pero con orden la app te avisa si un ítem no va en ese camión y te muestra lo que falta.</div>`}
     <div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
@@ -3625,12 +3625,21 @@ async function odReimprimir(id){
 }
 async function odProgreso(){
   const o = SC.od, el = $('#odProg'); if(!o || !el) return;
-  const {data, error} = await API.sb.from('items').select('id,op,op_instalacion,ubicacion,piso,despachado,remision,m2,cant,vidrio').in('id', o.items);
+  const {data, error} = await API.sb.from('items').select('id,op,op_instalacion,item,diseno,ubicacion,piso,despachado,remision,m2,cant,vidrio').in('id', o.items);
   if(error || !$('#odProg')) return;
   const carg = data.filter(i => i.despachado), falt = data.filter(i => !i.despachado);
   o._pend = {}; for(const i of falt.sort((a, b) => nat(a.op_instalacion, b.op_instalacion))) (o._pend[i.op] = o._pend[i.op] || []).push(i);
-  const porOp = Object.entries(o._pend).sort((a, b) => nat(a[0], b[0])).map(([op, l]) => `${esc(op)} ×${l.length}`);
-  $('#odProg').innerHTML = `Cargados <b>${fmtN(carg.length)} de ${fmtN(data.length)}</b> · ${fmtKg(pesoTotal(carg).kg)} de ${fmtKg(pesoTotal(data).kg)}${porOp.length ? '<br>Faltan: ' + porOp.slice(0, 10).join(', ') + (porOp.length > 10 ? '…' : '') : ''}`;
+  const pct = data.length ? Math.round(carg.length / data.length * 100) : 0;
+  // Lista por OP: lo que falta arriba (con sus destinos), lo completo abajo
+  const ops = [...grp(data, i => i.op || '').entries()].map(([op, l]) => ({op, l, f: l.filter(i => !i.despachado)}))
+    .sort((a, b) => (b.f.length > 0) - (a.f.length > 0) || nat(a.op, b.op));
+  const pis = l => [...new Set(l.map(i => (i.piso || '').replace(/^PISO\s*/i, 'P')).filter(Boolean))].sort(nat).join(', ');
+  $('#odProg').innerHTML = `Cargados <b>${fmtN(carg.length)} de ${fmtN(data.length)}</b> · ${fmtKg(pesoTotal(carg).kg)} de ${fmtKg(pesoTotal(data).kg)}${falt.length ? ` · <b style="color:var(--danger)">faltan ${fmtN(falt.length)}</b>` : ' · <b style="color:var(--inst)">orden completa</b>'}
+    <div style="height:8px;background:var(--surface3);margin:6px 0 8px"><div style="height:8px;width:${pct}%;background:${pct === 100 ? 'var(--inst)' : 'var(--cola)'}"></div></div>
+    <div style="max-height:34vh;overflow:auto;border-top:1px solid var(--border)">${ops.map(x => `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);${x.f.length ? '' : 'opacity:.55'}">
+      <span style="width:18px;text-align:center;font-weight:600;color:${x.f.length ? 'var(--danger)' : 'var(--inst)'}">${x.f.length ? '○' : '✓'}</span>
+      <span style="flex:1;font-size:13px"><b>OP ${esc(x.op)}</b> · ${esc(x.l[0].item || '')} · ${esc(x.l[0].diseno || '')}${x.f.length ? `<br><small>Faltan para: ${esc(pis(x.f) || '—')}</small>` : ''}</span>
+      <span style="font-size:13px;white-space:nowrap">${x.f.length ? `<b style="color:var(--danger)">falta ${fmtN(x.f.length)}</b> de ${fmtN(x.l.length)}` : fmtN(x.l.length) + ' ✓'}</span></div>`).join('')}</div>`;
   o._falt = falt.length;
 }
 async function odTerminar(){
