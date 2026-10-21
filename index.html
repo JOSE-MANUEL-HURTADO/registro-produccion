@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.47';
+const APP_VERSION = '6.48';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -823,8 +823,11 @@ const puedeSeleccionar = () => puedeRegistrar() || rolEs('cobros');
 const registraInst = () => rolEs('gerente','asistente','cobros');     // cobros también registra instalación
 // Usuarios de campo: solo escanean y hacen firmar; no ven nada más de la app
 const esCampo = () => rolEs('conductor','entrega','recibe');
+// Planta: operario que solo escanea procesos, ensamble y despacho (entra directo al escáner)
+const esPlanta = () => rolEs('planta');
+const soloScan = () => esCampo() || esPlanta();
 const esInterno = () => rolEs('gerente','asistente','consulta','cobros');
-const puedeEscanear = () => puedeRegistrar() || esCampo();
+const puedeEscanear = () => puedeRegistrar() || esCampo() || esPlanta();
 const firmaActa = () => rolEs('gerente','asistente','cobros','entrega','recibe');
 const firmaRem = () => rolEs('gerente','asistente','cobros','conductor','recibe');
 
@@ -911,9 +914,10 @@ async function afterLogin(ses){
     await API.logout();
     return renderLogin('Tu usuario no tiene un rol asignado. Pídele al gerente que lo active.');
   }
-  if(esCampo()){
+  if(soloScan()){
     window.addEventListener('popstate', onPop);
     history.replaceState({v:'scan'}, '');
+    if(esPlanta()){ API.ensambladores().then(l => S.ensambladores = l).catch(()=>{}); cargarPersonas(); }
     S.view = ''; SC.est = scEstaciones()[0].k; SC.fecha = today();
     return goScan();
   }
@@ -1016,7 +1020,7 @@ function indiceAnual(){
 }
 
 function goHome(replace){
-  if(esCampo()) return goScan();
+  if(soloScan()) return goScan();
   S.view = 'home'; S.obra = null; S.sel.clear(); S.detailId = null; S.draft = null;
   if(!replace) history.pushState({v:'home'}, '');
   renderHome();
@@ -1659,7 +1663,7 @@ function onPop(ev){
   const st = ev.state || {v:'home'};
   if(S.view === 'scan' && st.v !== 'scan'){ scStop(); closeSheet(); }
   if(st.v === 'scan' && puedeEscanear()){ goScan(); return; }
-  if(esCampo()){ history.replaceState({v:'scan'}, ''); goScan(); return; }
+  if(soloScan()){ history.replaceState({v:'scan'}, ''); goScan(); return; }
   if(st.v === 'obra' && S.view === 'obra' && st.obra === S.obra){
     if(S.detailId && !st.d){
       if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra, d:S.detailId}, ''); return; }
@@ -2256,7 +2260,8 @@ const SC_CAMPO = {
   entrega:   [{k:'entr', t:'Entrega a obra'}],
   recibe:    [{k:'rec', t:'Recibir en obra'}]
 };
-const scEstaciones = () => puedeRegistrar() ? SC_EST : esCampo() ? SC_CAMPO[S.perfil.rol] : [];   // gerente, asistente y usuarios de campo
+const SC_PLANTA = () => SC_EST.filter(e => (e.proc && e.k !== 'programado') || ['ini','fin','desp'].includes(e.k));   // sin programar, instalar ni entregar
+const scEstaciones = () => puedeRegistrar() ? SC_EST : esPlanta() ? SC_PLANTA() : esCampo() ? SC_CAMPO[S.perfil.rol] : [];   // gerente, asistente y usuarios de campo
 const scEst = () => scEstaciones().find(e => e.k === SC.est) || scEstaciones()[0];
 const qrTexto = op => 'ELP-OP:' + op;
 function scParse(txt){
@@ -2303,7 +2308,7 @@ function goScan(){
 }
 function renderScan(){
   $('#app').innerHTML = shell(`
-    ${esCampo() ? '' : `<button class="back" onclick="history.back()">${ICON.back} Volver</button>`}
+    ${soloScan() ? '' : `<button class="back" onclick="history.back()">${ICON.back} Volver</button>`}
     <div class="obra-title"><div><div class="h1">${esCampo() ? esc(scEst().t) : 'Escanear OP'}</div><div class="h1-sub">${esCampo() ? 'Escanea el código QR' : 'Elige la estación y escanea el código de la orden · ' + liveHTML()}</div></div></div>
     <div class="sc-est" ${esCampo() ? 'style="display:none"' : ''}>${scEstaciones().map(e => `<button class="chip ${SC.est===e.k?'on':''}" onclick="scSetEst('${e.k}')">${e.t}</button>`).join('')}</div>
     <div id="scParams" class="sc-params"></div>
@@ -2433,8 +2438,9 @@ async function scCodigo(txt, manual){
   SC.last = txt; SC.lastT = now;
   const p = scParse(txt);
   if(!p){ scBeep(false); return toast('Ese código no es de una OP de Elíptica', true); }
+  if((p.acta || p.rem) && esPlanta()){ scBeep(false); return toast('Este usuario solo escanea OP, etiquetas y órdenes de despacho', true); }
   if(p.acta){ if(esCampo() && !rolEs('entrega','recibe')){ scBeep(false); return toast('Este usuario solo recibe remisiones', true); } scBeep(true); return actaEstado(p.acta); }
-  if(p.od){ if(!puedeRegistrar()){ scBeep(false); return toast('Este usuario no carga despachos', true); } scBeep(true); return odUsar(p.od); }
+  if(p.od){ if(!puedeRegistrar() && !esPlanta()){ scBeep(false); return toast('Este usuario no carga despachos', true); } scBeep(true); return odUsar(p.od); }
   if(p.rem){ if(esCampo() && !rolEs('conductor','recibe')){ scBeep(false); return toast('Este usuario solo entrega ítems de actas', true); } scBeep(true); return remEstado(p.rem); }
   if(esCampo() && !rolEs('entrega')){ scBeep(false); return toast(rolEs('conductor') ? 'Escanea el QR de la remisión' : 'Escanea el QR del acta o de la remisión', true); }
   scGuardarParams();
@@ -4138,7 +4144,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Gerente'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Gerente'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
