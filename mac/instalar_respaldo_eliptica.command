@@ -145,15 +145,15 @@ function run(argv){
     const nombre = `COPIA_SEGURIDAD_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.xlsx`;
     sh(`cd ${q(dir)} && /usr/bin/zip -q -X -r ../out.xlsx '[Content_Types].xml' _rels xl`);
     // Copiar (no mover): las carpetas de Google Drive / iCloud no aceptan "mover" desde /tmp
-    const src = tmp + '/out.xlsx';
     let destino = cfg.carpeta, aviso = '';
-    const copiar = dir => {
+    const copiarA = (src, dir, name) => {
       sh(`mkdir -p ${q(dir)}`);
-      try{ sh(`/bin/cp -X ${q(src)} ${q(dir + '/' + nombre)}`); }
-      catch(e){ sh(`/bin/cat ${q(src)} > ${q(dir + '/' + nombre)}`); }
-      const a = sh(`/usr/bin/stat -f %z ${q(src)}`).trim(), b = sh(`/usr/bin/stat -f %z ${q(dir + '/' + nombre)}`).trim();
+      try{ sh(`/bin/cp -X ${q(src)} ${q(dir + '/' + name)}`); }
+      catch(e){ sh(`/bin/cat ${q(src)} > ${q(dir + '/' + name)}`); }
+      const a = sh(`/usr/bin/stat -f %z ${q(src)}`).trim(), b = sh(`/usr/bin/stat -f %z ${q(dir + '/' + name)}`).trim();
       if(a !== b) throw new Error('El archivo copiado quedó incompleto');
     };
+    const copiar = dir => copiarA(tmp + '/out.xlsx', dir, nombre);
     try{ copiar(destino); }
     catch(e){
       destino = HOME + '/Respaldos Eliptica';
@@ -164,13 +164,86 @@ function run(argv){
     // 4. Borrar copias más viejas que N días (por defecto 60)
     try{ sh(`find ${q(destino)} -maxdepth 1 -name 'COPIA_SEGURIDAD_*.xlsx' -mtime +${Number(cfg.dias) || 60} -delete`); }catch(e){}
 
-    // 5. Anotar la copia en la app (aparece en el aviso del gerente)
+    // 5. Copia COMPLETA: todas las tablas de la base (órdenes de despacho, programaciones,
+    //    actas con firmas, remisiones, historial, personas, usuarios…) en un .zip con un JSON por tabla.
+    //    Las tablas nuevas entran solas. Si algo de esto falla, la copia en Excel ya quedó hecha.
+    const fallas = []; let extra = '';
+    const rpc = (fn, body, out) => {
+      writeText(tmp + '/b.json', JSON.stringify(body || {}));
+      const c = sh(`/usr/bin/curl -sS --max-time 180 -o ${q(out)} -w '%{http_code}' -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/b.json')} ${q(cfg.url + '/rest/v1/rpc/' + fn)}`);
+      const txt = readText(out);
+      if(c !== '200') throw new Error(fn + ' (' + c + '): ' + String(txt).slice(0, 200));
+      return txt;
+    };
+    try{
+      const tablas = JSON.parse(rpc('respaldo_tablas', {}, tmp + '/tablas.json'));
+      if(!Array.isArray(tablas) || !tablas.length) throw new Error('no se recibió la lista de tablas');
+      const cdir = tmp + '/completa';
+      sh(`mkdir -p ${q(cdir)}`);
+      const resumen = [];
+      for(const t of tablas){
+        const partes = []; let n = 0;
+        for(let off = 0; ; off += 1000){
+          const txt = rpc('respaldo_tabla', {p_tabla: t, p_desde: off, p_limite: 1000}, tmp + '/t.json').trim();
+          const arr = JSON.parse(txt);
+          if(!Array.isArray(arr)) throw new Error('respuesta inválida en ' + t);
+          if(arr.length) partes.push(txt.slice(1, -1));
+          n += arr.length;
+          if(arr.length < 1000) break;
+        }
+        writeText(cdir + '/' + t + '.json', '[' + partes.join(',') + ']');
+        resumen.push(t + ': ' + n + ' filas');
+      }
+      writeText(cdir + '/LEEME.txt', 'ELÍPTICA · Copia completa de la base de producción\n' + new Date().toString() +
+        '\nUn archivo .json por tabla. Para restaurar, entrega este .zip a Claude.\n\n' + resumen.join('\n') + '\n');
+      const nz = nombre.replace('COPIA_SEGURIDAD_', 'COPIA_COMPLETA_').replace(/\.xlsx$/, '.zip');
+      sh(`cd ${q(cdir)} && /usr/bin/zip -q -X -r ../completa.zip .`);
+      copiarA(tmp + '/completa.zip', destino, nz);
+      try{ sh(`find ${q(destino)} -maxdepth 1 -name 'COPIA_COMPLETA_*.zip' -mtime +${Number(cfg.dias) || 60} -delete`); }catch(e){}
+      extra += ' · ' + tablas.length + ' tablas';
+    }catch(e){ fallas.push('tablas: ' + e.message); }
+
+    // 6. PDF de las OP: baja solo los nuevos o cambiados a la carpeta PDF_OP.
+    //    Nunca borra: si un PDF se reemplaza en la app, el anterior queda guardado con la fecha.
+    try{
+      const lista = JSON.parse(rpc('respaldo_pdfs', {}, tmp + '/pdfs.json'));
+      const pdir = destino + '/PDF_OP', idx = pdir + '/indice.json';
+      sh(`mkdir -p ${q(pdir)}`);
+      let man = {};
+      try{ man = JSON.parse(readText(idx)) || {}; }catch(e){ man = {}; }
+      writeText(tmp + '/h2.txt', readText(tmp + '/h.txt').replace(/Accept:[^\n]*\n/, ''));
+      const existe = f => { try{ sh(`test -f ${q(f)}`); return true; }catch(e){ return false; } };
+      let nuevos = 0, errores = 0;
+      for(const o of lista){
+        const local = pdir + '/' + o.name;
+        if(man[o.name] === o.updated_at && existe(local)) continue;
+        const enc = o.name.split('/').map(encodeURIComponent).join('/');
+        const c = sh(`/usr/bin/curl -sS --max-time 180 -o ${q(tmp + '/pdf.bin')} -w '%{http_code}' -H @${q(tmp + '/h2.txt')} ${q(cfg.url + '/storage/v1/object/authenticated/ordenes/' + enc)}`);
+        if(c !== '200'){ errores++; continue; }
+        const sub = local.slice(0, local.lastIndexOf('/'));
+        if(existe(local)){   // cambió en la app: guardar la versión anterior
+          const d2 = new Date(), p2 = n => String(n).padStart(2, '0');
+          const viejo = local.replace(/\.pdf$/i, '') + ` (anterior ${d2.getFullYear()}-${p2(d2.getMonth()+1)}-${p2(d2.getDate())}).pdf`;
+          try{ sh(`/bin/mv -f ${q(local)} ${q(viejo)}`); }catch(e){}
+        }
+        copiarA(tmp + '/pdf.bin', sub, local.slice(local.lastIndexOf('/') + 1));
+        man[o.name] = o.updated_at; nuevos++;
+        if(nuevos % 25 === 0) writeText(idx, JSON.stringify(man));
+      }
+      writeText(idx, JSON.stringify(man));
+      extra += ' · ' + lista.length + ' PDF' + (nuevos ? ' (' + nuevos + (nuevos === 1 ? ' nuevo)' : ' nuevos)') : '');
+      if(errores) fallas.push(errores + ' PDF no se pudieron bajar');
+    }catch(e){ fallas.push('PDF: ' + e.message); }
+
+    // 7. Anotar la copia en la app (aparece en el aviso del gerente)
     writeText(tmp + '/r.json', JSON.stringify({p_origen: 'mac', p_filas: rows.length}));
     sh(`/usr/bin/curl -sS --max-time 60 -o /dev/null -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/r.json')} ${q(cfg.url + '/rest/v1/rpc/registrar_respaldo')}`);
 
-    log('OK ' + rows.length + ' filas -> ' + destino + '/' + nombre + aviso);
-    notify(rows.length.toLocaleString('es-CO') + ' registros guardados' + (aviso ? ' en Respaldos Eliptica' : ''), nombre);
-    return 'OK ' + rows.length + ' filas -> ' + destino + '/' + nombre + aviso;
+    const falla = fallas.length ? ' · AVISO: ' + fallas.join(' | ') : '';
+    log((fallas.length ? 'PARCIAL ' : 'OK ') + rows.length + ' filas' + extra + ' -> ' + destino + '/' + nombre + aviso + falla);
+    if(fallas.length) notify('Excel guardado, pero falló una parte: ' + fallas.join(' | '), 'Envíale este aviso a Claude');
+    else notify(rows.length.toLocaleString('es-CO') + ' registros' + extra + (aviso ? ' en Respaldos Eliptica' : ''), nombre);
+    return (fallas.length ? 'PARCIAL ' : 'OK ') + rows.length + ' filas' + extra + ' -> ' + destino + '/' + nombre + aviso + falla;
   }catch(e){
     log('ERROR ' + e.message);
     notify('No se pudo hacer la copia: ' + e.message, 'Revisa el registro en Consola');
@@ -210,7 +283,7 @@ touch "$LOG"; ANTES=$(wc -l < "$LOG")
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 for i in {1..90}; do
   sleep 2
-  NUEVO=$(tail -n +$((ANTES+1)) "$LOG" 2>/dev/null | grep -E "OK |ERROR" | tail -1)
+  NUEVO=$(tail -n +$((ANTES+1)) "$LOG" 2>/dev/null | grep -E "OK |PARCIAL |ERROR" | tail -1)
   [[ -n "$NUEVO" ]] && break
 done
 echo ""
