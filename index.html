@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.50';
+const APP_VERSION = '6.51';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -4019,8 +4019,9 @@ async function ordenesLeer(files){
   O.reemplazar = false; O.estado = 'revision'; renderCarga();
 }
 // ── QR impreso dentro de la orden de producción ──
-// Lee el número de cada página ("Número: 006291-1") y pone el QR de esa OP en el encabezado,
-// a la derecha de "Orden de producción". Si el PDF ya tiene el QR, no lo repite.
+// Lee el número de cada página ("Número: 006291-1") y pone el QR de esa OP abajo, a la izquierda del
+// código de barras (arriba se cortaba al fotocopiar). Si el PDF ya tiene el QR abajo, no lo repite;
+// si lo tenía arriba (versión anterior), lo borra de ahí y lo pone abajo.
 async function qrLibsPDF(){
   if(!window.qrcode) await loadScript('lib/qrcode.js');
   if(!window.PDFLib) await loadScript('lib/pdf-lib.js');
@@ -4030,7 +4031,9 @@ async function ordenConQR(blob){
   await qrLibsPDF();
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const doc = await PDFLib.PDFDocument.load(bytes, {ignoreEncryption:true});
-  if(String(doc.getKeywords() || '').includes('ELP-QR')) return {blob, n:0, ya:true};
+  const kw = String(doc.getKeywords() || '');
+  if(kw.includes('ELP-QR2')) return {blob, n:0, ya:true};
+  const viejo = kw.includes('ELP-QR');   // QR arriba, en el encabezado
   const pdf = await pdfjsLib.getDocument({data: bytes.slice()}).promise;
   const pages = doc.getPages(); let n = 0, ultimo = null;
   for(let i = 0; i < pages.length; i++){
@@ -4040,8 +4043,10 @@ async function ordenConQR(blob){
     const op = m ? m[1] : ultimo; if(!op) continue; ultimo = op;
     const pg = pages[i], {width:W, height:H} = pg.getSize();
     const q = qrcode(0, 'M'); q.addData(qrTexto(op)); q.make();
-    const size = 40, nm = q.getModuleCount(), cs = size / nm;
-    const x = W * 0.626, y = H - 12 - size;
+    if(viejo) pg.drawRectangle({x: W * 0.626 - 2.5, y: H - 12 - 40 - 2.5, width: 45, height: 45, color: PDFLib.rgb(1,1,1)});
+    // Abajo a la derecha, junto al código de barras (que empieza en x ≈ 0.668 del ancho)
+    const size = 46, nm = q.getModuleCount(), cs = size / nm;
+    const x = W * 0.668 - 8 - size, y = 36;
     pg.drawRectangle({x: x - 2, y: y - 2, width: size + 4, height: size + 4, color: PDFLib.rgb(1,1,1)});
     for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c))
       pg.drawRectangle({x: x + c*cs, y: y + (nm - 1 - r)*cs, width: cs + 0.05, height: cs + 0.05, color: PDFLib.rgb(0,0,0)});
@@ -4049,13 +4054,13 @@ async function ordenConQR(blob){
   }
   await pdf.destroy();
   if(!n) return {blob, n:0};
-  doc.setKeywords(['ELP-QR']);
+  doc.setKeywords(['ELP-QR', 'ELP-QR2']);
   return {blob: new Blob([await doc.save()], {type:'application/pdf'}), n};
 }
 // Agregar el QR a las órdenes que ya estaban cargadas
 async function ordenesQRExistentes(){
   if(!S.ordenes || !S.ordenes.size) return toast('No hay órdenes cargadas', true);
-  if(!confirm(`Se agregará el código QR a las ${fmtN(S.ordenes.size)} órdenes cargadas (las que ya lo tienen no se tocan). Puede tardar unos minutos. ¿Continuar?`)) return;
+  if(!confirm(`Se agregará el código QR a las ${fmtN(S.ordenes.size)} órdenes cargadas (las que lo tienen arriba se pasa abajo, junto al código de barras; las que ya lo tienen abajo no se tocan). Puede tardar unos minutos. ¿Continuar?`)) return;
   try{ await qrLibsPDF(); }catch(e){ return toast(errMsg(e), true); }
   const l = [...S.ordenes].sort(nat);
   O.estado = 'subiendo'; O.prog = 0; O.total = l.length; O.errores = []; O.subidos = 0; O.sinQR = 0; renderCarga();
