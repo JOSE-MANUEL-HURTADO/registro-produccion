@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.48';
+const APP_VERSION = '6.49';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2283,7 +2283,7 @@ function scMotivo(it, e){
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', ');
     if(!SC.ens && !it.ens_asignado) return 'sin ensamblador (elígelo arriba)'; return null; }
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
-  if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(SC.od && !SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
+  if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(!SC.od) return 'sin orden de despacho'; if(!SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar';
     if(SC.instPiso && (it.piso || '(sin piso)') !== SC.instPiso) return 'no es de ' + SC.instPiso; return null; }
@@ -2352,10 +2352,10 @@ function renderScanParams(){
   if(e.k === 'desp') h = `${SC.od ? `<div class="summary" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Orden de despacho N.º ${SC.od.id}</b> · ${esc(SC.od.obra || '')}</span>
         <button class="btn sm" onclick="odSoltar()">Cambiar</button></div><div id="odProg" style="font-size:13px;margin-top:6px">Cargando lo que falta…</div></div>`
       : `<div class="field"><span class="lbl">Orden de despacho</span><div style="display:flex;gap:6px"><select id="scOd" style="flex:1"><option value="">Escanea el QR de la orden o elígela…</option></select></div></div>
-        <div class="sc-note" style="margin-bottom:6px">Sin orden se puede cargar igual, pero con orden la app te avisa si un ítem no va en ese camión y te muestra lo que falta.</div>`}
+        <div class="warn" style="margin-bottom:6px">Solo se despacha lo que está en una <b>orden de despacho</b>. Escanea su QR o elígela para empezar a cargar.</div>`}
     <div class="fgrid"><div class="field"><span class="lbl">Fecha despacho</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
       ${SC.od && SC.od.remision ? `<div class="field"><span class="lbl">Remisión de la orden</span><input id="scRem" value="${esc(SC.od.remision)}" readonly>
-        <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn sm ghost" onclick="odOtroCamion()">No cupo: otro camión (remisión nueva)</button></div></div>` : remCampo('scRem', SC.rem)}</div>
+        <div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn sm ghost" onclick="odOtroCamion()">No cupo: otro camión (remisión nueva)</button></div></div>` : SC.od ? remCampo('scRem', SC.rem) : ''}</div>
     <div class="sc-note">El despacho y la remisión quedan registrados <b>al escanear cada ítem</b> que sube al camión.</div>
     ${SC.rem && SC.log.some(l => l.rem === SC.rem && !l.deshecho) ? `<button class="btn primary" style="width:100%;margin-top:8px" onclick="odTerminar()">Terminar cargue · remisión ${esc(SC.rem)}</button>` : ''}`;
   if(e.k === 'rem') h = `<div class="sc-note">Escanea el <b>QR de la remisión</b> al llegar a la obra. Quien recibe revisa las cantidades por OP, anota novedades y firma en la pantalla.</div>`;
@@ -2448,6 +2448,7 @@ async function scCodigo(txt, manual){
   if(e.k === 'ini' && !SC.ens && !p.sub){ scBeep(false); return toast('Elige el ensamblador (o escanea la etiqueta de un ítem que ya tenga ensamblador asignado en la programación)', true); }
   if(e.k === 'inst' && !SC.inst){ scBeep(false); return toast('Primero elige el instalador', true); }
   if(e.k === 'inst' && !SC.instPiso){ scBeep(false); const o = $('#scIPiso'); if(o) o.focus(); return toast('Primero elige el piso donde estás instalando', true); }
+  if(e.k === 'desp' && !SC.od){ scBeep(false); toast('Primero escanea el QR de la orden de despacho o elígela de la lista', true); const o = $('#scOd'); if(o) o.focus(); return; }
   if(e.k === 'desp' && !SC.rem){ scBeep(false); toast('Primero escribe la remisión', true); const r = $('#scRem'); if(r) r.focus(); return; }
   SC.busy = true;
   try{
@@ -2518,11 +2519,17 @@ function scDondeInst(it, cand, tot, e){
 function scHoja(p, items, e){
   // Procesos: las sub-OP programadas van primero y son las que quedan marcadas (las unidades de una OP son iguales)
   const prog = it => it.programado === 'X';
-  const ok = items.filter(it => !scMotivo(it, e)).sort((a, b) => e.proc ? (prog(b) - prog(a)) || nat(a.op_instalacion, b.op_instalacion) : 0);
+  let ok = items.filter(it => !scMotivo(it, e)).sort((a, b) => e.proc ? (prog(b) - prog(a)) || nat(a.op_instalacion, b.op_instalacion) : 0);
+  // Despacho: no más unidades de las que la orden tiene pendientes de esta OP (primero las que están en la orden)
+  let cupo = null;
+  if(e.k === 'desp' && SC.od){ const enOd = it => SC.od.items.includes(it.id);
+    cupo = SC.od._pend ? ((SC.od._pend[p.op] || []).length) : ok.filter(enOd).length;
+    const esc_ = it => p.sub && it.op_instalacion === p.sub;   // la unidad escaneada va primero
+    ok = [...ok.filter(esc_), ...ok.filter(it => !esc_(it) && enOd(it)), ...ok.filter(it => !esc_(it) && !enOd(it))].slice(0, cupo); }
   const okProg = e.proc ? ok.filter(prog) : [];
   const sel = new Set(p.sub ? ok.filter(it => it.op_instalacion === p.sub).map(it => it.id) : (okProg.length ? okProg : ok).map(it => it.id));
   const obras = [...new Set(items.map(it => it.obra))];
-  const det = SC.det = {p, items: e.proc ? [...items].sort((a, b) => (prog(b) && !scMotivo(b, e)) - (prog(a) && !scMotivo(a, e)) || nat(a.op_instalacion, b.op_instalacion)) : items, e, ok, sel};
+  const det = SC.det = {cupo, p, items: e.proc ? [...items].sort((a, b) => (prog(b) && !scMotivo(b, e)) - (prog(a) && !scMotivo(a, e)) || nat(a.op_instalacion, b.op_instalacion)) : items, e, ok, sel};
   const accion = e.proc ? `${e.t} ${SC.parcial ? '(parcial +)' : '(X)'}` : e.t + (e.k === 'ini' ? ' · ' + SC.ens : e.k === 'desp' ? ' · rem. ' + SC.rem : e.k === 'inst' && SC.inst ? ' · ' + SC.inst : '');
   const body = `<div class="summary"><b>${esc(accion)}</b><br>${fmtN(ok.length)} de ${fmtN(items.length)} sub-OP se pueden registrar${p.sub ? ` · escaneaste la <b>${esc(p.sub)}</b>` : ''}.${e.proc && okProg.length ? `<br><b>${fmtN(okProg.length)} programada${okProg.length === 1 ? '' : 's'} pendiente${okProg.length === 1 ? '' : 's'}</b>: quedan marcadas primero. Ajusta la cantidad a lo que realmente se procesó.` : ''}</div>
     <div id="scNoProg"></div>
@@ -2592,7 +2599,7 @@ async function scDeshacer(i){
 }
 function scPintar(){
   const d = SC.det, box = $('#scItems'); if(!d || !box) return;
-  box.innerHTML = d.items.map(it => { const m = scMotivo(it, d.e), on = d.sel.has(it.id);
+  box.innerHTML = d.items.map(it => { const m = scMotivo(it, d.e) || (d.cupo != null && !d.ok.some(x => x.id === it.id) ? 'no va en esta orden' : null), on = d.sel.has(it.id);
     return `<button class="sc-it ${on?'on':''} ${m?'no':''}" ${m ? 'disabled' : `onclick="scTog(${it.id})"`}>
       <span class="cob-ck">${on ? ICON.check : ''}</span>
       <span class="sc-it-t"><b>${esc(it.op_instalacion || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · ' + esc(pisoLbl(it.piso)) : ''}${d.e.proc && it.programado === 'X' && !m ? ' · <b>programada</b>' : ''}<small>${esc(it.diseno || '')}${it.ancho ? ' · ' + fmtN(it.ancho) + '×' + fmtN(it.alto) : ''}</small></span>
@@ -2602,7 +2609,9 @@ function scPintar(){
     np.innerHTML = k ? `<div class="warn" style="margin-top:6px">${fmtN(k)} de las marcadas <b>no están programadas</b> (se procesaron de más). Quedan registradas, pero no podrán iniciar ensamble hasta que se programen.</div>` : ''; }
   const b = $('#shOk'); if(b) b.textContent = `Registrar ${fmtN(d.sel.size)}`;
 }
-function scTog(id){ const d = SC.det; if(d.sel.has(id)) d.sel.delete(id); else d.sel.add(id); scPintar(); }
+function scTog(id){ const d = SC.det; if(d.sel.has(id)) d.sel.delete(id);
+  else { if(d.cupo != null && d.sel.size >= d.cupo) return toast(`La orden de despacho solo tiene ${fmtN(d.cupo)} pendiente${d.cupo === 1 ? '' : 's'} de esta OP`, true); d.sel.add(id); }
+  scPintar(); }
 function scCant(delta){
   const d = SC.det; const n = Math.max(0, Math.min(d.ok.length, delta === 999 ? d.ok.length : d.sel.size + delta));
   d.sel = new Set(d.ok.slice(0, n).map(it => it.id)); scPintar();
