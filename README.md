@@ -44,3 +44,10 @@ grant select, insert, update, delete on public.<tabla> to authenticated;
 
 Solo `authenticated` (nunca `anon`), y con RLS activo. Las tablas existentes no se ven afectadas.
 Las tablas de solo registro (consultadas desde el SQL Editor) no necesitan grant.
+
+## Si la app se pierde (recuperación)
+La copia diaria del Mac (carpeta de respaldos en iCloud) trae todo lo necesario:
+- `REINSTALAR_APP.sql`: un solo SQL, generado cada día desde la base real, que reconstruye la app completa en un proyecto de Supabase nuevo (tablas, funciones, triggers, RLS, permisos, carpeta de PDF, tiempo real, contadores).
+- `COPIA_COMPLETA_*.zip`: los datos (un .json por tabla, en orden de restauración) y `_usuarios.json`.
+- `PDF_OP/`: los PDF de las OP.
+Pasos en el `LEEME.txt` del .zip. Datos: `restaurar_tabla(tabla, filas)` y al final `restaurar_secuencias()`.

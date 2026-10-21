@@ -150,8 +150,27 @@ function run(argv){
         writeText(cdir + '/' + t + '.json', '[' + partes.join(',') + ']');
         resumen.push(t + ': ' + n + ' filas');
       }
-      writeText(cdir + '/LEEME.txt', 'ELÍPTICA · Copia completa de la base de producción\n' + new Date().toString() +
-        '\nUn archivo .json por tabla. Para restaurar, entrega este .zip a Claude.\n\n' + resumen.join('\n') + '\n');
+      // El SQL que reconstruye la app completa (estructura, permisos, funciones) y la lista de usuarios
+      let rein = false;
+      try{
+        const esq = JSON.parse(rpc('respaldo_esquema', {}, tmp + '/esq.json'));
+        if(typeof esq !== 'string' || esq.length < 1000) throw new Error('respuesta vacía');
+        writeText(cdir + '/REINSTALAR_APP.sql', esq);
+        writeText(tmp + '/rein.sql', esq);
+        copiarA(tmp + '/rein.sql', destino, 'REINSTALAR_APP.sql');   // suelto en la carpeta: siempre el más reciente
+        writeText(cdir + '/_usuarios.json', rpc('respaldo_usuarios', {}, tmp + '/usr.json'));
+        rein = true;
+      }catch(e){ fallas.push('SQL de reinstalación: ' + e.message); }
+      writeText(cdir + '/LEEME.txt', 'ELÍPTICA · Copia completa de la base de producción\n' + new Date().toString() + '\n\n' +
+        'SI LA APP SE PIERDE (proyecto de Supabase dañado, borrado o atacado):\n' +
+        '1. Crear un proyecto nuevo en Supabase.\n' +
+        '2. SQL Editor → pegar REINSTALAR_APP.sql completo → Run. Eso reconstruye toda la app vacía.\n' +
+        '3. Crear los usuarios (están en _usuarios.json) y cargar los datos: un .json por tabla,\n' +
+        '   en el orden de abajo, con la función restaurar_tabla(); al final restaurar_secuencias().\n' +
+        '   Claude puede hacer el paso 3 con este .zip.\n' +
+        '4. Subir los PDF de la carpeta PDF_OP y cambiar la dirección del proyecto en la app.\n\n' +
+        (rein ? '' : '¡OJO! Esta copia no trae REINSTALAR_APP.sql (falta correr el SQL 40).\n\n') +
+        'Tablas, en orden de restauración:\n' + resumen.join('\n') + '\n');
       const nz = nombre.replace('COPIA_SEGURIDAD_', 'COPIA_COMPLETA_').replace(/\.xlsx$/, '.zip');
       sh(`cd ${q(cdir)} && /usr/bin/zip -q -X -r ../completa.zip .`);
       copiarA(tmp + '/completa.zip', destino, nz);
