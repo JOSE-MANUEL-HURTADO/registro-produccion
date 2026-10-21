@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.54';
+const APP_VERSION = '6.55';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -922,7 +922,7 @@ async function afterLogin(ses){
     window.addEventListener('popstate', onPop);
     history.replaceState({v:'scan'}, '');
     if(esPlanta()){ API.ensambladores().then(l => S.ensambladores = l).catch(()=>{}); cargarPersonas(); }
-    if(esInstalador()){ cargarPersonas(); if(!SC.inst && S.perfil.nombre) SC.inst = normNom(S.perfil.nombre); }
+    if(esInstalador()) cargarPersonas();
     S.view = ''; SC.est = scEstaciones()[0].k; SC.fecha = today();
     return goScan();
   }
@@ -2309,6 +2309,7 @@ function goScan(){
   if(!SC.est || !scEstaciones().some(e => e.k === SC.est)) SC.est = scEstaciones()[0].k;
   if(!SC.fecha) SC.fecha = today();
   SC.instPiso = ''; SC.instPend = null;   // el piso de instalación se confirma cada vez que se entra al escáner
+  if(esInstalador()) SC.inst = '';         // y el instalador elige su nombre cada vez (no hay uno por defecto)
   renderScan();
 }
 function renderScan(){
