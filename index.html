@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.45';
+const APP_VERSION = '6.46';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2510,12 +2510,16 @@ function scDondeInst(it, cand, tot, e){
   });
 }
 function scHoja(p, items, e){
-  const ok = items.filter(it => !scMotivo(it, e));
-  const sel = new Set(p.sub ? ok.filter(it => it.op_instalacion === p.sub).map(it => it.id) : ok.map(it => it.id));
+  // Procesos: las sub-OP programadas van primero y son las que quedan marcadas (las unidades de una OP son iguales)
+  const prog = it => it.programado === 'X';
+  const ok = items.filter(it => !scMotivo(it, e)).sort((a, b) => e.proc ? (prog(b) - prog(a)) || nat(a.op_instalacion, b.op_instalacion) : 0);
+  const okProg = e.proc ? ok.filter(prog) : [];
+  const sel = new Set(p.sub ? ok.filter(it => it.op_instalacion === p.sub).map(it => it.id) : (okProg.length ? okProg : ok).map(it => it.id));
   const obras = [...new Set(items.map(it => it.obra))];
-  const det = SC.det = {p, items, e, ok, sel};
+  const det = SC.det = {p, items: e.proc ? [...items].sort((a, b) => (prog(b) && !scMotivo(b, e)) - (prog(a) && !scMotivo(a, e)) || nat(a.op_instalacion, b.op_instalacion)) : items, e, ok, sel};
   const accion = e.proc ? `${e.t} ${SC.parcial ? '(parcial +)' : '(X)'}` : e.t + (e.k === 'ini' ? ' · ' + SC.ens : e.k === 'desp' ? ' · rem. ' + SC.rem : e.k === 'inst' && SC.inst ? ' · ' + SC.inst : '');
-  const body = `<div class="summary"><b>${esc(accion)}</b><br>${fmtN(ok.length)} de ${fmtN(items.length)} sub-OP se pueden registrar${p.sub ? ` · escaneaste la <b>${esc(p.sub)}</b>` : ''}.</div>
+  const body = `<div class="summary"><b>${esc(accion)}</b><br>${fmtN(ok.length)} de ${fmtN(items.length)} sub-OP se pueden registrar${p.sub ? ` · escaneaste la <b>${esc(p.sub)}</b>` : ''}.${e.proc && okProg.length ? `<br><b>${fmtN(okProg.length)} programada${okProg.length === 1 ? '' : 's'} pendiente${okProg.length === 1 ? '' : 's'}</b>: quedan marcadas primero. Ajusta la cantidad a lo que realmente se procesó.` : ''}</div>
+    <div id="scNoProg"></div>
     ${ok.length ? `<div class="sc-cant"><span>¿Cuántas?</span><button class="btn" onclick="scCant(-1)">−</button><b id="scN"></b><button class="btn" onclick="scCant(1)">+</button><button class="btn sm ghost" onclick="scCant(999)">Todas</button></div>` : ''}
     <div class="sc-items" id="scItems"></div>`;
   openSheet(`OP ${esc(p.op)}`, esc(obras.join(' · ')), body, 'Registrar', async () => {
@@ -2585,9 +2589,11 @@ function scPintar(){
   box.innerHTML = d.items.map(it => { const m = scMotivo(it, d.e), on = d.sel.has(it.id);
     return `<button class="sc-it ${on?'on':''} ${m?'no':''}" ${m ? 'disabled' : `onclick="scTog(${it.id})"`}>
       <span class="cob-ck">${on ? ICON.check : ''}</span>
-      <span class="sc-it-t"><b>${esc(it.op_instalacion || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · P' + esc(it.piso) : ''}<small>${esc(it.diseno || '')}${it.ancho ? ' · ' + fmtN(it.ancho) + '×' + fmtN(it.alto) : ''}</small></span>
+      <span class="sc-it-t"><b>${esc(it.op_instalacion || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · ' + esc(pisoLbl(it.piso)) : ''}${d.e.proc && it.programado === 'X' && !m ? ' · <b>programada</b>' : ''}<small>${esc(it.diseno || '')}${it.ancho ? ' · ' + fmtN(it.ancho) + '×' + fmtN(it.alto) : ''}</small></span>
       <span class="sc-it-m">${m ? esc(m) : ''}</span></button>`; }).join('');
   const n = $('#scN'); if(n) n.textContent = `${d.sel.size} de ${d.ok.length}`;
+  const np = $('#scNoProg'); if(np){ const k = d.e.proc ? d.items.filter(it => d.sel.has(it.id) && it.programado !== 'X').length : 0;
+    np.innerHTML = k ? `<div class="warn" style="margin-top:6px">${fmtN(k)} de las marcadas <b>no están programadas</b> (se procesaron de más). Quedan registradas, pero no podrán iniciar ensamble hasta que se programen.</div>` : ''; }
   const b = $('#shOk'); if(b) b.textContent = `Registrar ${fmtN(d.sel.size)}`;
 }
 function scTog(id){ const d = SC.det; if(d.sel.has(id)) d.sel.delete(id); else d.sel.add(id); scPintar(); }
