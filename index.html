@@ -459,7 +459,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.52';
+const APP_VERSION = '6.53';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -697,6 +697,8 @@ const API = {
   async anularActa(id){ const {data,error} = await this.sb.rpc('anular_acta', {p_id:id}); if(error) throw error; return data; },
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
+  async obrasAlias(){ const {data,error} = await this.sb.from('obras_alias').select('alias,obra'); if(error) throw error; return data || []; },
+  async obraAliasGuardar(alias, obra){ const {error} = await this.sb.from('obras_alias').upsert({alias, obra}); if(error) throw error; },
   async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
   // ── Órdenes de producción en PDF (carpeta privada "ordenes", un archivo por número: ops/6235.pdf) ──
   async ordenesLista(){
@@ -4315,23 +4317,46 @@ async function revisarFilas(filas){
     const ops = [...cnt.keys()];
     const ya = await API.existentes(ops);
     filas.forEach(f => { if(ya.has(f.d.op_instalacion)) f.errors.push('Esa OP INSTALACION ya existe en la base'); });
-    // Obras nuevas o con nombre parecido
+    // Nombres de obra que ya se dijo que son otra obra (p. ej. la OP dice PROYECTO 125 y la obra es CALLE 125)
+    let al = new Map(); try{ al = new Map((await API.obrasAlias()).map(r => [r.alias, r.obra])); }catch(e){}
+    for(const f of filas) if(f.d.obra && al.has(f.d.obra)){ f.d.obraOrig = f.d.obra; f.d.obra = al.get(f.d.obra); }
     if(!S.obrasAll) S.obrasAll = S.anual ? S.anual.map(r=>r.obra) : await API.todasObras();
-    const exist = new Set(S.obrasAll), porClave = new Map();
-    for(const o of exist) porClave.set(obraKey(o), o);
-    const obrasInfo = new Map();
-    for(const f of filas){
-      const o = f.d.obra; if(!o) continue;
-      if(!obrasInfo.has(o)){
-        const parecida = !exist.has(o) ? (porClave.get(obraKey(o)) || null) : null;
-        obrasInfo.set(o, {nueva: !exist.has(o), parecida});
-      }
-      const inf = obrasInfo.get(o);
-      if(inf.parecida) f.warns.push(`¿Es la obra ${inf.parecida}? El nombre no coincide exactamente`);
-    }
-    C.filas = filas; C.obrasInfo = obrasInfo; C.soloProblemas = filas.some(f => f.errors.length);
+    C.filas = filas; obrasRevisar(filas); C.soloProblemas = filas.some(f => f.errors.length);
     C.estado = 'revision';
   }
+}
+
+// Obras nuevas o con nombre parecido
+function obrasRevisar(filas){
+  const exist = new Set(S.obrasAll || []), porClave = new Map();
+  for(const o of exist) porClave.set(obraKey(o), o);
+  const obrasInfo = new Map();
+  for(const f of filas){
+    f.warns = f.warns.filter(w => !w.startsWith('¿Es la obra'));
+    const o = f.d.obra; if(!o) continue;
+    if(!obrasInfo.has(o)){
+      const parecida = !exist.has(o) ? (porClave.get(obraKey(o)) || null) : null;
+      obrasInfo.set(o, {nueva: !exist.has(o), parecida});
+    }
+    const inf = obrasInfo.get(o);
+    if(inf.parecida) f.warns.push(`¿Es la obra ${inf.parecida}? El nombre no coincide exactamente`);
+  }
+  C.obrasInfo = obrasInfo;
+}
+// Obras existentes ordenadas por parecido con un nombre nuevo (números y palabras en común primero)
+function obrasParecidas(nombre){
+  const tok = t => new Set(normH(t).split(/[^A-Z0-9]+/).filter(x => x.length > 1));
+  const a = tok(nombre), l = [...new Set(S.obrasAll || [])];
+  const pts = o => { let p = 0; for(const t of tok(o)) if(a.has(t)) p += /^\d+$/.test(t) ? 3 : 1; return p; };
+  return l.map(o => [o, pts(o)]).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(x => x[0]);
+}
+// "Es la misma obra que…": todas las filas de ese nombre pasan a la obra elegida y se recuerda para la próxima vez
+async function obraIgual(i, destino){
+  const orig = (C.obrasNuevas || [])[i]; if(!orig || !destino) return;
+  for(const f of C.filas) if(f.d.obra === orig){ f.d.obraOrig = f.d.obraOrig || orig; f.d.obra = destino; }
+  obrasRevisar(C.filas); renderCarga();
+  try{ await API.obraAliasGuardar(orig, destino); toast(`✓ Se cargará en ${destino}. La próxima vez que una OP diga "${orig}" se hará solo`); }
+  catch(e){ toast(`Se cargará en ${destino} (no se pudo recordar para la próxima: ${errMsg(e)})`, true); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -4465,9 +4490,12 @@ function revisionHTML(){
       <b style="color:var(--inst)">${fmtN(ok.length)} listas para cargar</b>${bad.length ? ` · <b style="color:var(--danger)">${fmtN(bad.length)} con errores</b> (no se cargarán)` : ''}</div>
     ${porObra.size ? `<div class="grid-obras" style="margin-bottom:18px">${[...porObra.values()].sort((a,b)=>b.n-a.n).map(o => {
       const inf = C.obrasInfo.get(o.obra) || {};
+      const k = inf.nueva ? (C.obrasNuevas = C.obrasNuevas || [], C.obrasNuevas.includes(o.obra) ? C.obrasNuevas.indexOf(o.obra) : C.obrasNuevas.push(o.obra) - 1) : -1;
+      const orig = [...new Set(C.filas.filter(f => f.d.obra === o.obra && f.d.obraOrig).map(f => f.d.obraOrig))];
       return `<div class="obra-card" style="cursor:default">
         <div><div class="oc-name">${esc(o.obra)} ${inf.nueva ? `<span class="badge-new">${inf.parecida?'Nombre distinto':'Obra nueva'}</span>` : ''}</div>
-        <div class="oc-meta">OP ${esc(opsTxt(o.ops)) || '—'}</div></div>
+        <div class="oc-meta">OP ${esc(opsTxt(o.ops)) || '—'}${orig.length ? ` · en la OP dice ${esc(orig.join(', '))}` : ''}</div>
+        ${inf.nueva && isGerente() ? `<select style="margin-top:6px;width:100%" onchange="obraIgual(${k}, this.value)"><option value="">¿Es una obra que ya existe? Elígela…</option>${obrasParecidas(o.obra).map(x => `<option>${esc(x)}</option>`).join('')}</select>` : ''}</div>
         <div class="oc-nums" style="grid-template-columns:repeat(3,1fr)">
           <div><b>${fmtN(o.n)}</b><span>Ítems</span></div>
           <div><b>${fmtN(o.m2,1)}</b><span>M²</span></div>
