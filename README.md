@@ -33,3 +33,14 @@ Cada persona entra con el correo y la contraseña que le creaste en Supabase.
 | Ver precios y cobros | Sí | No (la base de datos lo bloquea) |
 | Modificar datos de la OP (medidas, ítem, obra) | Sí | No (la base de datos lo bloquea) |
 | Exportar la base a Excel | Sí | No |
+
+## Regla para SQL nuevos (cambio de Supabase del 30-oct-2026)
+Desde el 30 de octubre de 2026, Supabase ya no da acceso automático por la API a las tablas NUEVAS de `public`.
+Todo SQL que cree una tabla que la app lea o escriba debe incluir, en el mismo archivo:
+
+```sql
+grant select, insert, update, delete on public.<tabla> to authenticated;
+```
+
+Solo `authenticated` (nunca `anon`), y con RLS activo. Las tablas existentes no se ven afectadas.
+Las tablas de solo registro (consultadas desde el SQL Editor) no necesitan grant.
