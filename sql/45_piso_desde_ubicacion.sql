@@ -20,7 +20,7 @@ declare
   g record; u record; pisos text[]; k int; base text; n int := 0;
 begin
   perform set_config('elp.swap', '1', true);   -- permite cambiar ubicación y piso (solo durante este arreglo)
-  for g in select obra, op, ubicacion, array_agg(id order by coalesce(nullif(regexp_replace(op_instalacion, '^.*\.', ''), '')::int, 0), id) ids
+  for g in select obra, op, ubicacion, array_agg(id order by coalesce(substring(op_instalacion from '\.(\d+)$')::int, 0), op_instalacion, id) ids
              from public.items
             where piso is null and ubicacion is not null
             group by obra, op, ubicacion loop
