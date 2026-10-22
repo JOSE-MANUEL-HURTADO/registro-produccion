@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.67';
+const APP_VERSION = '6.68';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2659,7 +2659,8 @@ function scMotivo(it, e){
   if(e.proc){ if(it[e.k] === 'X') return 'ya completo'; if(SC.parcial && it[e.k] === '+') return 'ya parcial'; return null; }
   if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', ');
-    if(!SC.ens && !it.ens_asignado) return 'sin ensamblador (elígelo arriba)'; return null; }
+    if(!SC.ens && !it.ens_asignado) return 'sin ensamblador (elígelo arriba)';
+    if(SC.ens && it.ens_asignado && it.ens_asignado !== SC.ens) return 'línea de ' + it.ens_asignado; return null; }
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(!SC.od) return 'sin orden de despacho'; if(!SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
@@ -2825,7 +2826,7 @@ async function scCodigo(txt, manual){
   if(esCampo() && !rolEs('entrega')){ scBeep(false); return toast(rolEs('conductor') ? 'Escanea el QR de la remisión' : 'Escanea el QR del acta o de la remisión', true); }
   scGuardarParams();
   const e = scEst();
-  if(e.k === 'ini' && !SC.ens && !p.sub){ scBeep(false); return toast('Elige el ensamblador (o escanea la etiqueta de un ítem que ya tenga ensamblador asignado en la programación)', true); }
+  if(e.k === 'ini' && !SC.ens){ scBeep(false); return toast('Primero elige el ensamblador: la etiqueta se acomoda a su línea de ensamble', true); }
   if(e.k === 'inst' && !SC.inst){ scBeep(false); return toast('Primero elige el instalador', true); }
   if(e.k === 'inst' && !SC.instPiso){ scBeep(false); const o = $('#scIPiso'); if(o) o.focus(); return toast('Primero elige el piso donde estás instalando', true); }
   if(e.k === 'desp' && !SC.od){ scBeep(false); toast('Primero escanea el QR de la orden de despacho o elígela de la lista', true); const o = $('#scOd'); if(o) o.focus(); return; }
@@ -2941,11 +2942,10 @@ function reclasDestino(it, items, e){
     if(it.programacion_id) return null;
     return otras.find(x => !scMotivo(x, e)) || null;
   }
-  // Inicio de ensamble: preferir la asignada al ensamblador elegido; si no, cualquiera programada lista
-  const ok = x => !scMotivo(x, e), ens = SC.ens;
-  const delEns = x => ens && x.ens_asignado === ens;
-  if(ok(it) && (!ens || delEns(it) || !otras.some(x => ok(x) && delEns(x)))) return null;
-  return otras.filter(ok).sort((a, b) => delEns(b) - delEns(a) || !!b.ens_asignado - !!a.ens_asignado)[0] || null;
+  // Inicio de ensamble: la etiqueta toma el lugar de una unidad de la línea del ensamblador elegido
+  const ok = x => !scMotivo(x, e), delEns = x => x.ens_asignado === SC.ens;
+  if(ok(it) && (delEns(it) || !otras.some(x => ok(x) && delEns(x)))) return null;
+  return otras.find(x => ok(x) && delEns(x)) || (ok(it) ? null : otras.find(ok)) || null;
 }
 // Registra y guarda lo que había antes, para poder deshacer desde la lista de la sesión
 async function scAplicar(l, tot, e){
