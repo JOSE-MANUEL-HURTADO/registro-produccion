@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.63';
+const APP_VERSION = '6.64';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2111,7 +2111,7 @@ function liqPintar(){
       ${L.adic.map(a => `<tr><td><b>${esc(a.item)}</b><br><small>Adicional (no está en la cotización)</small></td><td>0</td><td></td><td></td><td>${fmtN(a.filas.length)}</td><td></td><td>+${fmtN(a.filas.length)}</td><td style="color:var(--danger)"><b>ADICIONAL</b></td></tr>`).join('')}</tbody></table></div>
     <div class="ctable-wrap" style="margin-top:8px"><table class="ctable"><thead><tr><th></th><th style="text-align:right">Contratado</th><th style="text-align:right">Ejecutado</th></tr></thead><tbody>
       ${cr('Subtotal', T.sub, E.sub)}${cr(`Administración ${L.p.admin}%`, T.A, E.A)}${cr(`Imprevistos ${L.p.imprevistos}%`, T.I, E.I)}${cr(`Utilidad ${L.p.utilidad}%`, T.U, E.U)}${cr(`IVA ${L.p.iva}% sobre utilidad`, T.V, E.V)}${cr('<b>TOTAL</b>', T.total, E.total)}
-      ${cr('Pagos recibidos', null, L.pagado, true)}${cr('Saldo', null, E.total - L.pagado)}${cr(`Retegarantía ${L.p.retegarantia}%`, null, L.rete, true)}${cr('<b>Pendiente de pago</b>', null, E.total - L.pagado - L.rete)}</tbody></table></div>
+      ${cr('Pagos recibidos', null, L.pagado, true)}${cr('Saldo', null, E.total - L.pagado)}${cr(`Retegarantía ${L.p.retegarantia}%`, null, L.rete, true)}</tbody></table></div>
     <label class="switch" style="margin:8px 0"><span>Cobrar también las unidades por encima de lo contratado (si no, quedan en $0: ventana hecha en varias OP)</span><button class="tgl ${_lq.cobrarExceso ? 'on' : ''}" onclick="_lq.cobrarExceso=!_lq.cobrarExceso; liqPintar()"></button></label>
     ${L.lineas.some(x => x.estado === 'EXCEDIDO') ? `<div class="warn">Ítems con más unidades instaladas que contratadas: ${esc(L.lineas.filter(x => x.estado === 'EXCEDIDO').map(x => `${x.item} (+${x.n - x.cant})`).join(', '))}. Revisa si es una ventana en varias OP o mayor cantidad.</div>` : ''}
     ${L.adic.length ? `<div class="warn">Ítems instalados que no están en la cotización (adicionales): ${esc(L.adic.map(a => a.item).join(', '))}. No entran al total ni se les cambia el precio: ponlos a mano en "$ Precios".</div>` : ''}
@@ -2184,7 +2184,7 @@ async function liqExcel(){
   rows.push([], ['', '', '', 'CONCEPTO', 'CONTRATADO', '', 'EJECUTADO'],
     ['', '', '', 'SUBTOTAL', T.sub, '', E.sub], ['', '', '', `ADMINISTRACION ${L.p.admin}%`, T.A, '', E.A], ['', '', '', `IMPREVISTOS ${L.p.imprevistos}%`, T.I, '', E.I],
     ['', '', '', `UTILIDAD ${L.p.utilidad}%`, T.U, '', E.U], ['', '', '', `IVA ${L.p.iva}% SOBRE UTILIDAD`, T.V, '', E.V], ['', '', '', 'TOTAL', T.total, '', E.total],
-    ['', '', '', 'PAGOS', '', '', L.pagado], ['', '', '', 'SALDO', '', '', E.total - L.pagado], ['', '', '', `RETEGARANTIA ${L.p.retegarantia}%`, '', '', L.rete], ['', '', '', 'PENDIENTE DE PAGO', '', '', E.total - L.pagado - L.rete]);
+    ['', '', '', 'PAGOS', '', '', L.pagado], ['', '', '', 'SALDO', '', '', E.total - L.pagado], ['', '', '', `RETEGARANTIA ${L.p.retegarantia}%`, '', '', L.rete]);
   const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [12, 28, 14, 14, 18, 14, 18, 14, 14].map(w => ({wch: w}));
   Object.keys(ws).forEach(a => { if(a[0] !== '!' && ws[a].t === 'n' && /^[DEG]/.test(a)) ws[a].z = '#,##0'; });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Liquidacion');
