@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.62';
+const APP_VERSION = '6.63';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1737,7 +1737,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Liquidación</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
         </div>
         ${S.cerradas && S.cerradas.has(S.obra) ? `<div class="summary" style="margin:6px 0 10px">Obra <b>entregada</b> (contrato cerrado) el ${fmtD(String(S.cerradas.get(S.obra).cerrada_en).slice(0,10))}${S.cerradas.get(S.obra).quien ? ' por ' + esc(S.cerradas.get(S.obra).quien) : ''}. No aparece en Obras activas ni en Planta.</div>` : ''}
         <div class="chips" id="chips"></div>
@@ -2049,6 +2049,146 @@ async function preciosReversar(id){
     for(const c of await API.comercial(S.items.map(i => i.id))) S.com.set(c.item_id, c);
     toast(`✓ Reversado: ${fmtN(data || 0)} ítems volvieron a su precio anterior`); closeSheet(); renderObra(); }
   catch(e){ toast(errMsg(e), true); }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LIQUIDACIÓN AUTOMÁTICA (solo gerente): contratado = cotización subida a la app (SQL 47);
+//  ejecutado = lo instalado en la app. Se recalcula cada vez que se abre, con las OP que haya cargadas.
+//  Precio por ÍTEM (nunca por m²): precio unidad = ROUND(VR. UNIT. contratado × TOTAL/SUBTOTAL, 0).
+//  Unidades por encima de lo contratado (ventana hecha en varias OP) quedan en $0 salvo que se elija cobrarlas.
+// ════════════════════════════════════════════════════════════════
+const LIQ_P0 = {admin: 10, imprevistos: 4, utilidad: 6, iva: 19, retegarantia: 10};
+const liqTot = (sub, p) => { const r = Math.round, A = r(sub * p.admin / 100), I = r(sub * p.imprevistos / 100), U = r(sub * p.utilidad / 100), V = r(U * p.iva / 100);
+  const total = sub + A + I + U + V; return {sub, A, I, U, V, total, factor: sub > 0 ? total / sub : 1 + (p.admin + p.imprevistos + p.utilidad + p.utilidad * p.iva / 100) / 100}; };
+async function liquidacionAuto(){
+  if(!isGerente()) return;
+  try{ const {data, error} = await API.sb.from('liq_contrato').select('*').eq('obra', S.obra).maybeSingle(); if(error) throw error;
+    window._lq = {c: data, cobrarExceso: window._lq && window._lq.obra === S.obra ? window._lq.cobrarExceso : false, obra: S.obra}; }
+  catch(e){ return toast(/liq_contrato/.test(errMsg(e)) ? 'Falta correr el SQL 47 en Supabase' : errMsg(e), true); }
+  liqPintar();
+}
+function liqCalc(){
+  const c = _lq.c, p = {...LIQ_P0, ...(c && c.params || {})}, K = new Map();
+  for(const x of (c && c.items) || []) K.set(itemKey(x.item), {item: x.item, cant: Number(x.cant) || 0, vr: Number(x.vr) || 0, ub: x.ubicacion || '', filas: []});
+  const inst = S.items.filter(i => i.instalado).sort((a, b) => nat(a.op, b.op) || a.id - b.id);
+  const adic = new Map(), sinItem = [];
+  for(const it of inst){ const k = itemKey(it.item); if(!k){ sinItem.push(it); continue; }
+    if(K.has(k)) K.get(k).filas.push(it); else { if(!adic.has(k)) adic.set(k, {item: it.item, filas: []}); adic.get(k).filas.push(it); } }
+  const subC = [...K.values()].reduce((a, x) => a + x.cant * x.vr, 0);
+  let subE = 0;
+  const lineas = [...K.entries()].sort((a, b) => nat(a[0], b[0])).map(([k, x]) => {
+    const n = x.filas.length, cobra = _lq.cobrarExceso ? n : Math.min(n, x.cant);
+    x.valorE = cobra * x.vr; subE += x.valorE;
+    x.estado = !n ? 'SIN EJECUTAR' : n < x.cant ? 'PARCIAL' : n === x.cant ? 'COMPLETO' : 'EXCEDIDO';
+    return {k, ...x, n, cobra}; });
+  const TC = liqTot(subC, p), TE = liqTot(subE, p);
+  const pagos = ((c && c.pagos) || []).filter(x => Number(x.valor) > 0), pagado = pagos.reduce((a, x) => a + Number(x.valor), 0);
+  const rete = Math.round(TE.total * p.retegarantia / 100);
+  // Precio nuevo por unidad (cada fila instalada = una unidad): las primeras "cant" con precio, el exceso en $0
+  const cambios = [];
+  for(const x of lineas){ const unit = Math.round(x.vr * TE.factor);
+    x.filas.forEach((it, j) => { const nuevo = (_lq.cobrarExceso || j < x.cant) ? unit : 0; if(com(it).precio == null || Number(com(it).precio) !== nuevo) cambios.push({item_id: it.id, antes: com(it).precio ?? null, despues: nuevo}); });
+    x.unit = unit; }
+  const sinPrecioAdic = [...adic.values()].filter(a => a.filas.some(i => com(i).precio == null));
+  return {p, lineas, adic: [...adic.values()], sinItem, TC, TE, pagos, pagado, rete, cambios, sinPrecioAdic, sinVr: lineas.filter(x => !(x.vr > 0))};
+}
+function liqPintar(){
+  const c = _lq.c, L = _lq.L = liqCalc(), m = v => '$' + fmtN(Math.round(v));
+  const est = {COMPLETO: 'var(--inst)', PARCIAL: 'var(--warn, #b7791f)', EXCEDIDO: 'var(--danger)', 'SIN EJECUTAR': 'var(--muted, #888)'};
+  const acciones = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <button class="btn sm ${c ? 'ghost' : 'primary'}" onclick="document.getElementById('liqXls').click()">${ICON.up} ${c ? 'Cambiar cotización' : 'Cargar cotización (Excel)'}</button>
+    <input type="file" id="liqXls" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="if(this.files[0]) liqSubirCotizacion(this.files[0])">
+    <button class="btn sm ghost" onclick="liqParams()">Porcentajes y pagos</button>
+    <button class="btn sm ghost" onclick="liqExcel()">${ICON.down} Descargar Excel</button>
+    <button class="btn sm ghost" onclick="preciosLotes()">Ver / reversar cambios</button></div>`;
+  if(!c) return openSheet('Liquidación', esc(S.obra), acciones + `<div class="empty">Esta obra aún no tiene cotización. Sube el Excel de la cotización (columnas "No.", "CANT." y "VR. UNIT.") y la liquidación se arma sola con las OP instaladas.</div>`, 'Cerrar', async () => {});
+  const fila = x => `<tr><td><b>${esc(x.item)}</b>${x.ub ? `<br><small>${esc(x.ub)}</small>` : ''}</td><td>${fmtN(x.cant)}</td><td>${m(x.vr)}</td><td>${m(x.cant * x.vr)}</td><td>${fmtN(x.n)}</td><td>${m(x.valorE)}</td><td>${fmtN(x.n - x.cant)}</td><td style="color:${est[x.estado]}"><b>${x.estado}</b></td></tr>`;
+  const cr = (t, a, b, neg) => `<tr><td>${t}</td><td style="text-align:right">${a == null ? '' : m(a)}</td><td style="text-align:right">${b == null ? '' : (neg ? '−' : '') + m(b)}</td></tr>`;
+  const T = L.TC, E = L.TE, pc = T.total ? Math.round(E.total / T.total * 1000) / 10 : 0;
+  const body = acciones + `<div class="summary">Cotización <b>${esc(c.archivo || '')}</b> · ${fmtN((c.items || []).length)} ítems · cargada ${fmtD(String(c.actualizado).slice(0, 10))}<br>
+      Ejecutado (instalado) <b>${m(E.total)}</b> de <b>${m(T.total)}</b> contratado · <b>${fmtN(pc, 1)} %</b> · factor ×${fmtN(E.factor, 4)}</div>
+    <div class="ctable-wrap" style="max-height:38vh;overflow:auto;margin-top:8px"><table class="ctable"><thead><tr><th>Ítem</th><th>Cant. contr.</th><th>VR. unit.</th><th>Valor contr.</th><th>Cant. ejec.</th><th>Valor ejec.</th><th>Dif.</th><th>Estado</th></tr></thead><tbody>${L.lineas.map(fila).join('')}
+      ${L.adic.map(a => `<tr><td><b>${esc(a.item)}</b><br><small>Adicional (no está en la cotización)</small></td><td>0</td><td></td><td></td><td>${fmtN(a.filas.length)}</td><td></td><td>+${fmtN(a.filas.length)}</td><td style="color:var(--danger)"><b>ADICIONAL</b></td></tr>`).join('')}</tbody></table></div>
+    <div class="ctable-wrap" style="margin-top:8px"><table class="ctable"><thead><tr><th></th><th style="text-align:right">Contratado</th><th style="text-align:right">Ejecutado</th></tr></thead><tbody>
+      ${cr('Subtotal', T.sub, E.sub)}${cr(`Administración ${L.p.admin}%`, T.A, E.A)}${cr(`Imprevistos ${L.p.imprevistos}%`, T.I, E.I)}${cr(`Utilidad ${L.p.utilidad}%`, T.U, E.U)}${cr(`IVA ${L.p.iva}% sobre utilidad`, T.V, E.V)}${cr('<b>TOTAL</b>', T.total, E.total)}
+      ${cr('Pagos recibidos', null, L.pagado, true)}${cr('Saldo', null, E.total - L.pagado)}${cr(`Retegarantía ${L.p.retegarantia}%`, null, L.rete, true)}${cr('<b>Pendiente de pago</b>', null, E.total - L.pagado - L.rete)}</tbody></table></div>
+    <label class="switch" style="margin:8px 0"><span>Cobrar también las unidades por encima de lo contratado (si no, quedan en $0: ventana hecha en varias OP)</span><button class="tgl ${_lq.cobrarExceso ? 'on' : ''}" onclick="_lq.cobrarExceso=!_lq.cobrarExceso; liqPintar()"></button></label>
+    ${L.lineas.some(x => x.estado === 'EXCEDIDO') ? `<div class="warn">Ítems con más unidades instaladas que contratadas: ${esc(L.lineas.filter(x => x.estado === 'EXCEDIDO').map(x => `${x.item} (+${x.n - x.cant})`).join(', '))}. Revisa si es una ventana en varias OP o mayor cantidad.</div>` : ''}
+    ${L.adic.length ? `<div class="warn">Ítems instalados que no están en la cotización (adicionales): ${esc(L.adic.map(a => a.item).join(', '))}. No entran al total ni se les cambia el precio: ponlos a mano en "$ Precios".</div>` : ''}
+    ${L.sinItem.length ? `<div class="warn">${fmtN(L.sinItem.length)} unidades instaladas sin código de ítem.</div>` : ''}
+    ${L.sinVr.length ? `<div class="warn">Ítems de la cotización sin VR. UNIT.: ${esc(L.sinVr.map(x => x.item).join(', '))}</div>` : ''}
+    <div class="sc-note">Se recalcula cada vez que abres la liquidación con las OP instaladas en este momento. Solo se cambian los precios de lo <b>instalado</b>; al aplicar queda el precio anterior y lo puedes <b>reversar</b> desde "Ver / reversar cambios".</div>`;
+  const n = L.cambios.length;
+  openSheet('Liquidación', esc(S.obra), body, n ? `Sustituir precios en ${fmtN(n)} ítems` : 'Cerrar', async () => {
+    if(!n) return;
+    const {data: lote, error} = await API.sb.from('precios_lotes').insert({obra: S.obra, archivo: c.archivo, n_items: n, detalle: `Liquidación automática ×${fmtN(E.factor, 4)} · total ${m(E.total)}`}).select('*').single();
+    if(error) throw error;
+    for(let i = 0; i < n; i += 500){ const {error: e2} = await API.sb.from('precios_lote_items').insert(L.cambios.slice(i, i + 500).map(x => ({lote_id: lote.id, ...x}))); if(e2) throw e2; }
+    for(const r of await API.upsertComercial(L.cambios.map(x => ({item_id: x.item_id, precio: x.despues})))) S.com.set(r.item_id, {...com({id: r.item_id}), ...r});
+    toast(`✓ Precios sustituidos en ${fmtN(n)} ítems`); renderObra();
+  });
+}
+async function liqSubirCotizacion(file){
+  try{ if(!window.XLSX) await loadScript(XLSX_URL); }catch(e){ return toast(errMsg(e), true); }
+  const T = v => String(v ?? '').trim().toUpperCase().replace(/\s+/g, ' '), items = [], avisos = []; let hoja = '';
+  try{
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    for(const nombre of wb.SheetNames){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], {header:1, raw:true, defval:''});
+      const h = rows.findIndex(r => r.some(c => /^NO\.?$/.test(T(c))) && r.some(c => /^VR\.? ?UNIT/.test(T(c))));
+      if(h < 0) continue;
+      const H = rows[h], f = re => H.findIndex(c => re.test(T(c)));
+      const iNo = f(/^NO\.?$/), iU = f(/^VR\.? ?UNIT/), iC = f(/^CANT/), iUb = f(/UBIC/), iD = f(/^DISE|^DESCR/);
+      if(iC < 0) avisos.push('No encontré la columna CANT.: se tomó 1 unidad por ítem');
+      for(let r = h + 1; r < rows.length; r++){
+        const row = rows[r], cod = itemKey(row[iNo]);
+        if(!cod){ if(row.some(c => /SUBTOTAL/.test(T(c)))) break; continue; }
+        const v = typeof row[iU] === 'number' ? row[iU] : cNum(row[iU]).v, cant = iC >= 0 ? (typeof row[iC] === 'number' ? row[iC] : cNum(row[iC]).v) : 1;
+        const ex = items.find(x => itemKey(x.item) === cod);
+        if(ex){ ex.cant += cant > 0 ? cant : 0; avisos.push(`Ítem ${cod} repetido en la cotización: se sumó la cantidad`); continue; }
+        items.push({item: String(row[iNo]).trim(), ubicacion: iUb >= 0 ? String(row[iUb] || '').trim() : (iD >= 0 ? String(row[iD] || '').trim() : ''), cant: cant > 0 ? cant : (iC >= 0 ? 0 : 1), vr: v > 0 ? Math.round(v) : 0});
+      }
+      if(items.length){ hoja = nombre; break; }
+    }
+  }catch(e){ return toast('No pude leer ese Excel: ' + errMsg(e), true); }
+  if(!items.length) return toast('No encontré la tabla con las columnas "No." y "VR. UNIT." en ese Excel', true);
+  const fila = {obra: S.obra, archivo: file.name, hoja, items, actualizado: new Date().toISOString()};
+  const aviso = [...new Set(avisos)].concat(items.filter(x => !x.vr).length ? [`${items.filter(x => !x.vr).length} ítems sin VR. UNIT.`] : []);
+  if(aviso.length && !confirm('Avisos al leer la cotización:\n\n' + aviso.join('\n') + '\n\n¿Guardarla de todos modos?')) return;
+  try{ const {data, error} = await API.sb.from('liq_contrato').upsert(fila, {onConflict: 'obra'}).select('*').single(); if(error) throw error; _lq.c = data; }
+  catch(e){ return toast(errMsg(e), true); }
+  toast(`✓ Cotización guardada: ${fmtN(items.length)} ítems`); liqPintar();
+}
+function liqParams(){
+  const c = _lq.c; if(!c) return toast('Primero carga la cotización', true);
+  const p = {...LIQ_P0, ...(c.params || {})}, pg = (c.pagos || []).map(x => `${x.fecha || ''} | ${x.valor} | ${x.concepto || ''}`).join('\n');
+  const inp = (k, t) => `<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0">${t}<input class="lqP" data-k="${k}" inputmode="decimal" value="${p[k]}" style="width:90px;min-height:38px;padding:6px 8px;text-align:right"></label>`;
+  openSheet('Porcentajes y pagos', esc(S.obra), `${inp('admin', 'Administración %')}${inp('imprevistos', 'Imprevistos %')}${inp('utilidad', 'Utilidad %')}${inp('iva', 'IVA sobre utilidad %')}${inp('retegarantia', 'Retegarantía %')}
+    <div class="sc-note" style="margin-top:8px">Pagos recibidos, uno por línea: <b>AAAA-MM-DD | valor | concepto</b></div>
+    <textarea id="lqPagos" rows="5" style="width:100%;margin-top:4px" placeholder="2026-03-15 | 20000000 | Anticipo">${esc(pg)}</textarea>`, 'Guardar', async () => {
+    const np = {}; for(const el of document.querySelectorAll('.lqP')){ const v = cNum(el.value.trim()).v; if(v == null || v < 0){ toast('Porcentaje no válido', true); return false; } np[el.dataset.k] = v; }
+    const pagos = []; for(const ln of $('#lqPagos').value.split('\n').map(s => s.trim()).filter(Boolean)){
+      const [f, v, ...t] = ln.split('|').map(s => s.trim()), val = cNum(v).v; if(val == null || val <= 0){ toast('Pago no válido: ' + ln, true); return false; }
+      pagos.push({fecha: f, valor: val, concepto: t.join(' | ')}); }
+    const {data, error} = await API.sb.from('liq_contrato').update({params: np, pagos}).eq('obra', S.obra).select('*').single(); if(error) throw error;
+    _lq.c = data; setTimeout(liqPintar, 0);
+  });
+}
+async function liqExcel(){
+  if(!_lq.c) return toast('Primero carga la cotización', true);
+  try{ if(!window.XLSX) await loadScript(XLSX_URL); }catch(e){ return toast(errMsg(e), true); }
+  const L = liqCalc(), T = L.TC, E = L.TE;
+  const rows = [['LIQUIDACIÓN · ' + S.obra], [], ['ITEM', 'UBICACION', 'CANT_CONTRATADA', 'VR_UNIT', 'VALOR_CONTRATADO', 'CANT_EJECUTADA', 'VALOR_EJECUTADO', 'DIFERENCIA_CANT', 'ESTADO']];
+  for(const x of L.lineas) rows.push([x.item, x.ub, x.cant, x.vr, x.cant * x.vr, x.n, x.valorE, x.n - x.cant, x.estado]);
+  for(const a of L.adic) rows.push([a.item, 'Adicional', 0, '', '', a.filas.length, '', a.filas.length, 'ADICIONAL']);
+  rows.push([], ['', '', '', 'CONCEPTO', 'CONTRATADO', '', 'EJECUTADO'],
+    ['', '', '', 'SUBTOTAL', T.sub, '', E.sub], ['', '', '', `ADMINISTRACION ${L.p.admin}%`, T.A, '', E.A], ['', '', '', `IMPREVISTOS ${L.p.imprevistos}%`, T.I, '', E.I],
+    ['', '', '', `UTILIDAD ${L.p.utilidad}%`, T.U, '', E.U], ['', '', '', `IVA ${L.p.iva}% SOBRE UTILIDAD`, T.V, '', E.V], ['', '', '', 'TOTAL', T.total, '', E.total],
+    ['', '', '', 'PAGOS', '', '', L.pagado], ['', '', '', 'SALDO', '', '', E.total - L.pagado], ['', '', '', `RETEGARANTIA ${L.p.retegarantia}%`, '', '', L.rete], ['', '', '', 'PENDIENTE DE PAGO', '', '', E.total - L.pagado - L.rete]);
+  const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [12, 28, 14, 14, 18, 14, 18, 14, 14].map(w => ({wch: w}));
+  Object.keys(ws).forEach(a => { if(a[0] !== '!' && ws[a].t === 'n' && /^[DEG]/.test(a)) ws[a].z = '#,##0'; });
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Liquidacion');
+  XLSX.writeFile(wb, `LIQUIDACION_COMPARATIVA_${String(S.obra).replace(/[^\w]+/g, '_')}_${today()}.xlsx`);
 }
 
 // ── Obra ejecutada para la liquidación (solo gerente): lo instalado agrupado por ítem y OP, con su precio ──
