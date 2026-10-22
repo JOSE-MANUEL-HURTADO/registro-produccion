@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.59';
+const APP_VERSION = '6.60';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1737,7 +1737,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Liquidación</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
         </div>
         ${S.cerradas && S.cerradas.has(S.obra) ? `<div class="summary" style="margin:6px 0 10px">Obra <b>entregada</b> (contrato cerrado) el ${fmtD(String(S.cerradas.get(S.obra).cerrada_en).slice(0,10))}${S.cerradas.get(S.obra).quien ? ' por ' + esc(S.cerradas.get(S.obra).quien) : ''}. No aparece en Obras activas ni en Planta.</div>` : ''}
         <div class="chips" id="chips"></div>
@@ -1868,7 +1868,9 @@ function sheetPrecios(){
     return `<div class="prF" data-sin="${sp ? 1 : 0}" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
       <span style="flex:1"><b>${esc(op)}</b> · ${esc(i0.item || '')} · ${esc(i0.diseno || '')}<br><small>${i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) + ' · ' : ''}${fmtN(is.length)} und.${sp ? ` · <b style="color:var(--danger)">${fmtN(sp)} sin precio</b>` : ''}${varios ? ' · precios distintos' : ''}</small></span>
       <input class="prQ" data-k="${k}" inputmode="numeric" placeholder="${varios ? 'varios' : 'Precio unit.'}" value="${p != null ? fmtN(p) : ''}" style="width:130px;min-height:38px;padding:6px 8px;text-align:right"></div>`; };
-  const body = `<div class="sc-note" style="margin-bottom:6px">Escribe el <b>precio unitario</b> de cada OP: se aplica a todas sus unidades.${S.sel.size ? ` Solo las OP de los <b>${fmtN(S.sel.size)}</b> ítems seleccionados.` : ''}</div>
+  const body = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><button class="btn sm" onclick="document.getElementById('prXls').click()">${ICON.up} Cargar desde la cotización (Excel)</button>
+      <input type="file" id="prXls" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="if(this.files[0]) preciosCotizacion(this.files[0])"></div>
+    <div class="sc-note" style="margin-bottom:6px">Escribe el <b>precio unitario</b> de cada OP: se aplica a todas sus unidades.${S.sel.size ? ` Solo las OP de los <b>${fmtN(S.sel.size)}</b> ítems seleccionados.` : ''}</div>
     ${hay ? `<label class="switch" style="margin:4px 0 8px"><span>Mostrar solo las OP sin precio</span><button class="tgl on" id="prSolo" onclick="_pr.solo=!_pr.solo; this.classList.toggle('on', _pr.solo); document.querySelectorAll('.prF').forEach(f => f.style.display = _pr.solo && f.dataset.sin !== '1' ? 'none' : 'flex')"></button></label>` : ''}
     <div style="max-height:52vh;overflow:auto">${ops.map(fila).join('')}</div>`;
   openSheet('Precios por OP', esc(S.obra), body, 'Guardar precios', async () => {
@@ -1885,6 +1887,84 @@ function sheetPrecios(){
     toast(`✓ Precio guardado en ${fmtN(rows.length)} ítem${rows.length===1?'':'s'}`); renderObra();
   });
   if(hay) document.querySelectorAll('.prF').forEach(f => f.style.display = f.dataset.sin !== '1' ? 'none' : 'flex');
+}
+
+// Lee el Excel de la cotización / liquidación: tabla con "No." (ítem: VF-1, EG-1…) y "VR. UNIT."
+// y pone ese precio a todas las unidades de la obra con ese ítem
+const itemKey = v => String(v ?? '').toUpperCase().replace(/\s+/g, '');
+async function preciosCotizacion(file){
+  try{ if(!window.XLSX) await loadScript(XLSX_URL); }catch(e){ return toast(errMsg(e), true); }
+  let precios = new Map(), hoja = '';
+  try{
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    for(const nombre of wb.SheetNames){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], {header:1, raw:true, defval:''});
+      const h = rows.findIndex(r => r.some(c => /^NO\.?$/i.test(String(c).trim())) && r.some(c => /^VR\.?\s*UNIT/i.test(String(c).trim())));
+      if(h < 0) continue;
+      const iNo = rows[h].findIndex(c => /^NO\.?$/i.test(String(c).trim())), iU = rows[h].findIndex(c => /^VR\.?\s*UNIT/i.test(String(c).trim()));
+      for(let r = h + 1; r < rows.length; r++){
+        const row = rows[r], cod = itemKey(row[iNo]);
+        if(!cod){ if(row.some(c => /SUBTOTAL/i.test(String(c)))) break; continue; }
+        const v = typeof row[iU] === 'number' ? row[iU] : cNum(row[iU]).v;
+        if(v != null && v > 0 && !precios.has(cod)) precios.set(cod, Math.round(v));
+      }
+      if(precios.size){ hoja = nombre; break; }
+    }
+  }catch(e){ return toast('No pude leer ese Excel: ' + errMsg(e), true); }
+  if(!precios.size) return toast('No encontré la tabla con las columnas "No." y "VR. UNIT." en ese Excel', true);
+  const base = S.sel.size ? selItems() : S.items;
+  const porItem = grp(base.filter(i => itemKey(i.item)), i => itemKey(i.item));
+  const sinCot = [...porItem.keys()].filter(k => !precios.has(k)).sort(nat);
+  const noObra = [...precios.keys()].filter(k => !porItem.has(k)).sort(nat);
+  const filas = [...precios.entries()].filter(([k]) => porItem.has(k)).sort((a, b) => nat(a[0], b[0]));
+  window._pc = {precios, porItem, todas: false};
+  const cuenta = () => { let n = 0; for(const [k, v] of filas) for(const it of porItem.get(k)) if(_pc.todas || com(it).precio == null) if(com(it).precio !== v) n++; return n; };
+  const body = `<div class="summary">Archivo <b>${esc(file.name)}</b> · hoja ${esc(hoja)} · <b>${fmtN(precios.size)}</b> ítems con precio.</div>
+    <label class="switch" style="margin:8px 0"><span>Reemplazar también los que ya tienen precio</span><button class="tgl" onclick="_pc.todas=!_pc.todas; this.classList.toggle('on', _pc.todas); document.getElementById('shOk').textContent = 'Aplicar a ' + _pc.cuenta() + ' ítems'"></button></label>
+    <div style="max-height:40vh;overflow:auto">${filas.map(([k, v]) => { const is = porItem.get(k), ya = is.filter(i => com(i).precio != null), dif = ya.filter(i => com(i).precio !== v);
+      return `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="flex:1"><b>${esc(k)}</b> · ${fmtN(is.length)} und. en ${fmtN(new Set(is.map(i => i.op)).size)} OP${dif.length ? ` · <span style="color:var(--danger)">${fmtN(dif.length)} con otro precio</span>` : ''}</span><b>$${fmtN(v)}</b></div>`; }).join('')}</div>
+    ${sinCot.length ? `<div class="warn">Ítems de la obra que no están en la cotización: ${esc(sinCot.slice(0, 15).join(', '))}${sinCot.length > 15 ? '…' : ''}. Ponles el precio a mano.</div>` : ''}
+    ${noObra.length ? `<div class="sc-note">De la cotización sin OP en la obra (aún no cargadas): ${esc(noObra.slice(0, 15).join(', '))}${noObra.length > 15 ? '…' : ''}</div>` : ''}`;
+  _pc.cuenta = cuenta;
+  openSheet('Precios desde la cotización', esc(S.obra), body, 'Aplicar a ' + cuenta() + ' ítems', async () => {
+    const rows = [];
+    for(const [k, v] of filas) for(const it of porItem.get(k)) if((_pc.todas || com(it).precio == null) && com(it).precio !== v) rows.push({item_id: it.id, precio: v});
+    if(!rows.length){ toast('No hay precios por cambiar', true); return false; }
+    try{ for(const r of await API.upsertComercial(rows)) S.com.set(r.item_id, {...com({id: r.item_id}), ...r}); }
+    catch(e){ toast(errMsg(e), true); return false; }
+    toast(`✓ Precio puesto en ${fmtN(rows.length)} ítems`); renderObra();
+  });
+}
+
+// ── Obra ejecutada para la liquidación (solo gerente): lo instalado agrupado por ítem y OP, con su precio ──
+async function liquidacionExcel(){
+  if(!isGerente()) return;
+  try{ if(!window.XLSX) await loadScript(XLSX_URL); }catch(e){ return toast(errMsg(e), true); }
+  const m3 = v => v == null || v === '' ? '' : Math.round(Number(v)) / 1000;   // mm → metros (como en la cotización)
+  const hoja = lista => {
+    const g = [...grp(lista, i => itemKey(i.item) + '|' + (i.op || '')).values()]
+      .sort((a, b) => nat(itemKey(a[0].item), itemKey(b[0].item)) || nat(a[0].op || '', b[0].op || ''));
+    const rows = [['ITEM', 'CANT', 'ANCHO', 'ALTO', 'AREA', 'OP', 'M2', 'VR. UNIT.', 'VR. TOTAL', 'OBSERVACIONES']];
+    let tc = 0, tm = 0, tv = 0;
+    for(const is of g){ const i0 = is[0], cant = is.length, area = i0.m2 != null ? Number(i0.m2) : (i0.ancho && i0.alto ? Math.round(i0.ancho * i0.alto / 1e4) / 100 : null);
+      const precios = [...new Set(is.map(i => com(i).precio).filter(x => x != null).map(Number))];
+      const vu = precios.length === 1 ? precios[0] : null, tot = is.reduce((a, i) => a + (Number(com(i).precio) || 0), 0);
+      const obs = [precios.length > 1 ? 'Precios distintos entre unidades' : '', is.some(i => com(i).precio == null) ? `${is.filter(i => com(i).precio == null).length} sin precio` : ''].filter(Boolean).join(' · ');
+      rows.push([i0.item || '', cant, m3(i0.ancho), m3(i0.alto), area ?? '', i0.op || '', area != null ? Math.round(area * cant * 100) / 100 : '', vu ?? '', tot, obs]);
+      tc += cant; tm += area != null ? area * cant : 0; tv += tot; }
+    rows.push(['', tc, '', '', '', '', Math.round(tm * 100) / 100, 'SUBTOTAL', tv, '']);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [10, 7, 9, 9, 8, 12, 9, 14, 16, 30].map(w => ({wch: w}));
+    for(let r = 1; r < rows.length; r++) for(const c of [7, 8]){ const cell = ws[XLSX.utils.encode_cell({r, c})]; if(cell && cell.t === 'n') cell.z = '#,##0'; }
+    return ws;
+  };
+  const inst = S.items.filter(i => i.instalado), pend = S.items.filter(i => !i.instalado);
+  if(!inst.length && !confirm('Esta obra todavía no tiene nada instalado. ¿Descargar igual (solo la hoja de pendientes)?')) return;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, hoja(inst), 'Obra ejecutada');
+  XLSX.utils.book_append_sheet(wb, hoja(pend), 'Pendiente por instalar');
+  XLSX.writeFile(wb, `LIQUIDACION_${String(S.obra).replace(/[^\w]+/g, '_')}_${today()}.xlsx`);
+  toast(`✓ Obra ejecutada: ${fmtN(inst.length)} ítems instalados · pendientes: ${fmtN(pend.length)}`);
 }
 
 async function recargarObra(){
