@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.56';
+const APP_VERSION = '6.57';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -4285,6 +4285,7 @@ async function leerArchivo(file){
       const f = {n: r+1, errors:[], warns:[], d:{}};
       const d = f.d;
       for(const k of ['item','ubicacion','sistema','serie','piso','diseno','vidrio','op']) d[k] = cTxt(g(k));
+      if(!d.piso && d.ubicacion) d.piso = pisoDeUbic(d.ubicacion);   // el piso escrito en la ubicación
       d.obra = cTxt(g('obra')); if(d.obra) d.obra = d.obra.toUpperCase();
       d.op_instalacion = cTxt(g('op_instalacion'));
       for(const k of ['ancho','alto','m2','cant','tiempo_op','puntos','precio']){
@@ -4472,13 +4473,28 @@ function ubicPartes(ub){
   const A = antes.map(limpia), D = despues.map(limpia), modoAntes = A[0] !== '';
   return codes.map((c, i) => ({lugar: (modoAntes ? A[gid[i] - 1] : D[gid[i] - 1]) || 'APTO', cod: c}));
 }
-// Una unidad por apartamento (piso = centenas). Si no cuadra con la cantidad, todas iguales
+// Pisos escritos en la ubicación: "… SERIE 1 PISO 2-PISO 3" → ['PISO 2','PISO 3']; "CUBIERTA" → ['CUBIERTA']
+// (primero "PISO n"; "3° PISO" o "P3" solo si no hay "PISO n", para no confundir "SERIE 1 PISO 2" con el piso 1)
+function pisosDeUbic(t){
+  t = String(t || '');
+  let l = [...t.matchAll(/PISO\s*[#.\-]?\s*(\d+)/gi)].map(m => 'PISO ' + +m[1]);
+  if(!l.length) l = [...t.matchAll(/(\d+)\s*(?:°|º|ER|ERO|DO|TO|VO|NO|MO)?\s*PISO/gi)].map(m => 'PISO ' + +m[1]);
+  if(!l.length){ const p = t.match(/\bP\.?\s*(\d+)\b/i); if(p) l = ['PISO ' + +p[1]]; }
+  if(!l.length && /\bCUBIERTA\b/i.test(t)) l = ['CUBIERTA'];
+  return l;
+}
+const pisoDeUbic = t => { const l = [...new Set(pisosDeUbic(t))]; return l.length === 1 ? l[0] : null; };
+// Una unidad por apartamento (piso = centenas) o por piso ("PISO 4-PISO 6-PISO 11" con 3 unidades). Si no cuadra con la cantidad, todas iguales
 function dividirUbicacion(ub, cant){
   ub = (ub || '').trim();
-  const pisoTxt = t => { const p = String(t).match(/(\d+)\s*°?\s*PISO|PISO\s*(\d+)|\bP\.?\s*(\d+)\b/i); return p ? 'PISO ' + +(p[1] || p[2] || p[3]) : null; };
   const partes = ubicPartes(ub);
   if(partes.length && partes.length === cant) return partes.map(p => ({ubicacion: p.lugar + ' ' + p.cod, piso: 'PISO ' + Math.floor(p.cod / 100)}));
-  return Array.from({length: cant}, () => ({ubicacion: ub || null, piso: pisoTxt(ub)}));
+  const pisos = pisosDeUbic(ub);
+  if(pisos.length > 1 && pisos.length === cant){
+    const base = ub.replace(/PISO\s*[#.\-]?\s*\d+(\s*[-–,\/y]\s*PISO\s*[#.\-]?\s*\d+)+/i, '').replace(/\s+/g, ' ').trim();
+    return pisos.map(p => ({ubicacion: (base + ' ' + p).trim(), piso: p}));
+  }
+  return Array.from({length: cant}, () => ({ubicacion: ub || null, piso: pisoDeUbic(ub)}));
 }
 
 function revisionHTML(){
