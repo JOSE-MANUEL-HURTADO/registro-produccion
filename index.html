@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.69';
+const APP_VERSION = '6.70';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1607,11 +1607,19 @@ function anualCard(o, ys){
     </div></button>`;
 }
 
+// Botón para ver solo las obras con ítems en cola (se recuerda en este equipo)
+if(S.soloCola == null){ try{ S.soloCola = localStorage.getItem('solo_cola') === '1'; }catch(e){ S.soloCola = false; } }
+function toggleSoloCola(){ S.soloCola = !S.soloCola; try{ localStorage.setItem('solo_cola', S.soloCola ? '1' : '0'); }catch(e){} renderObrasBox(resumenObras()); }
 function renderObrasBox(res){
   const q = S.q.trim().toUpperCase();
-  const list = q ? res.filter(o => o.obra.toUpperCase().includes(q)) : res;
-  let h = list.length ? `<div class="grid-obras">${list.map(obraCard).join('')}</div>`
-                      : `<div class="empty">${q ? 'Ninguna obra activa coincide con “'+esc(S.q)+'”.' : 'No hay obras con ítems pendientes.'}</div>`;
+  const conCola = res.filter(o => o['EN COLA'] > 0).length;
+  let list = q ? res.filter(o => o.obra.toUpperCase().includes(q)) : res;
+  if(S.soloCola) list = list.filter(o => o['EN COLA'] > 0);
+  let h = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <button class="chip ${S.soloCola ? 'on' : ''}" onclick="toggleSoloCola()" title="Ocultar las obras que no tienen ítems en cola">Solo con ítems en cola · ${fmtN(conCola)}</button>
+      ${S.soloCola && res.length > conCola ? `<small style="opacity:.7">${fmtN(res.length - conCola)} obra${res.length - conCola === 1 ? '' : 's'} oculta${res.length - conCola === 1 ? '' : 's'}</small>` : ''}</div>`;
+  h += list.length ? `<div class="grid-obras">${list.map(obraCard).join('')}</div>`
+                   : `<div class="empty">${q ? 'Ninguna obra activa coincide con “'+esc(S.q)+'”.' : S.soloCola ? 'Ninguna obra activa tiene ítems en cola.' : 'No hay obras con ítems pendientes.'}</div>`;
   // Otras obras (terminadas): búsqueda en toda la base
   if(q.length >= 2){
     if(S.obrasAll){
