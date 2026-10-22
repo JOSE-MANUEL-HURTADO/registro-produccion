@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.60';
+const APP_VERSION = '6.61';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1869,7 +1869,10 @@ function sheetPrecios(){
       <span style="flex:1"><b>${esc(op)}</b> · ${esc(i0.item || '')} · ${esc(i0.diseno || '')}<br><small>${i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) + ' · ' : ''}${fmtN(is.length)} und.${sp ? ` · <b style="color:var(--danger)">${fmtN(sp)} sin precio</b>` : ''}${varios ? ' · precios distintos' : ''}</small></span>
       <input class="prQ" data-k="${k}" inputmode="numeric" placeholder="${varios ? 'varios' : 'Precio unit.'}" value="${p != null ? fmtN(p) : ''}" style="width:130px;min-height:38px;padding:6px 8px;text-align:right"></div>`; };
   const body = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><button class="btn sm" onclick="document.getElementById('prXls').click()">${ICON.up} Cargar desde la cotización (Excel)</button>
-      <input type="file" id="prXls" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="if(this.files[0]) preciosCotizacion(this.files[0])"></div>
+      <input type="file" id="prXls" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="if(this.files[0]) preciosCotizacion(this.files[0])">
+      <button class="btn sm primary" onclick="document.getElementById('prLiq').click()">${ICON.up} Precios reales de la liquidación (ejecutado)</button>
+      <input type="file" id="prLiq" accept=".xlsx,.xls,.xlsm" style="display:none" onchange="if(this.files[0]) preciosLiquidacion(this.files[0])">
+      <button class="btn sm ghost" onclick="preciosLotes()">Ver / reversar cambios</button></div>
     <div class="sc-note" style="margin-bottom:6px">Escribe el <b>precio unitario</b> de cada OP: se aplica a todas sus unidades.${S.sel.size ? ` Solo las OP de los <b>${fmtN(S.sel.size)}</b> ítems seleccionados.` : ''}</div>
     ${hay ? `<label class="switch" style="margin:4px 0 8px"><span>Mostrar solo las OP sin precio</span><button class="tgl on" id="prSolo" onclick="_pr.solo=!_pr.solo; this.classList.toggle('on', _pr.solo); document.querySelectorAll('.prF').forEach(f => f.style.display = _pr.solo && f.dataset.sin !== '1' ? 'none' : 'flex')"></button></label>` : ''}
     <div style="max-height:52vh;overflow:auto">${ops.map(fila).join('')}</div>`;
@@ -1934,6 +1937,117 @@ async function preciosCotizacion(file){
     catch(e){ toast(errMsg(e), true); return false; }
     toast(`✓ Precio puesto en ${fmtN(rows.length)} ítems`); renderObra();
   });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PRECIOS DESDE LA LIQUIDACIÓN (lado "OBRA EJECUTADA"), con AIU e IVA sobre la utilidad
+//  Cada fila trae ITEM · CANT · … · OP · M2 · VR. UNIT. · VR. TOTAL. Si una ventana se hizo en varias OP,
+//  el valor viene en la primera fila y las siguientes van sin valor: ese valor se reparte por m².
+//  El precio de cada unidad = (su parte del subtotal) × (TOTAL / SUBTOTAL de la liquidación).
+// ════════════════════════════════════════════════════════════════
+function liqLeer(wb){
+  const T = v => String(v ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const N = v => typeof v === 'number' ? v : cNum(v).v;
+  const nombres = [...wb.SheetNames].sort((a, b) => (/LIQUID/i.test(b) ? 1 : 0) - (/LIQUID/i.test(a) ? 1 : 0));
+  for(const nombre of nombres){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], {header:1, raw:true, defval:''});
+    // Encabezados del lado ejecutado: fila con ITEM, OP y VR. TOTAL (puede haber varias tablas: adicionales)
+    const heads = [];
+    rows.forEach((r, i) => { const iItem = r.findIndex(c => T(c) === 'ITEM'); if(iItem < 0) return;
+      const after = (re) => r.findIndex((c, j) => j > iItem && re.test(T(c)));
+      const iOP = after(/^OP$/), iVT = after(/^VR\.? ?TOTAL/), iVU = after(/^VR\.? ?UNIT/), iC = after(/^CANT/), iM2 = r.findIndex((c, j) => j > iOP && /^M2$/.test(T(c)));
+      if(iOP > 0 && iVT > 0) heads.push({i, iItem, iOP, iVT, iVU, iC, iM2}); });
+    if(!heads.length) continue;
+    const out = {hoja: nombre, filas: [], sinOP: [], avisos: [], subtotal: null, total: null, factor: null};
+    const bundles = [];
+    heads.forEach((h, k) => {
+      const fin = k + 1 < heads.length ? heads[k + 1].i : rows.length;
+      let item = '', b = null;
+      for(let r = h.i + 1; r < fin; r++){
+        const row = rows[r], op = T(row[h.iOP]).replace(/\s/g, ''), vt = N(row[h.iVT]);
+        if([row[h.iOP], row[h.iVU], row[h.iItem]].some(c => /^(SUB)?TOTAL/.test(T(c)))) break;
+        if(T(row[h.iItem])){ item = T(row[h.iItem]); b = null; }
+        const cant = N(row[h.iC]) > 0 ? N(row[h.iC]) : 1, m2 = h.iM2 > 0 && N(row[h.iM2]) > 0 ? N(row[h.iM2]) : cant;
+        if(!/^\d{3,6}-\d+$/.test(op)){ if(vt > 0 && T(row[h.iItem])) out.sinOP.push({item, total: vt}); continue; }
+        if(vt > 0){ b = {item, total: vt, filas: []}; bundles.push(b); }
+        if(!b){ out.avisos.push(`OP ${op} (${item || 'sin ítem'}) no tiene valor en la liquidación`); continue; }
+        b.filas.push({op, item, cant, m2});
+      }
+    });
+    // Repartir cada valor entre sus filas (por m²) y juntar por OP
+    const porOP = new Map();
+    for(const b of bundles){ const w = b.filas.reduce((a, f) => a + f.m2, 0) || 1;
+      for(const f of b.filas){ const x = porOP.get(f.op) || {op: f.op, item: f.item, cant: 0, sub: 0, veces: 0, compartida: b.filas.length > 1};
+        x.cant += f.cant; x.sub += b.total * f.m2 / w; x.veces++; porOP.set(f.op, x); } }
+    for(const x of porOP.values()) if(x.veces > 1) out.avisos.push(`La OP ${x.op} aparece ${x.veces} veces en la liquidación: se sumaron (revisa si es un error de digitación)`);
+    // SUBTOTAL y TOTAL del lado ejecutado → factor AIU + IVA sobre utilidad
+    const h0 = heads[0];
+    rows.forEach(r => { for(let j = Math.max(0, h0.iOP - 2); j <= h0.iVU; j++){ const t = T(r[j]);
+      const v = [h0.iVT, h0.iVT + 1].map(c => N(r[c])).find(x => x > 0);
+      if(t === 'SUBTOTAL' && v) out.subtotal = v; if(t === 'TOTAL' && v) out.total = v; } });
+    if(out.subtotal && out.total) out.factor = out.total / out.subtotal;
+    out.filas = [...porOP.values()];
+    out.sumaFilas = out.filas.reduce((a, x) => a + x.sub, 0); out.sumaSinOP = out.sinOP.reduce((a, x) => a + x.total, 0);
+    return out;
+  }
+  return null;
+}
+async function preciosLiquidacion(file){
+  try{ if(!window.XLSX) await loadScript(XLSX_URL); }catch(e){ return toast(errMsg(e), true); }
+  let L; try{ L = liqLeer(XLSX.read(await file.arrayBuffer(), {type:'array'})); }catch(e){ return toast('No pude leer ese Excel: ' + errMsg(e), true); }
+  if(!L || !L.filas.length) return toast('No encontré el lado "OBRA EJECUTADA" (columnas ITEM, OP, VR. TOTAL) en ese Excel', true);
+  if(!L.factor || L.factor < 1 || L.factor > 1.6) return toast(`No encontré bien el SUBTOTAL y el TOTAL de la obra ejecutada (subtotal ${fmtN(L.subtotal || 0)}, total ${fmtN(L.total || 0)})`, true);
+  const porOp = grp(S.items, i => String(i.op || '').toUpperCase().replace(/\s/g, ''));
+  const cambios = [], filas = [];
+  for(const x of L.filas.sort((a, b) => nat(a.op, b.op))){
+    const is = porOp.get(x.op) || [], unit = Math.round(x.sub / x.cant * L.factor);
+    filas.push({...x, unit, n: is.length, actual: [...new Set(is.map(i => com(i).precio).filter(v => v != null).map(Number))]});
+    for(const it of is) if(com(it).precio !== unit) cambios.push({item_id: it.id, antes: com(it).precio ?? null, despues: unit});
+  }
+  const noObra = filas.filter(f => !f.n), difUnd = filas.filter(f => f.n && f.n !== f.cant);
+  const totalApp = filas.reduce((a, f) => a + f.unit * f.n, 0);
+  window._liq = {file: file.name, cambios};
+  const body = `<div class="summary">Archivo <b>${esc(file.name)}</b> · hoja ${esc(L.hoja)}<br>
+      Subtotal obra ejecutada <b>$${fmtN(Math.round(L.subtotal))}</b> → total con AIU e IVA sobre utilidad <b>$${fmtN(Math.round(L.total))}</b> (factor ×${fmtN(L.factor, 4)})<br>
+      Los precios por unidad quedan con su parte de AIU e IVA.</div>
+    <div class="ctable-wrap" style="max-height:44vh;overflow:auto;margin-top:8px"><table class="ctable"><thead><tr><th>OP</th><th>Ítem</th><th>Und. liq.</th><th>Und. app</th><th>Precio actual</th><th>Precio nuevo (unidad)</th></tr></thead><tbody>
+      ${filas.map(f => `<tr class="${f.n ? '' : 'err'}"><td class="mono">${esc(f.op)}</td><td>${esc(f.item)}${f.compartida ? ' <small>(valor repartido)</small>' : ''}</td><td>${fmtN(f.cant)}</td><td>${f.n ? fmtN(f.n) : 'no está'}</td>
+        <td>${f.actual.length ? f.actual.map(v => '$' + fmtN(v)).join(' / ') : '—'}</td><td><b>$${fmtN(f.unit)}</b>${f.actual.length === 1 && f.actual[0] !== f.unit ? ` <small style="color:${f.unit > f.actual[0] ? 'var(--inst)' : 'var(--danger)'}">${f.unit > f.actual[0] ? '+' : ''}${fmtN(f.unit - f.actual[0])}</small>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="summary" style="margin-top:8px">Con estos precios, lo de la liquidación que está en la app suma <b>$${fmtN(totalApp)}</b> de <b>$${fmtN(Math.round(L.total))}</b>.
+      ${L.sinOP.length ? `<br>Sin OP (no se asigna a ningún ítem): ${esc(L.sinOP.map(s => s.item + ' $' + fmtN(Math.round(s.total * L.factor))).join(' · '))}` : ''}</div>
+    ${noObra.length ? `<div class="warn">${fmtN(noObra.length)} OP de la liquidación no están en esta obra en la app: ${esc(noObra.map(f => f.op).join(', '))}</div>` : ''}
+    ${difUnd.length ? `<div class="warn">Unidades distintas entre la liquidación y la app (el precio por unidad se aplica igual a todas las de la app): ${esc(difUnd.map(f => `${f.op} (${fmtN(f.cant)} vs ${fmtN(f.n)})`).join(', '))}</div>` : ''}
+    ${Math.abs(L.sumaFilas + L.sumaSinOP - L.subtotal) > L.subtotal * 0.002 ? `<div class="warn"><b>Ojo con la liquidación:</b> las filas de la obra ejecutada suman <b>$${fmtN(Math.round(L.sumaFilas + L.sumaSinOP))}</b>, pero su SUBTOTAL dice <b>$${fmtN(Math.round(L.subtotal))}</b> (diferencia $${fmtN(Math.round(L.sumaFilas + L.sumaSinOP - L.subtotal))}). Puede que una fórmula de subtotal no incluya todas las filas. Los precios por unidad de la app sí salen de cada fila.</div>` : ''}
+    ${L.avisos.length ? `<div class="warn">${L.avisos.map(esc).join('<br>')}</div>` : ''}
+    <div class="sc-note">Al aplicar queda guardado el precio anterior de cada ítem: lo puedes <b>reversar</b> desde "$ Precios".</div>`;
+  openSheet('Precios de la liquidación', esc(S.obra), body, cambios.length ? `Aplicar a ${fmtN(cambios.length)} ítems` : 'Cerrar', async () => {
+    if(!cambios.length) return;
+    try{
+      const {data: lote, error} = await API.sb.from('precios_lotes').insert({obra: S.obra, archivo: file.name, n_items: cambios.length,
+        detalle: `Liquidación ×${fmtN(L.factor, 4)} · total $${fmtN(Math.round(L.total))}`}).select('*').single();
+      if(error) throw error;
+      for(let i = 0; i < cambios.length; i += 500){ const {error: e2} = await API.sb.from('precios_lote_items').insert(cambios.slice(i, i + 500).map(c => ({lote_id: lote.id, ...c}))); if(e2) throw e2; }
+      for(const r of await API.upsertComercial(cambios.map(c => ({item_id: c.item_id, precio: c.despues})))) S.com.set(r.item_id, {...com({id: r.item_id}), ...r});
+    }catch(e){ toast(/precios_lote/.test(errMsg(e)) ? errMsg(e) + ' (¿ya corriste el SQL 46?)' : errMsg(e), true); return false; }
+    toast(`✓ Precios de la liquidación aplicados a ${fmtN(cambios.length)} ítems`); renderObra();
+  });
+}
+// Lotes de precios de la obra, con opción de reversar
+async function preciosLotes(){
+  let l = []; try{ const {data, error} = await API.sb.from('precios_lotes').select('*').eq('obra', S.obra).order('id', {ascending: false}).limit(20); if(error) throw error; l = data || []; }
+  catch(e){ return toast(/precios_lote/.test(errMsg(e)) ? 'Falta correr el SQL 46 en Supabase' : errMsg(e), true); }
+  openSheet('Cambios de precio cargados', esc(S.obra), l.length ? l.map(x => `<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="flex:1"><b>${fmtD(String(x.creado).slice(0, 10))}</b> · ${esc(x.archivo || '')}<br><small>${fmtN(x.n_items || 0)} ítems · ${esc(x.detalle || '')}</small></span>
+      ${x.revertido_en ? '<small>Reversado</small>' : `<button class="btn sm ghost" onclick="preciosReversar(${x.id})">Reversar</button>`}</div>`).join('')
+    : '<div class="empty">Aún no hay cambios de precio cargados desde una liquidación.</div>', 'Cerrar', async () => {});
+}
+async function preciosReversar(id){
+  if(!confirm('¿Volver todos los ítems de ese cambio al precio que tenían antes? (los que cambiaste después a mano no se tocan)')) return;
+  try{ const {data, error} = await API.sb.rpc('precios_reversar', {p_lote: id}); if(error) throw error;
+    for(const c of await API.comercial(S.items.map(i => i.id))) S.com.set(c.item_id, c);
+    toast(`✓ Reversado: ${fmtN(data || 0)} ítems volvieron a su precio anterior`); closeSheet(); renderObra(); }
+  catch(e){ toast(errMsg(e), true); }
 }
 
 // ── Obra ejecutada para la liquidación (solo gerente): lo instalado agrupado por ítem y OP, con su precio ──
