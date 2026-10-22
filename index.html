@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.70';
+const APP_VERSION = '6.71';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -676,6 +676,7 @@ const API = {
   async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
   async anularRecibidoRem(rem){ const {error} = await this.sb.rpc('anular_recibido_remision', {p_rem:rem}); if(error) throw error; },
   async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
+  async actaObs(id, texto){ const {error} = await this.sb.rpc('acta_observaciones', {p_acta: id, p_texto: texto}); if(error) throw error; },
   async campoActa(id){ const {data,error} = await this.sb.rpc('campo_acta', {p_id:id}); if(error) throw error; return data; },
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
   async cancelarDespacho(ids, motivo){ const {data,error} = await this.sb.rpc('cancelar_despacho', {p_ids:ids, p_motivo:motivo}); if(error) throw error; return data; },
@@ -3364,7 +3365,12 @@ async function actaVer(id){
   y += 8;
   if(y > PH - 62){ doc.addPage(); encabezado(); }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('Observaciones', M, y);
-  doc.setDrawColor(170); doc.rect(M, y + 2, PW - 2 * M, 20);
+  { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30);
+    const ob = a.observaciones ? doc.splitTextToSize(String(a.observaciones), PW - 2 * M - 6) : [];
+    const hObs = Math.max(20, ob.length * 3.8 + 6);
+    if(y + 2 + hObs > PH - 34){ doc.addPage(); encabezado(); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text('Observaciones', M, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30); }
+    doc.setDrawColor(170); doc.rect(M, y + 2, PW - 2 * M, hObs);
+    if(ob.length) doc.text(ob, M + 3, y + 6.5); }
   const fy = PH - 26;
   doc.setDrawColor(120); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(60);
   doc.line(M, fy, PW / 2 - 6, fy); doc.text('Entrega · Elíptica', M, fy + 4.5);
@@ -3421,6 +3427,10 @@ async function actaEstado(id){
   const est = actaEst(a), abierta = est === 'abierta';
   const body = `${est === 'anulada' ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
     ${abierta ? `<div class="summary"><b>En curso</b> · ${fmtN(items.length)} ítem${items.length===1?'':'s'} entregado${items.length===1?'':'s'} · falta la firma de quien recibe</div>
+      ${rolEs('gerente','asistente','cobros','entrega') ? `<div class="field" style="margin-top:8px"><span class="lbl">Observaciones (las ve quien recibe antes de firmar y salen en el acta)</span>
+        <textarea id="aObs" rows="3" style="width:100%;resize:vertical" placeholder="Ej.: ventanas con película polifless; pendiente ajuste de chapa en V-03…">${esc(a.observaciones || '')}</textarea>
+        <button class="btn sm" style="margin-top:6px" onclick="actaObsGuardar(${a.id})">Guardar observaciones</button></div>`
+      : a.observaciones ? `<div class="summary" style="margin-top:8px"><b>Observaciones de Elíptica:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : ''}
       ${items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
       ${rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}`
     : est === 'firmada' ? `<div class="summary">✓ <b>Firmada</b>${recs[0] ? ` por <b>${esc(recs[0].nombre)}</b>${recs[0].cargo ? ' · ' + esc(recs[0].cargo) : ''} el ${new Date(recs[0].creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})}` : ''} · ${fmtN(items.length)} ítem${items.length===1?'':'s'} recibidos</div>` : ''}
@@ -3429,6 +3439,11 @@ async function actaEstado(id){
   openSheet('Acta de entrega N.º ' + a.num, esc(a.obra) + (abierta ? ' · en curso' : ' · ' + fmtD(a.fecha)), body, 'Listo', async () => {});
 }
 
+async function actaObsGuardar(id){
+  const t = $('#aObs') ? $('#aObs').value : '';
+  try{ await API.actaObs(id, t); toast('✓ Observaciones guardadas'); }
+  catch(e){ toast(/acta_observaciones|function/.test(errMsg(e)) ? 'Falta correr el SQL 49 en Supabase' : errMsg(e), true); }
+}
 // Cerrar el acta: quien recibe revisa la lista (puede dejar por fuera lo que no acepte) y firma en la pantalla
 async function actaFirmar(id){
   let a, items;
@@ -3438,7 +3453,11 @@ async function actaFirmar(id){
   if(!items.length) return toast('El acta no tiene ítems', true);
   const fuera = window._actaFuera = new Set();
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
-  const body = `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
+  const obsEdit = rolEs('gerente','asistente','cobros','entrega');
+  const obsHTML = obsEdit
+    ? `<div class="field"><span class="lbl">Observaciones de Elíptica (quien recibe las lee antes de firmar)</span><textarea id="fObs" rows="3" style="width:100%;resize:vertical">${esc(a.observaciones || '')}</textarea></div>`
+    : a.observaciones ? `<div class="summary"><b>Observaciones de Elíptica:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : '';
+  const body = obsHTML + `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
     <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(lugarCorto(i.ubicacion)) : ''}</span></label>`).join('')}</div>
     <div class="sc-note" id="afSum"></div>
     <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" autocomplete="off"></div>
@@ -3451,6 +3470,10 @@ async function actaFirmar(id){
     if(fuera.size >= items.length){ toast('No quedó ningún ítem marcado como recibido', true); return false; }
     if(!window._firma || !window._firma.trazos){ toast('Falta la firma', true); return false; }
     if(fuera.size && !confirm(`${fuera.size} ítem${fuera.size===1?'':'s'} no se recibe${fuera.size===1?'':'n'} y saldrá${fuera.size===1?'':'n'} del acta. ¿Continuar?`)) return false;
+    if(obsEdit && $('#fObs') && $('#fObs').value.trim() !== (a.observaciones || '').trim()){
+      try{ await API.actaObs(a.id, $('#fObs').value); a.observaciones = $('#fObs').value.trim(); }
+      catch(e){ toast(/acta_observaciones|function/.test(errMsg(e)) ? 'Falta correr el SQL 49 para guardar observaciones' : errMsg(e), true); return false; }
+    }
     let r;
     try{ r = await API.firmarRecepcion(a.id, nom, $('#fCar').value.trim(), $('#fDoc').value.trim(), firmaPNG(), [...fuera]); }
     catch(e){ toast(errMsg(e), true); return false; }
