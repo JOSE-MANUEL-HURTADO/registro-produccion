@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.66';
+const APP_VERSION = '6.67';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2526,10 +2526,7 @@ function sheetEnsamblador(){
       <b>${fmtN(noListos.length)} ítem${noListos.length===1?'':'s'} sin procesos completos</b> (deben estar en X: cortado, troquelado, mecanizado y programado):<br>
       ${noListos.slice(0, 8).map(i => `${esc(i.op_instalacion || i.op)} · falta ${faltaProc(i).join(', ')}`).join('<br>')}${noListos.length > 8 ? '<br>…' : ''}<br>
       ${isGerente() ? 'Como gerente puedes iniciarlos de todas formas; se te pedirá confirmar.' : 'No se les iniciará el ensamble; se asignará solo a los demás.'}</div>` : '';
-  // Si los ítems ya tienen línea de ensamble (programación), por defecto cada uno queda con su ensamblador asignado
-  const asig = [...new Set(items.map(i => i.ens_asignado).filter(Boolean))], conLinea = items.every(i => i.ens_asignado);
-  const body = procMsg + `<div class="field"><span class="lbl">Ensamblador</span>${personaField('gEns', asig.length === 1 && conLinea ? asig[0] : '', '', conLinea ? 'El de la línea de cada ítem' : 'Elegir')}</div>
-    ${conLinea && asig.length > 1 ? `<div class="sc-note">Estos ítems están en líneas de ${esc(asig.join(', '))}: si no eliges, cada uno queda con el ensamblador de su línea.</div>` : ''}
+  const body = procMsg + `<div class="field"><span class="lbl">Ensamblador</span>${personaField('gEns', '', '', 'Elegir')}</div>
     <div class="fgrid"><div class="field"><span class="lbl">Día inicio</span><input type="date" id="gDia" value="${today()}"></div>
       <div class="field"><span class="lbl">Hora inicio</span><input type="time" id="gHora" value="${nowTime()}"></div></div>
     ${warn(yaAsig, 'ya tienen ensamblador; se les reemplazará por el nuevo.')}
@@ -2538,7 +2535,7 @@ function sheetEnsamblador(){
       <button class="btn sm" onclick="quitarEnsamble()">Anular ensamble</button></div>` : ''}`;
   openSheet('Asignar ensamblador', subSel(items.length), body, `Asignar a ${fmtN(items.length)}`, async () => {
     const ens = pfVal('gEns'), dia = $('#gDia').value, hora = $('#gHora').value;
-    if(!ens && !conLinea){ toast('Elige el ensamblador (hay ítems sin línea de ensamble asignada)', true); return false; }
+    if(!ens){ toast('Elige el ensamblador', true); return false; }
     if(!dia){ toast('Falta el día de inicio', true); return false; }
     let l = items;
     if(noListos.length){
@@ -2546,7 +2543,7 @@ function sheetEnsamblador(){
       else { const fuera = new Set(noListos.map(i => i.id)); l = items.filter(i => !fuera.has(i.id));
         if(!l.length){ toast('Ninguno de los ítems tiene los procesos completos: no se puede iniciar el ensamble', true); return false; } }
     }
-    await applyGroup(l, it => ({ensamblador: ens || it.ens_asignado, dia_inicio:dia, hora_inicio:nz(hora)}));
+    await applyGroup(l, () => ({ensamblador:ens, dia_inicio:dia, hora_inicio:nz(hora)}));
   });
 }
 
@@ -2828,6 +2825,7 @@ async function scCodigo(txt, manual){
   if(esCampo() && !rolEs('entrega')){ scBeep(false); return toast(rolEs('conductor') ? 'Escanea el QR de la remisión' : 'Escanea el QR del acta o de la remisión', true); }
   scGuardarParams();
   const e = scEst();
+  if(e.k === 'ini' && !SC.ens && !p.sub){ scBeep(false); return toast('Elige el ensamblador (o escanea la etiqueta de un ítem que ya tenga ensamblador asignado en la programación)', true); }
   if(e.k === 'inst' && !SC.inst){ scBeep(false); return toast('Primero elige el instalador', true); }
   if(e.k === 'inst' && !SC.instPiso){ scBeep(false); const o = $('#scIPiso'); if(o) o.focus(); return toast('Primero elige el piso donde estás instalando', true); }
   if(e.k === 'desp' && !SC.od){ scBeep(false); toast('Primero escanea el QR de la orden de despacho o elígela de la lista', true); const o = $('#scOd'); if(o) o.focus(); return; }
@@ -2917,13 +2915,10 @@ function scHoja(p, items, e){
     const esc_ = it => p.sub && it.op_instalacion === p.sub;   // la unidad escaneada va primero
     ok = [...ok.filter(esc_), ...ok.filter(it => !esc_(it) && enOd(it)), ...ok.filter(it => !esc_(it) && !enOd(it))].slice(0, cupo); }
   const okProg = e.proc ? ok.filter(prog) : [];
-  // Inicio de ensamble: si eligieron ensamblador, primero (y preseleccionadas) las unidades de su línea
-  let okLinea = [];
-  if(e.k === 'ini' && SC.ens){ const deL = it => it.ens_asignado === SC.ens; okLinea = ok.filter(deL); ok = [...okLinea, ...ok.filter(it => !deL(it))]; }
-  const sel = new Set(p.sub ? ok.filter(it => it.op_instalacion === p.sub).map(it => it.id) : (okProg.length ? okProg : okLinea.length ? okLinea : ok).map(it => it.id));
+  const sel = new Set(p.sub ? ok.filter(it => it.op_instalacion === p.sub).map(it => it.id) : (okProg.length ? okProg : ok).map(it => it.id));
   const obras = [...new Set(items.map(it => it.obra))];
   const det = SC.det = {cupo, p, items: e.proc ? [...items].sort((a, b) => (prog(b) && !scMotivo(b, e)) - (prog(a) && !scMotivo(a, e)) || nat(a.op_instalacion, b.op_instalacion)) : items, e, ok, sel};
-  const accion = e.proc ? `${e.t} ${SC.parcial ? '(parcial +)' : '(X)'}` : e.t + (e.k === 'ini' ? ' · ' + (SC.ens || 'según la línea de cada unidad') : e.k === 'desp' ? ' · rem. ' + SC.rem : e.k === 'inst' && SC.inst ? ' · ' + SC.inst : '');
+  const accion = e.proc ? `${e.t} ${SC.parcial ? '(parcial +)' : '(X)'}` : e.t + (e.k === 'ini' ? ' · ' + SC.ens : e.k === 'desp' ? ' · rem. ' + SC.rem : e.k === 'inst' && SC.inst ? ' · ' + SC.inst : '');
   const body = `<div class="summary"><b>${esc(accion)}</b><br>${fmtN(ok.length)} de ${fmtN(items.length)} sub-OP se pueden registrar${p.sub ? ` · escaneaste la <b>${esc(p.sub)}</b>` : ''}.${e.proc && okProg.length ? `<br><b>${fmtN(okProg.length)} programada${okProg.length === 1 ? '' : 's'} pendiente${okProg.length === 1 ? '' : 's'}</b>: quedan marcadas primero. Ajusta la cantidad a lo que realmente se procesó.` : ''}</div>
     <div id="scNoProg"></div>
     ${ok.length ? `<div class="sc-cant"><span>¿Cuántas?</span><button class="btn" onclick="scCant(-1)">−</button><b id="scN"></b><button class="btn" onclick="scCant(1)">+</button><button class="btn sm ghost" onclick="scCant(999)">Todas</button></div>` : ''}
