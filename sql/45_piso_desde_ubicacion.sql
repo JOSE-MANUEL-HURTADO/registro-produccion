@@ -13,6 +13,7 @@
 create table if not exists public.pisos_desde_ubicacion (
   item_id bigint, op_instalacion text, ubic_antes text, ubic_despues text, piso text, cuando timestamptz default now()
 );
+alter table public.pisos_desde_ubicacion enable row level security;   -- registro: solo se consulta desde el SQL Editor
 
 do $$
 declare
