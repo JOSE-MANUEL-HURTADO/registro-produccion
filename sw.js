@@ -1,7 +1,7 @@
 // Registro de producción — service worker
 // Solo guarda la "cáscara" de la app. Los datos (Supabase) siempre van por internet.
-const CACHE = 'registro-v5.70';
-const SHELL = ['./', './index.html', './manifest.json', './icons/logo-192.png', './icons/logo-180.png', './apple-touch-icon.png',
+const CACHE = 'registro-v5.71';
+const SHELL = ['./', './index.html', './manifest.json', './icons/logo-192.png', './icons/logo-180.png', './apple-touch-icon.png', './icons/ios-180.png',
   './lib/supabase.js', './lib/jsqr.js', './lib/qrcode.js', './lib/jspdf.js', './icons/logo-etiqueta.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(()=>{})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
