@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.61';
+const APP_VERSION = '6.62';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1941,8 +1941,9 @@ async function preciosCotizacion(file){
 
 // ════════════════════════════════════════════════════════════════
 //  PRECIOS DESDE LA LIQUIDACIÓN (lado "OBRA EJECUTADA"), con AIU e IVA sobre la utilidad
-//  Cada fila trae ITEM · CANT · … · OP · M2 · VR. UNIT. · VR. TOTAL. Si una ventana se hizo en varias OP,
-//  el valor viene en la primera fila y las siguientes van sin valor: ese valor se reparte por m².
+//  Cada fila trae ITEM · CANT · … · OP · M2 · VR. UNIT. · VR. TOTAL. Se presupuesta por ítem, nunca por m²:
+//  cada OP toma el valor de SU fila. Si una ventana se hizo en varias OP, el valor queda completo en la OP
+//  de la fila que lo trae y las demás OP de esa ventana quedan en $0 (así los totales cuadran con la liquidación).
 //  El precio de cada unidad = (su parte del subtotal) × (TOTAL / SUBTOTAL de la liquidación).
 // ════════════════════════════════════════════════════════════════
 function liqLeer(wb){
@@ -1967,18 +1968,18 @@ function liqLeer(wb){
         const row = rows[r], op = T(row[h.iOP]).replace(/\s/g, ''), vt = N(row[h.iVT]);
         if([row[h.iOP], row[h.iVU], row[h.iItem]].some(c => /^(SUB)?TOTAL/.test(T(c)))) break;
         if(T(row[h.iItem])){ item = T(row[h.iItem]); b = null; }
-        const cant = N(row[h.iC]) > 0 ? N(row[h.iC]) : 1, m2 = h.iM2 > 0 && N(row[h.iM2]) > 0 ? N(row[h.iM2]) : cant;
+        const cant = N(row[h.iC]) > 0 ? N(row[h.iC]) : 1;
         if(!/^\d{3,6}-\d+$/.test(op)){ if(vt > 0 && T(row[h.iItem])) out.sinOP.push({item, total: vt}); continue; }
-        if(vt > 0){ b = {item, total: vt, filas: []}; bundles.push(b); }
+        if(vt > 0){ b = {item, total: vt, filas: [], op}; bundles.push(b); }
         if(!b){ out.avisos.push(`OP ${op} (${item || 'sin ítem'}) no tiene valor en la liquidación`); continue; }
-        b.filas.push({op, item, cant, m2});
+        b.filas.push({op, item, cant, valor: vt > 0 ? vt : 0});
       }
     });
-    // Repartir cada valor entre sus filas (por m²) y juntar por OP
+    // Cada OP con el valor de su propia fila; las OP que completan una ventana de otra fila quedan en $0
     const porOP = new Map();
-    for(const b of bundles){ const w = b.filas.reduce((a, f) => a + f.m2, 0) || 1;
-      for(const f of b.filas){ const x = porOP.get(f.op) || {op: f.op, item: f.item, cant: 0, sub: 0, veces: 0, compartida: b.filas.length > 1};
-        x.cant += f.cant; x.sub += b.total * f.m2 / w; x.veces++; porOP.set(f.op, x); } }
+    for(const b of bundles) for(const f of b.filas){
+      const x = porOP.get(f.op) || {op: f.op, item: f.item, cant: 0, sub: 0, veces: 0, parteDe: null};
+      x.cant += f.cant; x.sub += f.valor; x.veces++; if(!f.valor) x.parteDe = b.op; porOP.set(f.op, x); }
     for(const x of porOP.values()) if(x.veces > 1) out.avisos.push(`La OP ${x.op} aparece ${x.veces} veces en la liquidación: se sumaron (revisa si es un error de digitación)`);
     // SUBTOTAL y TOTAL del lado ejecutado → factor AIU + IVA sobre utilidad
     const h0 = heads[0];
@@ -2011,7 +2012,7 @@ async function preciosLiquidacion(file){
       Subtotal obra ejecutada <b>$${fmtN(Math.round(L.subtotal))}</b> → total con AIU e IVA sobre utilidad <b>$${fmtN(Math.round(L.total))}</b> (factor ×${fmtN(L.factor, 4)})<br>
       Los precios por unidad quedan con su parte de AIU e IVA.</div>
     <div class="ctable-wrap" style="max-height:44vh;overflow:auto;margin-top:8px"><table class="ctable"><thead><tr><th>OP</th><th>Ítem</th><th>Und. liq.</th><th>Und. app</th><th>Precio actual</th><th>Precio nuevo (unidad)</th></tr></thead><tbody>
-      ${filas.map(f => `<tr class="${f.n ? '' : 'err'}"><td class="mono">${esc(f.op)}</td><td>${esc(f.item)}${f.compartida ? ' <small>(valor repartido)</small>' : ''}</td><td>${fmtN(f.cant)}</td><td>${f.n ? fmtN(f.n) : 'no está'}</td>
+      ${filas.map(f => `<tr class="${f.n ? '' : 'err'}"><td class="mono">${esc(f.op)}</td><td>${esc(f.item)}${f.parteDe && !f.sub ? ` <small>(su valor va en la OP ${esc(f.parteDe)})</small>` : ''}</td><td>${fmtN(f.cant)}</td><td>${f.n ? fmtN(f.n) : 'no está'}</td>
         <td>${f.actual.length ? f.actual.map(v => '$' + fmtN(v)).join(' / ') : '—'}</td><td><b>$${fmtN(f.unit)}</b>${f.actual.length === 1 && f.actual[0] !== f.unit ? ` <small style="color:${f.unit > f.actual[0] ? 'var(--inst)' : 'var(--danger)'}">${f.unit > f.actual[0] ? '+' : ''}${fmtN(f.unit - f.actual[0])}</small>` : ''}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="summary" style="margin-top:8px">Con estos precios, lo de la liquidación que está en la app suma <b>$${fmtN(totalApp)}</b> de <b>$${fmtN(Math.round(L.total))}</b>.
