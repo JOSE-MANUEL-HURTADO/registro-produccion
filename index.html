@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.68';
+const APP_VERSION = '6.69';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3754,7 +3754,8 @@ function renderProgBox(recargar){
       ${filas.map(f => { const i0 = f[0], pi = f.filter(i => !i.dia_inicio).length, ok = f.filter(i => !i.dia_inicio && listoEns(i)).length;
         return `<button class="pl-row" onclick="openObra(decodeURIComponent('${encQ(i0.obra)}'), false, '', {estado:'TODOS', op:decodeURIComponent('${encQ(i0.op)}'), q:''})"><span class="o">${esc(i0.obra)} · <em>OP ${esc(i0.op)}</em></span><span class="k">${fmtN(f.length)}</span>
           <span class="d">N.º ${i0.programacion_id} · para ${fmtD(fecha(i0.programacion_id))} · ${pi ? `${fmtN(pi)} por iniciar (${fmtN(ok)} con procesos listos)` : 'todas iniciadas'}</span></button>`; }).join('')}
-      <div style="padding:8px 14px"><button class="btn sm" onclick="lineaPDF(decodeURIComponent('${encQ(ens)}'))">${ICON.down} PDF línea</button></div></div>`; }).join('')}</div>`
+      <div style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="lineaPDF(decodeURIComponent('${encQ(ens)}'))">${ICON.down} PDF línea</button>
+        ${puedeRegistrar() && pend.length ? `<button class="btn sm ghost" style="color:var(--danger)" onclick="lineaQuitar(decodeURIComponent('${encQ(ens)}'))">Quitar línea</button>` : ''}</div></div>`; }).join('')}</div>`
     : '<div class="empty">Aún no hay ítems asignados a ensambladores. Usa <b>Asignar ensambladores</b> en una programación.</div>';
   box.innerHTML = h;
 }
@@ -3811,6 +3812,16 @@ function progAsignar(id){
     catch(e){ toast(errMsg(e), true); return false; }
     toast(`✓ ${ids.length} ítem${ids.length===1?'':'s'} asignado${ids.length===1?'':'s'} a ${ens}`); renderProgBox();
   });
+}
+// Quitar la línea de un ensamblador: sus unidades sin iniciar quedan programadas pero sin ensamblador asignado
+async function lineaQuitar(ens){
+  const l = (PG.items || []).filter(i => i.ens_asignado === ens && !i.dia_inicio && !i.ensamblador);
+  if(!l.length) return toast(`${ens} no tiene unidades por iniciar en su línea`, true);
+  const curso = (PG.items || []).filter(i => i.ens_asignado === ens && (i.dia_inicio || i.ensamblador) && !i.dia_final).length;
+  if(!confirm(`¿Quitar la línea de ensamble de ${ens}?\n\n${l.length} unidad(es) por iniciar quedan programadas pero sin ensamblador asignado, listas para asignarlas a otro.${curso ? `\n${curso} que ya están en ensamble no se tocan.` : ''}`)) return;
+  try{ const rows = await API.update(l.map(i => i.id), {ens_asignado: null}); for(const r of rows){ const x = PG.items.find(i => i.id === r.id); if(x) Object.assign(x, r); } mergeRows(rows); }
+  catch(e){ return toast(errMsg(e), true); }
+  renderProgBox(); toast(`✓ Línea de ${ens} quitada · ${fmtN(l.length)} unidad${l.length === 1 ? '' : 'es'} sin asignar`);
 }
 async function progQuitarAsig(id){
   const ids = (PG.items || []).filter(i => i.programacion_id === id && i.ens_asignado && !i.dia_inicio).map(i => i.id);
