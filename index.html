@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.73';
+const APP_VERSION = '6.74';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1707,7 +1707,6 @@ const porEntregar = it => it.instalado && !it.acta_id && String(it.fecha_instala
 const isPend = it => !(it.despachado && it.instalado);
 const FILTROS = [
   ['PEND','Pendientes', it => isPend(it)],
-  ['SINPRG','Sin programar', it => it.programado !== 'X' && !it.programacion_id && !it.ensamblador && !it.dia_inicio && !it.despachado && !it.instalado],
   ['EN COLA','En cola', it => stageOf(it)==='EN COLA'],
   ['PRODUCCIÓN','Producción', it => stageOf(it)==='PRODUCCIÓN'],
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
@@ -1719,6 +1718,8 @@ const FILTROS = [
   ['COB_I','Por cobrar instalación', porCobrarI, true]
 ];
 
+// Sin programar: no está en ninguna programación ni ha entrado a ensamble, despacho o instalación
+const sinProgramar = it => it.programado !== 'X' && !it.programacion_id && !it.ensamblador && !it.dia_inicio && !it.despachado && !it.instalado;
 // Filtros de piso, OP, año y texto (sin el de estado)
 function baseMatch(it){
   const q = S.f.q.trim().toUpperCase();
@@ -1729,6 +1730,7 @@ function baseMatch(it){
     && (!S.f.anio || yearOf(it) === S.f.anio)
     && (!S.f.rng || (it[S.f.rng.campo] && it[S.f.rng.campo] >= S.f.rng.d1 && it[S.f.rng.campo] <= S.f.rng.d2))
     && (!S.f.pr || prMatch(it, S.f.pr))
+    && (!S.f.prg || (S.f.prg === 'sin') === sinProgramar(it))
     && (!q || [it.item,it.ubicacion,it.op_instalacion,it.op,it.diseno,it.ensamblador,it.instalador,it.remision].some(v => v && String(v).toUpperCase().includes(q)));
 }
 function filtered(){
@@ -1759,6 +1761,7 @@ function renderObra(){
           <button id="fPiso" class="msel" onclick="mselAbrir('pisos')">${mselTxt('pisos')}</button>
           <button id="fOp" class="msel" onclick="mselAbrir('ops')">${mselTxt('ops')}</button>
           <button id="fSis" class="msel" onclick="mselAbrir('sis')">${mselTxt('sis')}</button>
+          <select id="fPrg"><option value="">Programados y sin programar</option><option value="sin" ${S.f.prg==='sin'?'selected':''}>Solo sin programar (${fmtN(S.items.filter(sinProgramar).length)})</option><option value="con" ${S.f.prg==='con'?'selected':''}>Solo programados</option></select>
           ${S.items.some(serieDe) ? `<button id="fSer" class="msel" onclick="mselAbrir('ser')">${mselTxt('ser')}</button>` : ''}
           <span id="ordenBox"></span>
         </div>
@@ -1771,6 +1774,7 @@ function renderObra(){
   $('#qItem').oninput = e => { S.f.q = e.target.value; S.limit = 300; renderChips(); renderList(); };
   updOrdenBox();
   $('#fAnio').onchange = e => { S.f.anio = e.target.value; S.limit = 300; renderChips(); renderList(); };
+  $('#fPrg').onchange = e => { S.f.prg = e.target.value; S.limit = 300; renderChips(); renderList(); };
   renderChips(); renderList(); renderDetail(); renderSelbar();
   const on = document.querySelector('#chips .chip.on'); if(on && on.offsetLeft > 0) $('#chips').scrollLeft = on.offsetLeft - 20;
 }
