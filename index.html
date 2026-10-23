@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.72';
+const APP_VERSION = '6.73';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1707,6 +1707,7 @@ const porEntregar = it => it.instalado && !it.acta_id && String(it.fecha_instala
 const isPend = it => !(it.despachado && it.instalado);
 const FILTROS = [
   ['PEND','Pendientes', it => isPend(it)],
+  ['SINPRG','Sin programar', it => it.programado !== 'X' && !it.programacion_id && !it.ensamblador && !it.dia_inicio && !it.despachado && !it.instalado],
   ['EN COLA','En cola', it => stageOf(it)==='EN COLA'],
   ['PRODUCCIÓN','Producción', it => stageOf(it)==='PRODUCCIÓN'],
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
