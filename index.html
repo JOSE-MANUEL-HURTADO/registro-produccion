@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.77';
+const APP_VERSION = '6.78';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3954,13 +3954,14 @@ function progPDF(pg, items){
     filas.push({grupo: 'Sistema ' + sis + ' · ' + fmtN(ls.length) + ' und · ' + fmtN(ls.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1) + ' m²'});
     for(const l of [...grp(ls, i => i.op).values()].sort((a, b) => cuerpos(a[0]) - cuerpos(b[0]) || b.length - a.length || ordenPlanta(a[0], b[0]))){
       const it = l[0], c = calibreVidrio(it.vidrio);
-      const marca = k => l.every(i => i[k] === 'X') ? '■' : '□';
+      // ■ completo · (+) parcial (alguna unidad con + o solo una parte en X) · □ sin hacer
+      const marca = k => l.every(i => i[k] === 'X') ? '■' : l.some(i => i[k] === 'X' || i[k] === '+') ? '(+)' : '□';
       filas.push({v: [it.op, [...new Set(l.map(i => i.item))].join(', '), it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', it.vidrio || '', fmtN(l.length), pisosTxt(l), fmtN(l.reduce((a, i) => a + (Number(i.m2) || 0), 0), 1), ...PROCS.filter(([k]) => k !== 'programado').map(([k]) => marca(k))]});
     }
     }
   }
   pdfTabla({titulo: 'PROGRAMACIÓN DE OBRA', num: pg.id, sub: (pg.obra || '') + (pg.fecha_req ? ' · requerida para el ' + fmtD(pg.fecha_req) : ''),
-    info: `${fmtN(items.length)} unidades · ${fmtN(new Set(items.map(i => i.op)).size)} OP · ${fmtN(new Set(items.map(sistemaDe)).size)} sistema(s)${pg.notas ? ' · ' + pg.notas : ''}. Organizada por sistema para no cambiar de material entre OP. Cada proceso marca su casilla al terminar la OP completa (cuadro relleno = ya está en X en la app).`,
+    info: `${fmtN(items.length)} unidades · ${fmtN(new Set(items.map(i => i.op)).size)} OP · ${fmtN(new Set(items.map(sistemaDe)).size)} sistema(s)${pg.notas ? ' · ' + pg.notas : ''}. Organizada por sistema para no cambiar de material entre OP. Cada proceso marca su casilla al terminar la OP completa (cuadro relleno = ya está en X en la app · (+) = hecho en parte).`,
     cols: [['OP', 18, 'l'], ['Ítem', 16, 'l'], ['Diseño', 50, 'l'], ['Medida', 22, 'l'], ['Vidrio', 56, 'l'], ['Cant.', 11, 'r'], ['Pisos', 28, 'l'], ['m2', 13, 'r'], ...PROCS.filter(([k]) => k !== 'programado').map(([,, ab]) => [ab, 10.7, 'c'])],
     filas, pie: 'Prioridad: esta programación va primero. Al terminar cada proceso regístrelo en la app (escáner) para que el ensamble no se bloquee.',
     nombre: 'Programacion_' + pg.id + '.pdf', firmas: ['Corte', 'Troquelado', 'Mecanizado', 'Vidrio']});
