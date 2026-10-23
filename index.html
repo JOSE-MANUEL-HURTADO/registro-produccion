@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.79';
+const APP_VERSION = '6.80';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1157,12 +1157,14 @@ function renderPlantaBox(){
   by['ENTREGAR'] = (S.porEnt || []).slice();
   const inst = plFechaYa('fecha_instalacion');
   if(!inst) plFecha('fecha_instalacion');
+  const ensP = S.plEnsModo !== 'pend' ? plFechaYa('dia_final') : null;
+  if(S.plEnsModo !== 'pend' && !ensP) plFecha('dia_final');
   const tiles = $('#stTiles');
   if(tiles) tiles.innerHTML = PL_ST.map(([k,t,d]) => {
-    const l = k === 'INSTALADO' ? inst : by[k];
+    const l = k === 'INSTALADO' ? inst : k === 'ENSAMBLADO' && S.plEnsModo !== 'pend' ? ensP : by[k];
     const sub = !l ? 'Cargando…' : `${fmtN(new Set(l.map(i=>i.obra)).size)} obra${new Set(l.map(i=>i.obra)).size===1?'':'s'} · ${fmtN(l.reduce((a,i)=>a+(Number(i.m2)||0),0),1)} m²`;
     return `<button class="st-tile ${S.plSt===k?'on':''}" style="--c:${STAGES[k].c}" onclick="setPlSt('${k}')">
-      <span class="t">${t}${k==='INSTALADO' ? ' · '+perLabel() : ''}</span><b>${l ? fmtN(l.length) : '—'}</b><span>${sub}</span></button>`;
+      <span class="t">${t}${k==='INSTALADO' || (k==='ENSAMBLADO' && S.plEnsModo !== 'pend') ? ' · '+perLabel() : ''}</span><b>${l ? fmtN(l.length) : '—'}</b><span>${sub}</span></button>`;
   }).join('');
   const box = $('#obrasBox'); if(!box) return;
   const q = S.q.trim().toUpperCase();
@@ -1170,8 +1172,8 @@ function renderPlantaBox(){
   const desc = PL_ST.find(x => x[0]===S.plSt);
   let h = '';
   // Ensamblado e Instalado: por fecha
-  const ensFecha = S.plSt === 'ENSAMBLADO' && S.plEnsModo === 'fecha';
-  if(S.plSt === 'ENSAMBLADO') h += `<div class="seg-modo"><button class="${ensFecha?'':'on'}" onclick="setEnsModo('pend')">Por despachar</button><button class="${ensFecha?'on':''}" onclick="setEnsModo('fecha')">Ensamblado por fecha</button></div>`;
+  const ensFecha = S.plSt === 'ENSAMBLADO' && S.plEnsModo !== 'pend';   // por defecto, por fecha (igual que Instalado)
+  if(S.plSt === 'ENSAMBLADO') h += `<div class="seg-modo"><button class="${ensFecha?'on':''}" onclick="setEnsModo('fecha')">Ensamblado por fecha</button><button class="${ensFecha?'':'on'}" onclick="setEnsModo('pend')">Por despachar</button></div>`;
   if(ensFecha || S.plSt === 'INSTALADO'){
     const campo = ensFecha ? 'dia_final' : 'fecha_instalacion';
     h += perBar();
