@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.84';
+const APP_VERSION = '6.85';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1699,7 +1699,7 @@ function obraCard(o){
 // ════════════════════════════════════════════════════════════════
 async function openObra(name, fromPop, anio, pf){
   S.view = 'obra'; S.obra = name; S.items = []; S.sel.clear(); S.detailId = null; S.draft = null;
-  S.f = {estado: pf && pf.estado !== 'PEND' ? pf.estado : 'TODOS', pisos:new Set(), sis:new Set(), ser:new Set(), ops:new Set(pf && pf.op ? [pf.op] : []), anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null, pr: (pf && pf.pr) || null}; S.limit = 300;
+  S.f = {estado: pf && pf.estado !== 'PEND' ? pf.estado : 'TODOS', pisos:new Set(), sis:new Set(), ser:new Set(), its:new Set(), ops:new Set(pf && pf.op ? [pf.op] : []), anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null, pr: (pf && pf.pr) || null}; S.limit = 300;
   if(!fromPop) history.pushState({v:'obra', obra:name, anio:anio||'', pf:pf||null}, '');
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
@@ -1757,6 +1757,7 @@ const FILTROS = [
 ];
 
 // Sin programar: no está en ninguna programación ni ha entrado a ensamble, despacho o instalación
+const itemDe = it => String(it.item || '').trim().toUpperCase();
 const sinProgramar = it => it.programado !== 'X' && !it.programacion_id && !it.ensamblador && !it.dia_inicio && !it.despachado && !it.instalado;
 // Filtros de piso, OP, año y texto (sin el de estado)
 function baseMatch(it){
@@ -1765,6 +1766,7 @@ function baseMatch(it){
     && (!S.f.ops.size || S.f.ops.has(it.op||''))
     && (!S.f.sis || !S.f.sis.size || S.f.sis.has(sistemaDe(it)))
     && (!S.f.ser || !S.f.ser.size || S.f.ser.has(serieDe(it)))
+    && (!S.f.its || !S.f.its.size || S.f.its.has(itemDe(it)))
     && (!S.f.anio || yearOf(it) === S.f.anio)
     && (!S.f.rng || (it[S.f.rng.campo] && it[S.f.rng.campo] >= S.f.rng.d1 && it[S.f.rng.campo] <= S.f.rng.d2))
     && (!S.f.pr || prMatch(it, S.f.pr))
@@ -1798,6 +1800,7 @@ function renderObra(){
           <select id="fAnio"><option value="">Todos los años</option>${years.map(y=>`<option value="${y}" ${y===S.f.anio?'selected':''}>${y==='S/F'?'Sin fecha':'Año '+y} (${fmtN(ycount.get(y))})</option>`).join('')}</select>
           <button id="fPiso" class="msel" onclick="mselAbrir('pisos')">${mselTxt('pisos')}</button>
           <button id="fOp" class="msel" onclick="mselAbrir('ops')">${mselTxt('ops')}</button>
+          <button id="fIt" class="msel" onclick="mselAbrir('its')">${mselTxt('its')}</button>
           <button id="fSis" class="msel" onclick="mselAbrir('sis')">${mselTxt('sis')}</button>
           <select id="fPrg"><option value="">Programados y sin programar</option><option value="sin" ${S.f.prg==='sin'?'selected':''}>Solo sin programar (${fmtN(S.items.filter(sinProgramar).length)})</option><option value="con" ${S.f.prg==='con'?'selected':''}>Solo programados</option></select>
           ${S.items.some(serieDe) ? `<button id="fSer" class="msel" onclick="mselAbrir('ser')">${mselTxt('ser')}</button>` : ''}
@@ -4514,23 +4517,25 @@ async function verOrden(op){
 }
 function updOrdenBox(){ const b = $('#ordenBox'); const op = S.f && S.f.ops && S.f.ops.size === 1 ? [...S.f.ops][0] : ''; if(b) b.innerHTML = op ? ordenBtnHTML(op, 'Orden ' + esc(opNum(op) || '')) : ''; }
 // Filtros de varios pisos / varias OP a la vez
-const mselTxt = k => { if(!S.f[k]) S.f[k] = new Set(); const sz = S.f[k].size, nom = k === 'pisos' ? ['Todos los pisos', 'piso', 'pisos'] : k === 'sis' ? ['Todos los sistemas', 'sistema', 'sistemas'] : k === 'ser' ? ['Todas las series', 'serie', 'series'] : ['Todas las OP', 'OP', 'OP'];
+const mselTxt = k => { if(!S.f[k]) S.f[k] = new Set(); const sz = S.f[k].size, nom = k === 'pisos' ? ['Todos los pisos', 'piso', 'pisos'] : k === 'sis' ? ['Todos los sistemas', 'sistema', 'sistemas'] : k === 'ser' ? ['Todas las series', 'serie', 'series'] : k === 'its' ? ['Todos los ítems', 'ítem', 'ítems'] : ['Todas las OP', 'OP', 'OP'];
   return esc(!sz ? nom[0] : sz <= 2 ? [...S.f[k]].sort(nat).join(', ') : sz + ' ' + nom[2]) + ' ▾'; };
 function mselAbrir(k){
-  const val = k === 'pisos' ? (i => i.piso || '') : k === 'sis' ? sistemaDe : k === 'ser' ? serieDe : (i => i.op || ''), fe = FILTROS.find(f => f[0] === S.f.estado)[2];
+  const val = k === 'pisos' ? (i => i.piso || '') : k === 'sis' ? sistemaDe : k === 'ser' ? serieDe : k === 'its' ? itemDe : (i => i.op || ''), fe = FILTROS.find(f => f[0] === S.f.estado)[2];
   if(!S.f[k]) S.f[k] = new Set();
   const cnt = new Map(); for(const it of S.items) if(fe(it)){ const v = val(it); if(v) cnt.set(v, (cnt.get(v) || 0) + 1); }
   const vals = [...new Set(S.items.map(val).filter(Boolean))].sort(nat);
   const sel = window._msel = new Set(S.f[k]);
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
-  const body = `<div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn sm" onclick="document.querySelectorAll('.mselC').forEach(c => { c.checked = true; _msel.add(c.value); })">Todos</button>
-      <button class="btn sm" onclick="document.querySelectorAll('.mselC').forEach(c => { c.checked = false; _msel.delete(c.value); })">Ninguno</button></div>
-    <div style="max-height:52vh;overflow:auto">${vals.map(v => `<label style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">
+  const vis = "[...document.querySelectorAll('.mselC')].filter(c => c.closest('label').style.display !== 'none')";
+  const body = `${vals.length > 8 ? `<input id="mselQ" placeholder="Buscar… (ej. V-1, PV, 6235)" autocomplete="off" autocapitalize="characters" oninput="const q = this.value.trim().toUpperCase(); document.querySelectorAll('.mselC').forEach(c => { c.closest('label').style.display = !q || c.value.toUpperCase().includes(q) ? '' : 'none'; })">` : ''}
+    <div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn sm" onclick="${vis}.forEach(c => { c.checked = true; _msel.add(c.value); })">Todos</button>
+      <button class="btn sm" onclick="${vis}.forEach(c => { c.checked = false; _msel.delete(c.value); })">Ninguno</button></div>
+    <div style="max-height:52vh;overflow:auto;flex:none">${vals.map(v => `<label style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">
       <input type="checkbox" class="mselC" value="${esc(v)}" ${ck} ${sel.has(v) ? 'checked' : ''} onchange="this.checked ? _msel.add(this.value) : _msel.delete(this.value)">
       <span style="flex:1">${k === 'ops' ? 'OP ' : ''}${esc(v)}</span><small style="opacity:.7">${fmtN(cnt.get(v) || 0)}</small></label>`).join('')}</div>`;
-  openSheet(k === 'pisos' ? 'Filtrar pisos' : k === 'sis' ? 'Filtrar sistemas' : k === 'ser' ? 'Filtrar series' : 'Filtrar OP', 'Marca uno o varios · el número es cuántos ítems hay en el estado elegido', body, 'Aplicar', async () => {
+  openSheet(k === 'pisos' ? 'Filtrar pisos' : k === 'sis' ? 'Filtrar sistemas' : k === 'ser' ? 'Filtrar series' : k === 'its' ? 'Filtrar ítems' : 'Filtrar OP', 'Marca uno o varios · el número es cuántos ítems hay en el estado elegido', body, 'Aplicar', async () => {
     S.f[k] = new Set(sel); S.limit = 300;
-    $('#fPiso').innerHTML = mselTxt('pisos'); $('#fOp').innerHTML = mselTxt('ops'); if($('#fSis')) $('#fSis').innerHTML = mselTxt('sis'); if($('#fSer')) $('#fSer').innerHTML = mselTxt('ser');
+    $('#fPiso').innerHTML = mselTxt('pisos'); $('#fOp').innerHTML = mselTxt('ops'); if($('#fSis')) $('#fSis').innerHTML = mselTxt('sis'); if($('#fSer')) $('#fSer').innerHTML = mselTxt('ser'); if($('#fIt')) $('#fIt').innerHTML = mselTxt('its');
     updOrdenBox(); renderChips(); renderList();
   });
 }
