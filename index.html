@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.81';
+const APP_VERSION = '6.82';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -701,6 +701,8 @@ const API = {
   obra(name){ return this.all(o => this.sb.from('items').select('*',o).eq('obra',name).order('id')); },
   anual(){ return this.all(o => this.sb.from('items').select(ANUAL_COLS,o).order('id')); },
   async obrasAlias(){ const {data,error} = await this.sb.from('obras_alias').select('alias,obra'); if(error) throw error; return data || []; },
+  async pushGuardar(sub){ const j = sub.toJSON(); const {error} = await this.sb.from('push_subs').upsert({endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, dispositivo: navigator.userAgent.slice(0,200)}); if(error) throw error; },
+  async pushQuitar(endpoint){ const {error} = await this.sb.from('push_subs').delete().eq('endpoint', endpoint); if(error) throw error; },
   async obraAliasGuardar(alias, obra){ const {error} = await this.sb.from('obras_alias').upsert({alias, obra}); if(error) throw error; },
   async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
   // ── Órdenes de producción en PDF (carpeta privada "ordenes", un archivo por número: ops/6235.pdf) ──
@@ -963,11 +965,42 @@ function shell(inner){
       ${veDash() ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
       ${isGerente() ? `
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
+      ${isGerente() && !window.__DEMO__ ? `<button class="icon-btn" id="btnAvisos" title="Avisos al celular de cada cambio" onclick="avisos()">🔔</button>` : ''}
       ${vePrecio() ? `<button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
       <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button>
     </div>
   </header>
   <main id="main">${inner}</main>`;
+}
+
+// ── Avisos al celular (web push, solo gerente) ──
+const VAPID_PUB = 'BIs30XQvC_QlybChrV8iLMrTKXXveez0hBV8lBhw-lyIVGw6hj2RNbd6NVyTfQp3mDKULsFxYdJyB_pGlqj1XgA';
+function b64uBytes(b){ b = b.replace(/-/g,'+').replace(/_/g,'/'); const r = atob(b + '='.repeat((4 - b.length % 4) % 4)); return Uint8Array.from(r, c => c.charCodeAt(0)); }
+async function avisos(){
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const instalada = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if(!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)){
+    return alert(ios && !instalada
+      ? 'En iPhone/iPad los avisos solo funcionan con la app anclada al inicio.\n\nToca Compartir → "Agregar a inicio", abre la app desde ese ícono y vuelve a tocar 🔔.'
+      : 'Este navegador no permite avisos. En iPhone/iPad actualiza a iOS 16.4 o superior y abre la app desde el ícono de inicio.');
+  }
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if(sub){
+      if(confirm('Los avisos ya están activos en este dispositivo.\n\nAceptar = dejar de recibirlos aquí\nCancelar = seguir recibiéndolos')){
+        await API.pushQuitar(sub.endpoint).catch(() => {}); await sub.unsubscribe(); toast('Avisos desactivados en este dispositivo');
+      } else { await API.pushGuardar(sub); toast('✓ Avisos activos'); }
+      return;
+    }
+    const per = await Notification.requestPermission();
+    if(per !== 'granted') return alert('No diste permiso de notificaciones. Actívalo en Ajustes → Notificaciones → Elíptica (o Registro de producción) y vuelve a tocar 🔔.');
+    const nueva = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64uBytes(VAPID_PUB)});
+    await API.pushGuardar(nueva);
+    toast('✓ Avisos activados: te llegará cada cambio que hagan los demás usuarios');
+  }catch(e){
+    toast(/push_subs|schema cache|PGRST/i.test(errMsg(e)) ? 'Falta correr el SQL 50 en Supabase' : 'No se pudieron activar: ' + errMsg(e), true);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════

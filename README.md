@@ -51,3 +51,8 @@ La copia diaria del Mac (carpeta de respaldos en iCloud) trae todo lo necesario:
 - `COPIA_COMPLETA_*.zip`: los datos (un .json por tabla, en orden de restauración) y `_usuarios.json`.
 - `PDF_OP/`: los PDF de las OP.
 Pasos en el `LEEME.txt` del .zip. Datos: `restaurar_tabla(tabla, filas)` y al final `restaurar_secuencias()`.
+
+## Avisos al celular (v6.82)
+- `sql/50_notificaciones.sql`: cada acción (escaneos, programación, despachos, actas, firmas, precios, cobros, cargas) crea una notificación agrupada y la base llama a la Edge Function `notificar` (pg_net). La llave privada VAPID **no** está en el repo (`PEGAR_AQUI_LA_LLAVE_PRIVADA`); vive solo en la tabla `push_config` (sin políticas: solo la lee la función).
+- `supabase/functions/notificar/index.ts`: envía el push a los celulares del gerente (tabla `push_subs`), menos al de quien hizo la acción; borra suscripciones vencidas.
+- En la app: botón 🔔 (solo gerente). En iPhone/iPad requiere iOS 16.4+ y abrir la app desde el ícono de inicio.
