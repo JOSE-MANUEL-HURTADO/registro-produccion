@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.80';
+const APP_VERSION = '6.81';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3783,10 +3783,10 @@ function renderProgBox(recargar){
     h += `<div class="pl-card"><div class="pl-head"><span class="n">N.º ${pg.id} · ${esc(pg.obra || '')}</span><span class="m">${pg.fecha_req ? `<b style="${riesgo ? 'color:var(--danger)' : ''}">${fmtD(pg.fecha_req)}</b><br>${dias < 0 ? 'vencida hace ' + fmtN(-dias) + ' d' : dias === 0 ? 'hoy' : 'en ' + fmtN(dias) + ' d'}` : 'sin fecha'}</span></div>
       <div style="padding:10px 14px;font-size:12px">
         ${pg.notas ? `<div style="margin-bottom:6px;color:var(--text2)">${esc(pg.notas)}</div>` : ''}
-        ${PROCS.filter(([k]) => k !== 'programado').map(([k, t, ab]) => { const x = l.filter(i => i[k] === 'X' || i.dia_final || i.despachado).length, pc = Math.round(x / n * 100);
-          const pa = l.filter(i => i[k] === '+' && !i.dia_final && !i.despachado).length, ppc = Math.round(pa / n * 100);   // parciales (+)
+        ${PROCS.filter(([k]) => k !== 'programado').map(([k, t, ab]) => { const x = l.filter(i => i[k] === 'X').length, pc = Math.round(x / n * 100);   // solo lo registrado de verdad en X
+          const pa = l.filter(i => i[k] === '+').length, ppc = Math.round(pa / n * 100);   // parciales (+)
           return `<div style="display:grid;grid-template-columns:34px 1fr 84px;gap:8px;align-items:center;margin:3px 0" title="${t}: ${x} completos${pa ? ', ' + pa + ' parciales (+)' : ''} de ${l.length}"><span>${ab}</span><div style="height:8px;background:var(--surface3);display:flex"><div style="height:8px;width:${pc}%;background:${pc === 100 ? 'var(--inst)' : 'var(--cola)'}"></div>${pa ? `<div style="height:8px;width:${ppc}%;background:repeating-linear-gradient(45deg,var(--danger) 0 3px,transparent 3px 6px)"></div>` : ''}</div><span style="text-align:right">${fmtN(x)}/${fmtN(l.length)}${pa ? ` <b style="color:var(--danger)">+${fmtN(pa)}</b>` : ''}</span></div>`; }).join('')}
-        ${(() => { const par = l.filter(i => !i.dia_final && !i.despachado && PROCS.some(([k]) => k !== 'programado' && i[k] === '+'));
+        ${(() => { const par = l.filter(i => PROCS.some(([k]) => k !== 'programado' && i[k] === '+'));
           if(!par.length) return '';
           const det = [...grp(par, i => i.op).entries()].sort((a2, b2) => nat(a2[0], b2[0])).map(([op, is]) => `OP ${esc(op)}: ${[...new Set(is.flatMap(i => PROCS.filter(([k]) => k !== 'programado' && i[k] === '+').map(p => p[2])))].join(', ')} (${fmtN(is.length)})`);
           return `<div style="margin-top:6px;color:var(--danger)"><b>Parciales (+):</b> ${det.slice(0, 6).join(' · ')}${det.length > 6 ? ' …' : ''}</div>`; })()}
