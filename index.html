@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.82';
+const APP_VERSION = '6.83';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3471,8 +3471,8 @@ async function actaEstado(id){
   const body = `${est === 'anulada' ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
     ${abierta ? `<div class="summary"><b>En curso</b> · ${fmtN(items.length)} ítem${items.length===1?'':'s'} entregado${items.length===1?'':'s'} · falta la firma de quien recibe</div>
       ${rolEs('gerente','asistente','cobros','entrega') ? `<div class="field" style="margin-top:8px"><span class="lbl">Observaciones (las ve quien recibe antes de firmar y salen en el acta)</span>
-        <textarea id="aObs" rows="3" style="width:100%;resize:vertical" placeholder="Ej.: ventanas con película polifless; pendiente ajuste de chapa en V-03…">${esc(a.observaciones || '')}</textarea>
-        <button class="btn sm" style="margin-top:6px" onclick="actaObsGuardar(${a.id})">Guardar observaciones</button></div>`
+        <textarea id="aObs" rows="3" style="width:100%;resize:vertical" placeholder="Ej.: ventanas con película polifless; pendiente ajuste de chapa en V-03…" oninput="actaObsAuto(${a.id}, this.value)" onblur="actaObsAuto(${a.id}, this.value, true)">${esc(obsBorr(a))}</textarea>
+        <div class="sc-note" id="aObsEst">Se guardan solas mientras escribes.</div></div>`
       : a.observaciones ? `<div class="summary" style="margin-top:8px"><b>Observaciones de Elíptica:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : ''}
       ${items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
       ${rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}`
@@ -3482,6 +3482,17 @@ async function actaEstado(id){
   openSheet('Acta de entrega N.º ' + a.num, esc(a.obra) + (abierta ? ' · en curso' : ' · ' + fmtD(a.fecha)), body, 'Listo', async () => {});
 }
 
+// Observaciones: se guardan solas (antes se perdían si no tocaban "Guardar" antes de "Cerrar acta y firmar")
+const OBS_BORR = {}; let obsTimer = null;
+const obsBorr = a => OBS_BORR[a.id] !== undefined ? OBS_BORR[a.id] : (a.observaciones || '');
+function actaObsAuto(id, t, ya){
+  OBS_BORR[id] = t; clearTimeout(obsTimer);
+  const est = $('#aObsEst'); if(est) est.textContent = 'Guardando…';
+  obsTimer = setTimeout(async () => {
+    try{ await API.actaObs(id, t); const e = $('#aObsEst'); if(e) e.textContent = '✓ Observaciones guardadas'; }
+    catch(e){ const x = $('#aObsEst'); if(x) x.textContent = '⚠ No se guardaron: ' + errMsg(e); }
+  }, ya ? 0 : 1200);
+}
 async function actaObsGuardar(id){
   const t = $('#aObs') ? $('#aObs').value : '';
   try{ await API.actaObs(id, t); toast('✓ Observaciones guardadas'); }
@@ -3498,7 +3509,7 @@ async function actaFirmar(id){
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const obsEdit = rolEs('gerente','asistente','cobros','entrega');
   const obsHTML = obsEdit
-    ? `<div class="field"><span class="lbl">Observaciones de Elíptica (quien recibe las lee antes de firmar)</span><textarea id="fObs" rows="3" style="width:100%;resize:vertical">${esc(a.observaciones || '')}</textarea></div>`
+    ? `<div class="field"><span class="lbl">Observaciones de Elíptica (quien recibe las lee antes de firmar)</span><textarea id="fObs" rows="3" style="width:100%;resize:vertical" oninput="OBS_BORR[${a.id}] = this.value">${esc(obsBorr(a))}</textarea></div>`
     : a.observaciones ? `<div class="summary"><b>Observaciones de Elíptica:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : '';
   const body = obsHTML + `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
     <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(lugarCorto(i.ubicacion)) : ''}</span></label>`).join('')}</div>
@@ -3513,8 +3524,9 @@ async function actaFirmar(id){
     if(fuera.size >= items.length){ toast('No quedó ningún ítem marcado como recibido', true); return false; }
     if(!window._firma || !window._firma.trazos){ toast('Falta la firma', true); return false; }
     if(fuera.size && !confirm(`${fuera.size} ítem${fuera.size===1?'':'s'} no se recibe${fuera.size===1?'':'n'} y saldrá${fuera.size===1?'':'n'} del acta. ¿Continuar?`)) return false;
+    clearTimeout(obsTimer);
     if(obsEdit && $('#fObs') && $('#fObs').value.trim() !== (a.observaciones || '').trim()){
-      try{ await API.actaObs(a.id, $('#fObs').value); a.observaciones = $('#fObs').value.trim(); }
+      try{ await API.actaObs(a.id, $('#fObs').value); a.observaciones = $('#fObs').value.trim(); delete OBS_BORR[a.id]; }
       catch(e){ toast(/acta_observaciones|function/.test(errMsg(e)) ? 'Falta correr el SQL 49 para guardar observaciones' : errMsg(e), true); return false; }
     }
     let r;
