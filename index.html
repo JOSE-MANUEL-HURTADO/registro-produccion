@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.83';
+const APP_VERSION = '6.84';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -676,6 +676,8 @@ const API = {
   async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
   async anularRecibidoRem(rem){ const {error} = await this.sb.rpc('anular_recibido_remision', {p_rem:rem}); if(error) throw error; },
   async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
+  async actaItemObs(acta, item, texto){ const {error} = await this.sb.rpc('acta_item_obs', {p_acta: acta, p_item: item, p_texto: texto}); if(error) throw error; },
+  async actaObsItems(acta){ const {data,error} = await this.sb.from('actas_obs_items').select('item_id,texto').eq('acta_id', acta); if(error) throw error; return data || []; },
   async actaObs(id, texto){ const {error} = await this.sb.rpc('acta_observaciones', {p_acta: id, p_texto: texto}); if(error) throw error; },
   async campoActa(id){ const {data,error} = await this.sb.rpc('campo_acta', {p_id:id}); if(error) throw error; return data; },
   async campoItemsOp(op){ const {data,error} = await this.sb.rpc('campo_items_op', {p_op:op}); if(error) throw error; return data || []; },
@@ -2815,7 +2817,7 @@ function renderScanParams(){
 function renderScanLog(){
   const b = $('#scLog'); if(!b) return;
   const rems = [...new Set(SC.log.filter(l => l.rem && !l.deshecho).map(l => l.rem))];
-  b.innerHTML = (rems.length ? `<div class="quick" style="margin-bottom:8px">${rems.map(r => `<button class="btn sm" onclick="exportarRemision(decodeURIComponent('${encQ(r)}'))">${ICON.down} Exportar remisión ${esc(r)}</button>`).join('')}</div>` : '') + (SC.log.length ? SC.log.map((l, i) => `<div class="sc-li ${l.deshecho?'des':''}"><span class="t">${l.hora}</span><div><b>${esc(l.op)}</b> · ${esc(l.est)} · ${fmtN(l.n)} de ${fmtN(l.tot)}<small>${esc(l.obra)}${l.deshecho ? ' · DESHECHO' : ''}</small></div>${l.prev && !l.deshecho ? `<button class="btn sm ghost" onclick="scDeshacer(${i})">Deshacer</button>` : '<span></span>'}</div>`).join('')
+  b.innerHTML = (rems.length ? `<div class="quick" style="margin-bottom:8px">${rems.map(r => `<button class="btn sm" onclick="exportarRemision(decodeURIComponent('${encQ(r)}'))">${ICON.down} Exportar remisión ${esc(r)}</button>`).join('')}</div>` : '') + (SC.log.length ? SC.log.map((l, i) => `<div class="sc-li ${l.deshecho?'des':''}"><span class="t">${l.hora}</span><div><b>${esc(l.op)}</b> · ${esc(l.est)} · ${fmtN(l.n)} de ${fmtN(l.tot)}<small>${esc(l.obra)}${l.deshecho ? ' · DESHECHO' : ''}</small></div>${l.prev && !l.deshecho ? `<span style="display:flex;gap:4px">${l.entr && l.acta && obsItemPuede() ? `<button class="btn sm ${l.obsN ? 'primary' : ''}" title="Anotar una observación de este ítem para el acta" onclick="scObsItems(${i})">📝${l.obsN ? ' ' + l.obsN : ' Obs.'}</button>` : ''}<button class="btn sm ghost" onclick="scDeshacer(${i})">Deshacer</button></span>` : '<span></span>'}</div>`).join('')
     : '<div class="empty" style="padding:14px 0">Aún no has registrado nada.</div>');
 }
 
@@ -3025,7 +3027,7 @@ async function scAplicar(l, tot, e){
     const ac = r[r.length - 1];
     for(const it of l){ it.entregado_en = new Date().toISOString(); it.acta_id = ac.acta_id; const x = S.items && S.items.find(y => y.id === it.id); if(x){ x.entregado_en = it.entregado_en; x.acta_id = ac.acta_id; } }
     SC.acta = {id: ac.acta_id, num: ac.num, obra: ac.obra};
-    SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: e.t + ' → acta ' + ac.num, n: l.length, tot: l.length === 1 ? 1 : tot, obra: l[0].obra, prev: [], entr: ids});
+    SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: e.t + ' → acta ' + ac.num, n: l.length, tot: l.length === 1 ? 1 : tot, obra: l[0].obra, prev: [], entr: ids, acta: ac.acta_id});
     renderScanLog(); renderScanParams(); return;
   }
   if(e.k === 'ini' && isGerente()){
@@ -3344,7 +3346,7 @@ async function actaVer(id){
   toast('Preparando el acta…');
   let a, items, recs = [];
   try{
-    a = await API.acta(id); items = (await API.itemsActa(id)).sort((x, y) => nat(x.op_instalacion, y.op_instalacion));
+    a = await API.acta(id); items = (await API.itemsActa(id)).sort((x, y) => nat(x.op_instalacion, y.op_instalacion)); await obsEnItems(id, items);
     try{ recs = await API.recepciones(id, true); }catch(e){ recs = []; }
     if(!window.jspdf) await loadScript('lib/jspdf.js');
     if(!window.qrcode) await loadScript('lib/qrcode.js');
@@ -3397,9 +3399,15 @@ async function actaVer(id){
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20);
     const vals = [it.op_instalacion || it.op, it.item, lugarCorto(it.ubicacion), it.piso, it.diseno, it.ancho ? fmtN(it.ancho) + ' × ' + fmtN(it.alto) : '', fmtN(it.m2, 2), fmtD(it.fecha_instalacion)];
     if(it.entregado_en){ const d = new Date(it.entregado_en), p2 = n => String(n).padStart(2, '0'); vals.push(`${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`); }
-    const nl = pdfLineas(doc, cols, vals), alto = 6 + (nl - 1) * PDF_LH;
+    const nl = pdfLineas(doc, cols, vals);
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
+    const obL = it.obs ? doc.splitTextToSize('Obs.: ' + it.obs, W - 4) : [];
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    const alto = 6 + (nl - 1) * PDF_LH + obL.length * 3.3;
     if(y + alto - 6 > PH - 62){ doc.addPage(); encabezado(); cab(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20); }
     pdfFila(doc, cols, X, vals, y);
+    if(obL.length){ doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(150, 30, 30);
+      doc.text(obL, X[0] + 1.5, y + (nl - 1) * PDF_LH + 3.6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(20); }
     doc.setDrawColor(225); doc.line(M, y + alto - 3.8, M + W, y + alto - 3.8); y += alto;
   }
   const m2 = items.reduce((s, i) => s + (Number(i.m2) || 0), 0), nRec = items.filter(i => i.recepcion_id).length;
@@ -3407,11 +3415,11 @@ async function actaVer(id){
   doc.text(fmtN(items.length) + ' ítems', X[0] + 1.5, y); doc.text('Total', X[5] + 1.5, y); tx(fmtN(m2, 2), 6, y);
   y += 8;
   if(y > PH - 62){ doc.addPage(); encabezado(); }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('Observaciones', M, y);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('Observaciones generales', M, y);
   { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30);
     const ob = a.observaciones ? doc.splitTextToSize(String(a.observaciones), PW - 2 * M - 6) : [];
     const hObs = Math.max(20, ob.length * 3.8 + 6);
-    if(y + 2 + hObs > PH - 34){ doc.addPage(); encabezado(); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text('Observaciones', M, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30); }
+    if(y + 2 + hObs > PH - 34){ doc.addPage(); encabezado(); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text('Observaciones generales', M, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30); }
     doc.setDrawColor(170); doc.rect(M, y + 2, PW - 2 * M, hObs);
     if(ob.length) doc.text(ob, M + 3, y + 6.5); }
   const fy = PH - 26;
@@ -3454,7 +3462,8 @@ async function actaVer(id){
 async function actaDatos(id){
   try{ const d = await API.campoActa(id); return d ? {a: d.acta, items: d.items || [], recs: d.recs || []} : {a: null, items: [], recs: []}; }
   catch(e){ if(esCampo() || e.code !== 'PGRST202') throw e; }
-  return {a: await API.acta(id), items: await API.itemsActa(id), recs: await API.recepciones(id, false)};
+  const items = await API.itemsActa(id); await obsEnItems(id, items);
+  return {a: await API.acta(id), items, recs: await API.recepciones(id, false)};
 }
 function qrSVG(txt, px){
   if(!window.qrcode) return '';
@@ -3468,18 +3477,60 @@ async function actaEstado(id){
   if(!a) return toast('No encontré esa acta', true);
   items.sort((x, y) => nat(x.op_instalacion, y.op_instalacion));
   const est = actaEst(a), abierta = est === 'abierta';
-  const body = `${est === 'anulada' ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
-    ${abierta ? `<div class="summary"><b>En curso</b> · ${fmtN(items.length)} ítem${items.length===1?'':'s'} entregado${items.length===1?'':'s'} · falta la firma de quien recibe</div>
-      ${rolEs('gerente','asistente','cobros','entrega') ? `<div class="field" style="margin-top:8px"><span class="lbl">Observaciones (las ve quien recibe antes de firmar y salen en el acta)</span>
-        <textarea id="aObs" rows="3" style="width:100%;resize:vertical" placeholder="Ej.: ventanas con película polifless; pendiente ajuste de chapa en V-03…" oninput="actaObsAuto(${a.id}, this.value)" onblur="actaObsAuto(${a.id}, this.value, true)">${esc(obsBorr(a))}</textarea>
+  const obsGen = abierta
+    ? (rolEs('gerente','asistente','cobros','entrega') ? `<div class="field" style="margin-top:10px"><span class="lbl">Observaciones generales de la entrega (salen al final del acta)</span>
+        <textarea id="aObs" rows="3" style="width:100%;resize:vertical" placeholder="Ej.: se entrega con película protectora; aseo final a cargo de la obra…" oninput="actaObsAuto(${a.id}, this.value)" onblur="actaObsAuto(${a.id}, this.value, true)">${esc(obsBorr(a))}</textarea>
         <div class="sc-note" id="aObsEst">Se guardan solas mientras escribes.</div></div>`
-      : a.observaciones ? `<div class="summary" style="margin-top:8px"><b>Observaciones de Elíptica:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : ''}
-      ${items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:8px 0" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
-      ${rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}`
+      : a.observaciones ? `<div class="summary" style="margin-top:10px"><b>Observaciones generales:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : '')
+    : a.observaciones ? `<div class="summary" style="margin-top:10px"><b>Observaciones generales:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : '';
+  const body = `${est === 'anulada' ? '<div class="warn"><b>Acta anulada.</b></div>' : ''}
+    ${abierta ? `<div class="summary"><b>En curso</b> · ${fmtN(items.length)} ítem${items.length===1?'':'s'} entregado${items.length===1?'':'s'} · falta la firma de quien recibe</div>`
     : est === 'firmada' ? `<div class="summary">✓ <b>Firmada</b>${recs[0] ? ` por <b>${esc(recs[0].nombre)}</b>${recs[0].cargo ? ' · ' + esc(recs[0].cargo) : ''} el ${new Date(recs[0].creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})}` : ''} · ${fmtN(items.length)} ítem${items.length===1?'':'s'} recibidos</div>` : ''}
-    <div style="max-height:40vh;overflow:auto">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · <b>' + esc(pisoLbl(it.piso)) + '</b>' : ''}${it.ubicacion ? ' · ' + esc(lugarCorto(it.ubicacion)) : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
+    <div style="max-height:40vh;overflow:auto;flex:none">${items.map(it => `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="width:16px;text-align:center">${it.recepcion_id ? '<b>✓</b>' : '●'}</span><span style="flex:1"><b>${esc(it.op_instalacion || it.op || '—')}</b> · ${esc(it.item || '')}${it.piso ? ' · <b>' + esc(pisoLbl(it.piso)) + '</b>' : ''}${it.ubicacion ? ' · ' + esc(lugarCorto(it.ubicacion)) : ''}${it.obs ? `<br><span style="color:var(--danger)">📝 ${esc(it.obs)}</span>` : ''}</span></div>`).join('') || '<div class="empty" style="padding:10px 0">Sin ítems.</div>'}</div>
+    ${abierta && items.length && obsItemPuede() ? `<button class="btn sm" style="margin-top:8px" onclick="actaObsItemsEditar(${a.id})">📝 Observaciones por ítem</button>` : ''}
+    ${obsGen}
+    ${abierta && items.length && firmaActa() ? `<button class="btn primary" style="width:100%;margin:10px 0 8px" onclick="actaFirmar(${a.id})">Cerrar acta y firmar</button>` : ''}
+    ${abierta && rolEs('entrega','gerente','asistente') ? `<div style="text-align:center;margin:6px 0">${qrSVG('ELP-ACTA:' + a.id, 150)}<div class="sc-note">Si quien recibe tiene su propio usuario, puede escanear este código y firmar en su teléfono.</div></div>` : ''}
     ${esInterno() && items.length ? `<button class="btn" style="width:100%;margin-top:10px" onclick="actaVer(${a.id})">${ICON.down} PDF del acta${abierta ? ' (borrador)' : ''}</button>` : ''}`;
   openSheet('Acta de entrega N.º ' + a.num, esc(a.obra) + (abierta ? ' · en curso' : ' · ' + fmtD(a.fecha)), body, 'Listo', async () => {});
+}
+
+// Observaciones por ítem (se anotan mientras se entrega; salen debajo de cada ítem en el acta)
+async function obsEnItems(acta, items){
+  try{ const m = new Map((await API.actaObsItems(acta)).map(o => [o.item_id, o.texto])); for(const it of items) it.obs = m.get(it.id) || null; }
+  catch(e){ /* SQL 51 sin correr: sin observaciones por ítem */ }
+  return items;
+}
+const obsItemPuede = () => rolEs('gerente','asistente','cobros','entrega');
+function obsItemsSheet(acta, lista, despues){
+  openSheet('Observaciones por ítem', 'Salen debajo de cada ítem en el acta', `<div class="sc-note" style="margin-bottom:8px">Ej.: falta silicona, vidrio rayado, pendiente manija. Déjalo en blanco si no hay novedad.</div>` +
+    lista.map(x => `<div class="field"><span class="lbl">${esc(x.label)}</span><input data-obs="${x.id}" value="${esc(x.obs || '')}" placeholder="Sin novedad"></div>`).join(''),
+    'Guardar', async () => {
+      let n = 0;
+      for(const x of lista){
+        const t = document.querySelector(`[data-obs="${x.id}"]`).value.trim();
+        if(t === (x.obs || '').trim()) continue;
+        try{ await API.actaItemObs(acta, x.id, t); x.obs = t; n++; }
+        catch(e){ toast(/acta_item_obs|function/.test(errMsg(e)) ? 'Falta correr el SQL 51 en Supabase' : errMsg(e), true); return false; }
+      }
+      if(n) toast('✓ Observación guardada');
+      if(despues) setTimeout(despues, 60);
+    });
+  setTimeout(() => { const i = document.querySelector('[data-obs]'); if(i) i.focus(); }, 80);
+}
+async function scObsItems(i){
+  const l = SC.log[i]; if(!l || !l.entr || l.deshecho) return;
+  let d; try{ d = await actaDatos(l.acta); }catch(e){ return toast(errMsg(e), true); }
+  if(!d.a || actaEst(d.a) !== 'abierta') return toast('El acta ya está cerrada', true);
+  const lista = d.items.filter(it => l.entr.includes(it.id)).map(it => ({id: it.id, label: (it.op_instalacion || it.op) + ' · ' + (it.item || '') + (it.ubicacion ? ' · ' + lugarCorto(it.ubicacion) : ''), obs: it.obs}));
+  if(!lista.length) return toast('Esos ítems ya no están en el acta', true);
+  obsItemsSheet(l.acta, lista, () => { l.obsN = lista.filter(x => x.obs).length; renderScanLog(); });
+}
+async function actaObsItemsEditar(id){
+  let d; try{ d = await actaDatos(id); }catch(e){ return toast(errMsg(e), true); }
+  const lista = d.items.filter(it => !it.recepcion_id).sort((x, y) => nat(x.op_instalacion, y.op_instalacion))
+    .map(it => ({id: it.id, label: (it.op_instalacion || it.op) + ' · ' + (it.item || '') + (it.ubicacion ? ' · ' + lugarCorto(it.ubicacion) : ''), obs: it.obs}));
+  obsItemsSheet(id, lista, () => actaEstado(id));
 }
 
 // Observaciones: se guardan solas (antes se perdían si no tocaban "Guardar" antes de "Cerrar acta y firmar")
@@ -3509,11 +3560,11 @@ async function actaFirmar(id){
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const obsEdit = rolEs('gerente','asistente','cobros','entrega');
   const obsHTML = obsEdit
-    ? `<div class="field"><span class="lbl">Observaciones de Elíptica (quien recibe las lee antes de firmar)</span><textarea id="fObs" rows="3" style="width:100%;resize:vertical" oninput="OBS_BORR[${a.id}] = this.value">${esc(obsBorr(a))}</textarea></div>`
-    : a.observaciones ? `<div class="summary"><b>Observaciones de Elíptica:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : '';
-  const body = obsHTML + `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
-    <div style="max-height:24vh;overflow:auto;font-size:13px;margin:6px 0">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(lugarCorto(i.ubicacion)) : ''}</span></label>`).join('')}</div>
-    <div class="sc-note" id="afSum"></div>
+    ? `<div class="field"><span class="lbl">Observaciones generales de la entrega (quien recibe las lee antes de firmar)</span><textarea id="fObs" rows="3" style="width:100%;resize:vertical" oninput="OBS_BORR[${a.id}] = this.value">${esc(obsBorr(a))}</textarea></div>`
+    : a.observaciones ? `<div class="summary"><b>Observaciones generales:</b><br>${esc(a.observaciones).replace(/\n/g, '<br>')}</div>` : '';
+  const body = `<div class="summary">Recibo a satisfacción los ítems marcados del acta N.º ${a.num} de ${esc(a.obra)}. <b>Desmarca</b> los que no recibes: salen del acta y quedan pendientes.</div>
+    <div style="max-height:30vh;overflow:auto;font-size:13px;margin:6px 0;flex:none">${items.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" ${ck} checked onchange="this.checked ? _actaFuera.delete(${i.id}) : _actaFuera.add(${i.id}); actaFirmaSum(${items.length})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(lugarCorto(i.ubicacion)) : ''}${i.obs ? `<br><span style="color:var(--danger)">📝 ${esc(i.obs)}</span>` : ''}</span></label>`).join('')}</div>
+    <div class="sc-note" id="afSum"></div>${obsHTML}
     <div class="field"><span class="lbl">Nombre de quien recibe</span><input id="fNom" autocomplete="off"></div>
     <div class="fgrid"><div class="field"><span class="lbl">Cargo</span><input id="fCar" placeholder="Residente, interventor…"></div>
       <div class="field"><span class="lbl">Cédula</span><input id="fDoc" inputmode="numeric" placeholder="Opcional"></div></div>
