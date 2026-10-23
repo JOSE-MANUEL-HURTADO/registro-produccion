@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.75';
+const APP_VERSION = '6.76';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -814,7 +814,7 @@ const S = {
   user:null, perfil:null, view:'login',
   activos:[], obrasAll:null, ensambladores:[],
   q:'', homeTab:'activas', anual:null, anio:null, obra:null, items:[], loadingObra:false,
-  f:{estado:'PEND', piso:'', op:'', anio:'', q:''}, limit:300,
+  f:{estado:'TODOS', piso:'', op:'', anio:'', q:''}, limit:300,
   sel:new Set(), detailId:null, draft:null, live:false, com:new Map()
 };
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
@@ -1662,7 +1662,7 @@ function obraCard(o){
 // ════════════════════════════════════════════════════════════════
 async function openObra(name, fromPop, anio, pf){
   S.view = 'obra'; S.obra = name; S.items = []; S.sel.clear(); S.detailId = null; S.draft = null;
-  S.f = {estado: pf ? pf.estado : (anio ? 'TODOS' : 'PEND'), pisos:new Set(), sis:new Set(), ser:new Set(), ops:new Set(pf && pf.op ? [pf.op] : []), anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null, pr: (pf && pf.pr) || null}; S.limit = 300;
+  S.f = {estado: pf && pf.estado !== 'PEND' ? pf.estado : 'TODOS', pisos:new Set(), sis:new Set(), ser:new Set(), ops:new Set(pf && pf.op ? [pf.op] : []), anio: anio || '', q: (pf && pf.q) || '', rng: (pf && pf.rng) || null, pr: (pf && pf.pr) || null}; S.limit = 300;
   if(!fromPop) history.pushState({v:'obra', obra:name, anio:anio||'', pf:pf||null}, '');
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
@@ -1706,7 +1706,7 @@ const porCobrarI = it => it.instalado && !com(it).cobrado_instalacion;
 const porEntregar = it => it.instalado && !it.acta_id && String(it.fecha_instalacion || '') >= (S.entDesde || today());
 const isPend = it => !(it.despachado && it.instalado);
 const FILTROS = [
-  ['PEND','Pendientes', it => isPend(it)],
+  ['PEND','Pendientes', it => isPend(it), false, true],   // ya no se muestra como botón
   ['EN COLA','En cola', it => stageOf(it)==='EN COLA'],
   ['PRODUCCIÓN','Producción', it => stageOf(it)==='PRODUCCIÓN'],
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
@@ -1784,7 +1784,7 @@ function renderChips(){
   const base = S.items.filter(baseMatch);
   const rng = (S.f.rng ? `<button class="chip on" title="Quitar filtro de fecha" onclick="S.f.rng=null;S.limit=300;renderChips();renderList()">${esc(S.f.rng.label)} ✕</button>` : '')
     + (S.f.pr ? `<button class="chip on" title="Quitar filtro de proceso" onclick="S.f.pr=null;S.limit=300;renderChips();renderList()">${esc(S.f.pr.label)} ✕</button>` : '');
-  $('#chips').innerHTML = rng + FILTROS.filter(f => !f[3] || veCobros()).map(([k,t,fn,g]) => {
+  $('#chips').innerHTML = rng + FILTROS.filter(f => !f[4] && (!f[3] || veCobros())).map(([k,t,fn,g]) => {
     const n = base.filter(fn).length;
     const col = STAGES[k] ? `<i style="background:${STAGES[k].c}"></i>` : '';
     return `<button class="chip ${S.f.estado===k?'on':''} ${g?'chip-cob':''}" onclick="setEstado('${k}')">${g?'<span class="cob-ic">$</span>':''}${col}${t} <b>${fmtN(n)}</b></button>`;
