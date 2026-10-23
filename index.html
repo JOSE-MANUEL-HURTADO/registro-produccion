@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.74';
+const APP_VERSION = '6.75';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1710,6 +1710,7 @@ const FILTROS = [
   ['EN COLA','En cola', it => stageOf(it)==='EN COLA'],
   ['PRODUCCIÓN','Producción', it => stageOf(it)==='PRODUCCIÓN'],
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
+  ['DESPACHOS','Despachados', it => it.despachado],
   ['DESPACHADO','Por instalar', it => it.despachado && !it.instalado],
   ['INSTALADO','Instalados', it => it.instalado],
   ['ENTREGAR','Por entregar', it => porEntregar(it)],
