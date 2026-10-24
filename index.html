@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.88';
+const APP_VERSION = '6.89';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -833,6 +833,7 @@ const S = {
   sel:new Set(), detailId:null, draft:null, live:false, com:new Map()
 };
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
+const rolTxt = r => r === 'gerente' ? 'Director de operaciones' : (r || '');   // el rol "gerente" se muestra con el cargo real
 const rolEs = (...r) => !!S.perfil && r.includes(S.perfil.rol);
 const puedeRegistrar = () => rolEs('gerente','asistente');   // procesos, ensamble, despacho, instalación
 const veCobros = () => rolEs('gerente','cobros','consulta');  // ve las marcas de cobro
@@ -934,7 +935,7 @@ async function afterLogin(ses){
   }catch(e){ return renderLogin('Error al leer tu perfil: '+e.message); }
   if(!S.perfil){
     await API.logout();
-    return renderLogin('Tu usuario no tiene un rol asignado. Pídele al gerente que lo active.');
+    return renderLogin('Tu usuario no tiene un rol asignado. Pídele al director de operaciones que lo active.');
   }
   if(soloScan()){
     window.addEventListener('popstate', onPop);
@@ -976,7 +977,7 @@ function shell(inner){
   <header class="top">
     ${brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
     <div class="top-r">
-      <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(S.perfil.rol)}</span></div>
+      <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(rolTxt(S.perfil.rol))}</span></div>
       ${puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       ${veDash() ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
       ${isGerente() ? `
@@ -2790,7 +2791,7 @@ function sheetEnsamblador(){
   const procMsg = noListos.length ? `<div class="warn" style="margin-bottom:10px">
       <b>${fmtN(noListos.length)} ítem${noListos.length===1?'':'s'} sin procesos completos</b> (deben estar en X: cortado, troquelado, mecanizado y programado):<br>
       ${noListos.slice(0, 8).map(i => `${esc(i.op_instalacion || i.op)} · falta ${faltaProc(i).join(', ')}`).join('<br>')}${noListos.length > 8 ? '<br>…' : ''}<br>
-      ${isGerente() ? 'Como gerente puedes iniciarlos de todas formas; se te pedirá confirmar.' : 'No se les iniciará el ensamble; se asignará solo a los demás.'}</div>` : '';
+      ${isGerente() ? 'Como director de operaciones puedes iniciarlos de todas formas; se te pedirá confirmar.' : 'No se les iniciará el ensamble; se asignará solo a los demás.'}</div>` : '';
   const body = procMsg + `<div class="field"><span class="lbl">Ensamblador</span>${personaField('gEns', '', '', 'Elegir')}</div>
     <div class="fgrid"><div class="field"><span class="lbl">Día inicio</span><input type="date" id="gDia" value="${today()}"></div>
       <div class="field"><span class="lbl">Hora inicio</span><input type="time" id="gHora" value="${nowTime()}"></div></div>
@@ -4961,7 +4962,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Gerente'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
@@ -4972,7 +4973,7 @@ async function loadUsuarios(){
 function usuariosHTML(){
   if(!U.list){ loadUsuarios(); return '<div class="loading"><div class="spin"></div>Cargando usuarios</div>'; }
   const yo = S.user && S.user.id;
-  return `<div class="cstep" style="margin-bottom:16px"><b>?</b><div><div class="cs-t">Para agregar a alguien</div><div class="cs-d">1. En Supabase → Authentication → Users → <b>Add user</b> → <b>Create new user</b>: escribe su correo y una contraseña, y marca <b>Auto Confirm User</b>.<br>2. Vuelve aquí, toca <b>Actualizar lista</b> y asígnale el rol.<br><br><b>Asistente:</b> registra procesos, ensamble, despacho e instalación. <b>Consulta:</b> ve todo, incluidos precios y dashboard, sin modificar nada. <b>Cobros:</b> solo marca cobros, sin ver precios. <b>Gerente:</b> acceso total.</div>
+  return `<div class="cstep" style="margin-bottom:16px"><b>?</b><div><div class="cs-t">Para agregar a alguien</div><div class="cs-d">1. En Supabase → Authentication → Users → <b>Add user</b> → <b>Create new user</b>: escribe su correo y una contraseña, y marca <b>Auto Confirm User</b>.<br>2. Vuelve aquí, toca <b>Actualizar lista</b> y asígnale el rol.<br><br><b>Asistente:</b> registra procesos, ensamble, despacho e instalación. <b>Consulta:</b> ve todo, incluidos precios y dashboard, sin modificar nada. <b>Cobros:</b> solo marca cobros, sin ver precios. <b>Director de operaciones:</b> acceso total.</div>
       <button class="btn sm" onclick="U.list=null;renderCarga()">${ICON.ref} Actualizar lista</button></div></div>
     ${U.err ? `<div class="warn">${esc(U.err)}</div>` : ''}
     <div class="u-list">${U.list.map(u => `<div class="u-row" data-u="${u.id}">
@@ -4985,7 +4986,7 @@ function usuariosHTML(){
 async function guardarRol(id){
   const row = document.querySelector(`.u-row[data-u="${id}"]`);
   const rol = row.querySelector('select').value, nombre = row.querySelector('input').value.trim();
-  if(rol === 'gerente' && !confirm('El rol Gerente da acceso total, incluido borrar y reemplazar la base. ¿Continuar?')) return;
+  if(rol === 'gerente' && !confirm('El rol Director de operaciones da acceso total, incluido borrar y reemplazar la base. ¿Continuar?')) return;
   try{ await API.asignarRol(id, rol, nombre); toast('✓ Rol guardado'); U.list = null; renderCarga(); }
   catch(e){ toast(errMsg(e), true); }
 }
