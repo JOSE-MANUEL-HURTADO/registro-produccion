@@ -20,7 +20,7 @@ const lugar = (u: string | null) => String(u || "").split(/\s*[-–]\s*/)[0];
 type Nov = { id: number; obra: string; items: number[]; ops: string; piso: string | null; motivo: string; detalle: string | null; fotos: string[]; creada: string; quien: string | null; instalador: string | null };
 type It = { id: number; op_instalacion: string | null; op: string | null; item: string | null; ubicacion: string | null; piso: string | null };
 
-export async function pdfObra(obra: string, novs: Nov[], items: Map<number, It>, foto: (r: string) => Promise<Uint8Array | null>, logo: Uint8Array | null) {
+export async function pdfObra(obra: string, novs: Nov[], items: Map<number, It>, foto: (r: string) => Promise<Uint8Array | null>, logo: Uint8Array | null, responder = "") {
   const pdf = await PDFDocument.create();
   const f = await pdf.embedFont(StandardFonts.Helvetica), fb = await pdf.embedFont(StandardFonts.HelveticaBold);
   const PW = 612, PH = 792, M = 40, TW = PW - 2 * M;
@@ -46,7 +46,7 @@ export async function pdfObra(obra: string, novs: Nov[], items: Map<number, It>,
   };
   const salto = (h: number) => { if (y - h < 50) { page = pdf.addPage([PW, PH]); enc(); } };
   enc();
-  for (const l of lineas(`Elíptica informa las novedades encontradas en la obra que impidieron la instalación de los ítems relacionados. La fecha y hora de cada novedad fueron asignadas por el servidor en el momento del reporte y no se pueden modificar. Las fotos llevan impresa la fecha, hora, obra y OP del reporte.`, f, 9, TW)) {
+  for (const l of lineas(`Elíptica informa las novedades encontradas en la obra que impidieron la instalación de los ítems relacionados. La fecha y hora de cada novedad fueron asignadas por el servidor en el momento del reporte y no se pueden modificar. Las fotos llevan impresa la fecha, hora, obra y OP del reporte.${responder ? ` Por favor envíe su respuesta a: ${responder}.` : ""}`, f, 9, TW)) {
     page.drawText(l, { x: M, y, size: 9, font: f, color: rgb(.25, .25, .25) }); y -= 12;
   }
   y -= 8;
@@ -102,20 +102,22 @@ Deno.serve(async (req) => {
     }
     const foto = async (r: string) => { const { data } = await db.storage.from("novedades").download(r); return data ? new Uint8Array(await data.arrayBuffer()) : null; };
     const logo = await fetch(LOGO).then((r) => r.ok ? r.arrayBuffer() : null).then((b) => b ? new Uint8Array(b) : null).catch(() => null);
+    const copia = (Deno.env.get("COPIA_A") || usuario).split(",").map((x) => x.trim()).filter(Boolean);
+    const responder = [...new Set([...destinos, ...copia])];
     const smtp = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: usuario, pass: clave } });
     const porObra = new Map<string, Nov[]>();
     for (const n of novs as Nov[]) { if (!porObra.has(n.obra)) porObra.set(n.obra, []); porObra.get(n.obra)!.push(n); }
     const res: { obra: string; n: number; ok: boolean; error?: string }[] = [];
     for (const [obra, l] of porObra) {
       try {
-        const pdf = await pdfObra(obra, l, items, foto, logo);
+        const pdf = await pdfObra(obra, l, items, foto, logo, responder.join(" y "));
         const fecha = fd(l[l.length - 1].creada), nItems = l.reduce((s, n) => s + (n.items || []).length, 0);
         const archivo = `Novedades_${obra.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_")}_${fecha.replace(/\//g, "-")}.pdf`;
         const lista = l.map((n) => `<li><b>${fh(n.creada)}</b> — ${n.motivo} · ${(n.items || []).length} ítem(s) · ${n.ops || ""}${n.piso ? " · " + n.piso : ""}${n.detalle ? `<br><i>${n.detalle.replace(/</g, "&lt;")}</i>` : ""}</li>`).join("");
         await smtp.sendMail({
-          from: `"Elíptica · Novedades de instalación" <${usuario}>`, to: destinos.join(", "),
+          from: `"Elíptica · Novedades de instalación" <${usuario}>`, to: destinos.join(", "), cc: copia.join(", "), replyTo: responder.join(", "),
           subject: `Novedades de instalación · ${obra} · ${fecha}`,
-          html: `<p>Buenas tardes,</p><p>Durante la jornada del <b>${fecha}</b> se reportaron <b>${l.length} novedad(es)</b> que impidieron instalar <b>${nItems} ítem(s)</b> en la obra <b>${obra}</b>:</p><ul>${lista}</ul><p>Se adjunta el documento con la evidencia (fecha y hora del reporte, motivo y fotos) para reenviar a la obra.</p><p>Elíptica Cerramientos Translúcidos</p>`,
+          html: `<p>Buenas tardes,</p><p>Durante la jornada del <b>${fecha}</b> se reportaron <b>${l.length} novedad(es)</b> que impidieron instalar <b>${nItems} ítem(s)</b> en la obra <b>${obra}</b>:</p><ul>${lista}</ul><p>Se adjunta el documento con la evidencia (fecha y hora del reporte, motivo y fotos) para reenviar a la obra.</p><p><b>Al reenviarlo a la obra, deje en copia a ${copia.join(", ")}</b> para que la respuesta de la obra llegue también a la gerencia.</p><p>Elíptica Cerramientos Translúcidos</p>`,
           attachments: [{ filename: archivo, content: pdf, contentType: "application/pdf" }],
         });
         await db.from("novedades").update({ correo_en: new Date().toISOString() }).in("id", l.map((n) => n.id));
