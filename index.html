@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.86';
+const APP_VERSION = '6.87';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -678,6 +678,7 @@ const API = {
   async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
   async novedades(obra){ const {data,error} = await this.sb.from('novedades').select('*').eq('obra', obra).order('creada', {ascending:false}); if(error) throw error; return data || []; },
   async novedadCrear(items, motivo, detalle, fotos, piso, instalador){ const {data,error} = await this.sb.rpc('novedad_crear', {p_items: items, p_motivo: motivo, p_detalle: detalle || null, p_fotos: fotos || [], p_piso: piso || null, p_instalador: instalador || null}); if(error) throw error; return data; },
+  async novedadesEnviar(){ const {error} = await this.sb.rpc('novedades_enviar_correo'); if(error) throw error; },
   async novedadResolver(id, nota){ const {data,error} = await this.sb.rpc('novedad_resolver', {p_id: id, p_nota: nota || null}); if(error) throw error; return data; },
   async novedadFotoSubir(ruta, blob){ const {error} = await this.sb.storage.from('novedades').upload(ruta, blob, {contentType:'image/jpeg', upsert:false}); if(error) throw error; },
   async novedadFotoUrl(ruta){ const {data,error} = await API.sb.storage.from('novedades').createSignedUrl(ruta, 3600); if(error) throw error; return data.signedUrl; },
@@ -1077,6 +1078,7 @@ function novCard(n, conItems){
     ${conItems ? `<div style="margin-top:4px">${esc(n.ops || '')}${n.piso ? ' · ' + esc(n.piso) : ''}</div>` : ''}
     ${n.detalle ? `<div style="margin-top:4px;white-space:pre-wrap">${esc(n.detalle)}</div>` : ''}
     <div class="sc-note" style="margin-top:4px">Reportó: ${esc(n.quien || '—')}${n.instalador ? ' · instalador ' + esc(n.instalador) : ''}${its.length ? ' · ' + esc(novInstaladosTxt(n)) : ''}</div>
+    <div class="sc-note">${n.correo_en ? '📧 Enviada a cobros el ' + fechaHora(n.correo_en) : '📧 Se envía a cobros hoy a las 6:00 p. m.'}</div>
     ${n.resuelta_en ? `<div class="sc-note">Resuelta el ${fechaHora(n.resuelta_en)}${n.resuelta_por ? ' por ' + esc(n.resuelta_por) : ''}${n.resuelta_nota ? ': ' + esc(n.resuelta_nota) : ''}</div>` : ''}
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${(n.fotos || []).length ? `<button class="btn sm" onclick="novFotos(${n.id})">📷 Fotos (${n.fotos.length})</button>` : '<span class="sc-note">Sin fotos</span>'}
       ${novAbierta(n) && rolEs('gerente','asistente') ? `<button class="btn sm" onclick="novResolver(${n.id})">Marcar resuelta</button>` : ''}</div></div>`;
@@ -1089,8 +1091,8 @@ function renderObraNovBtn(){
 function novLista(){
   const l = [...(S.nov || [])].sort((a, b) => novAbierta(b) - novAbierta(a) || String(b.creada).localeCompare(String(a.creada)));
   const body = `${S.nov === null ? '<div class="warn">Falta correr el SQL 52 en Supabase.</div>' : ''}
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${puedeNov() ? `<button class="btn sm" onclick="closeSheet(); novNueva(S.sel.size ? selItems() : S.items, null, S.sel.size > 0)">⚠ Registrar novedad</button>` : ''}${l.length ? `<button class="btn sm" onclick="novPDF()">${ICON.down} PDF de evidencia</button>` : ''}</div>
-    <div class="sc-note">Fecha y hora puestas por el servidor al reportar. Los registros no se pueden editar ni borrar.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${puedeNov() ? `<button class="btn sm" onclick="closeSheet(); novNueva(S.sel.size ? selItems() : S.items, null, S.sel.size > 0)">⚠ Registrar novedad</button>` : ''}${l.length ? `<button class="btn sm" onclick="novPDF()">${ICON.down} PDF de evidencia</button>` : ''}${isGerente() && l.some(n => !n.correo_en) ? `<button class="btn sm" onclick="novEnviarYa()">📧 Enviar a cobros ahora</button>` : ''}</div>
+    <div class="sc-note">Fecha y hora puestas por el servidor al reportar. Los registros no se pueden editar ni borrar. Todos los días a las 6:00 p. m. se envía a cobros un correo por obra con las novedades del día.</div>
     <div>${l.map(n => novCard(n, true)).join('') || '<div class="empty" style="padding:12px 0">Sin novedades en esta obra.</div>'}</div>`;
   openSheet('Novedades de instalación', esc(S.obra), body, 'Listo', async () => {});
 }
@@ -1098,6 +1100,11 @@ async function novFotos(id){
   const n = (S.nov || []).find(x => x.id === id); if(!n) return;
   let urls; try{ urls = await Promise.all(n.fotos.map(API.novedadFotoUrl)); }catch(e){ return toast(errMsg(e), true); }
   openSheet('Fotos · novedad N.º ' + n.id, fechaHora(n.creada) + ' · ' + esc(n.motivo), urls.map(u => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" style="width:100%;margin-bottom:8px;border:1px solid var(--border)"></a>`).join(''), 'Listo', async () => {});
+}
+async function novEnviarYa(){
+  if(!confirm('¿Enviar ya a cobros el correo con las novedades pendientes de envío (uno por obra)?')) return;
+  try{ await API.novedadesEnviar(); toast('Enviando… en un minuto revisa el correo de cobros'); setTimeout(async () => { if(S.view === 'obra'){ await cargarNovedades(S.obra); renderObraNovBtn(); } }, 30000); }
+  catch(e){ toast(/novedades_enviar_correo|function/.test(errMsg(e)) ? 'Falta correr el SQL 53 en Supabase' : errMsg(e), true); }
 }
 async function novResolver(id){
   const nota = prompt('¿Cómo se resolvió? (opcional, ej.: "la obra entregó el vano el 30/10")');
