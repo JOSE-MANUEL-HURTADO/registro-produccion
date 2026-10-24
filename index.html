@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.85';
+const APP_VERSION = '6.86';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -676,6 +676,12 @@ const API = {
   async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
   async anularRecibidoRem(rem){ const {error} = await this.sb.rpc('anular_recibido_remision', {p_rem:rem}); if(error) throw error; },
   async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
+  async novedades(obra){ const {data,error} = await this.sb.from('novedades').select('*').eq('obra', obra).order('creada', {ascending:false}); if(error) throw error; return data || []; },
+  async novedadCrear(items, motivo, detalle, fotos, piso, instalador){ const {data,error} = await this.sb.rpc('novedad_crear', {p_items: items, p_motivo: motivo, p_detalle: detalle || null, p_fotos: fotos || [], p_piso: piso || null, p_instalador: instalador || null}); if(error) throw error; return data; },
+  async novedadResolver(id, nota){ const {data,error} = await this.sb.rpc('novedad_resolver', {p_id: id, p_nota: nota || null}); if(error) throw error; return data; },
+  async novedadFotoSubir(ruta, blob){ const {error} = await this.sb.storage.from('novedades').upload(ruta, blob, {contentType:'image/jpeg', upsert:false}); if(error) throw error; },
+  async novedadFotoUrl(ruta){ const {data,error} = await API.sb.storage.from('novedades').createSignedUrl(ruta, 3600); if(error) throw error; return data.signedUrl; },
+  async novedadFotoBajar(ruta){ const {data,error} = await API.sb.storage.from('novedades').download(ruta); if(error) throw error; return data; },
   async actaItemObs(acta, item, texto){ const {error} = await this.sb.rpc('acta_item_obs', {p_acta: acta, p_item: item, p_texto: texto}); if(error) throw error; },
   async actaObsItems(acta){ const {data,error} = await this.sb.from('actas_obs_items').select('item_id,texto').eq('acta_id', acta); if(error) throw error; return data || []; },
   async actaObs(id, texto){ const {error} = await this.sb.rpc('acta_observaciones', {p_acta: id, p_texto: texto}); if(error) throw error; },
@@ -973,6 +979,191 @@ function shell(inner){
     </div>
   </header>
   <main id="main">${inner}</main>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  NOVEDADES DE INSTALACIÓN — evidencia con fecha y hora del servidor, fotos y motivo
+// ════════════════════════════════════════════════════════════════
+const NOV_MOTIVOS = ['Vano sin terminar (obra civil, pañete, filos)', 'Vano fuera de medida o descuadrado', 'Sin acceso al área (ocupada o bloqueada)',
+  'Falta andamio, equipo o permiso de la obra', 'La obra pidió no instalar todavía', 'Ítem averiado (transporte u obra)', 'Otro'];
+const puedeNov = () => rolEs('gerente','asistente','cobros','instalador','entrega');
+const fechaHora = t => t ? new Date(t).toLocaleString('es-CO', {day:'2-digit', month:'2-digit', year:'numeric', hour:'numeric', minute:'2-digit'}) : '';
+const novAbierta = n => !n.resuelta_en;
+const novDe = id => (S.nov || []).filter(n => (n.items || []).includes(id));
+async function cargarNovedades(obra){ try{ S.nov = await API.novedades(obra); }catch(e){ S.nov = null; } }
+function novInstaladosTxt(n){
+  const its = (n.items || []).map(byId).filter(Boolean), inst = its.filter(i => i.instalado);
+  if(!its.length) return '';
+  if(!inst.length) return 'Ninguno instalado aún';
+  const f = inst.map(i => i.fecha_instalacion).filter(Boolean).sort();
+  return `${inst.length} de ${its.length} instalado${its.length === 1 ? '' : 's'} después${f.length ? ' (' + fmtD(f[0]) + (f.length > 1 && f[f.length - 1] !== f[0] ? ' a ' + fmtD(f[f.length - 1]) : '') + ')' : ''}`;
+}
+// Foto reducida a 1600 px con sello de fecha, hora, obra y OP
+async function novSellar(file, sello){
+  const url = URL.createObjectURL(file);
+  try{
+    const im = new Image(); im.src = url; await im.decode();
+    const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+    const w = Math.round(im.naturalWidth * k), h = Math.round(im.naturalHeight * k);
+    const fs = Math.max(16, Math.round(w / 42)), band = Math.round(fs * 2.9);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const cx = cv.getContext('2d');
+    cx.drawImage(im, 0, 0, w, h);
+    cx.fillStyle = 'rgba(0,0,0,.62)'; cx.fillRect(0, h - band, w, band);
+    cx.fillStyle = '#fff'; cx.font = `bold ${fs}px Helvetica, Arial, sans-serif`; cx.textBaseline = 'middle';
+    cx.fillText(sello[0], fs * .6, h - band + band * .32, w - fs * 1.2);
+    cx.font = `${Math.round(fs * .85)}px Helvetica, Arial, sans-serif`;
+    cx.fillText(sello[1], fs * .6, h - band + band * .72, w - fs * 1.2);
+    return await new Promise(ok => cv.toBlob(ok, 'image/jpeg', .82));
+  } finally { URL.revokeObjectURL(url); }
+}
+function novFotosPintar(){
+  const b = $('#novPrev'); if(!b) return;
+  const f = window._novFotos || [];
+  b.innerHTML = f.map((x, i) => `<span style="position:relative;display:inline-block"><img src="${x.url}" style="width:72px;height:72px;object-fit:cover;border:1px solid var(--border)"><button type="button" class="btn sm" style="position:absolute;top:2px;right:2px;min-height:0;padding:0 6px" onclick="URL.revokeObjectURL(_novFotos[${i}].url); _novFotos.splice(${i},1); novFotosPintar()">✕</button></span>`).join('') || '<span class="sc-note">Sin fotos todavía. Una foto del vano es la mejor evidencia.</span>';
+}
+function novFotosAgregar(inp){ for(const f of inp.files) (window._novFotos = window._novFotos || []).push({file: f, url: URL.createObjectURL(f)}); inp.value = ''; novFotosPintar(); }
+// Formulario de novedad. lista: unidades posibles; sub: la etiqueta escaneada; todas: preseleccionar todas
+function novNueva(lista, sub, todas){
+  if(!puedeNov()) return;
+  lista = (lista || []).filter(i => !i.instalado).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
+  if(!lista.length) return toast('No hay ítems sin instalar para reportar', true);
+  const obras = [...new Set(lista.map(i => i.obra))];
+  if(obras.length > 1) return toast('Elige ítems de una sola obra', true);
+  let pre = sub ? lista.filter(i => i.op_instalacion === sub) : todas ? lista : SC.instPiso && S.view === 'scan' ? lista.filter(i => (i.piso || '(sin piso)') === SC.instPiso) : [];
+  if(!pre.length && lista.length === 1) pre = lista;
+  const sel = window._novSel = new Set(pre.map(i => i.id));
+  window._novFotos = [];
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  const body = `<div class="summary">Queda registrado con la <b>fecha y hora del servidor</b>, quién lo reporta y las fotos. Nadie lo puede editar ni borrar después.</div>
+    <div class="field"><span class="lbl">Ítems que no se pudieron instalar</span>
+      <div style="max-height:26vh;overflow:auto;flex:none;font-size:13px">${lista.map(i => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)"><input type="checkbox" ${ck} ${sel.has(i.id) ? 'checked' : ''} onchange="this.checked ? _novSel.add(${i.id}) : _novSel.delete(${i.id})"><span><b>${esc(i.op_instalacion || i.op)}</b> ${esc(i.item || '')}${i.piso ? ' · <b>' + esc(pisoLbl(i.piso)) + '</b>' : ''}${i.ubicacion ? ' · ' + esc(lugarCorto(i.ubicacion)) : ''}${i.despachado ? '' : ' <small style="opacity:.7">(sin despachar)</small>'}</span></label>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Motivo</span><select id="novMot"><option value="">Elegir…</option>${NOV_MOTIVOS.map(m => `<option>${esc(m)}</option>`).join('')}</select></div>
+    <div class="field"><span class="lbl">Detalle (qué se encontró, con quién de la obra se habló)</span><textarea id="novDet" rows="3" style="width:100%;resize:vertical" placeholder="Ej.: vano sin pañete ni filos; el residente Carlos dice que queda listo la próxima semana."></textarea></div>
+    <div class="field"><span class="lbl">Fotos</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn sm">📷 Tomar foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="novFotosAgregar(this)"></label>
+        <label class="btn sm">🖼 De la galería<input type="file" accept="image/*" multiple style="display:none" onchange="novFotosAgregar(this)"></label></div>
+      <div id="novPrev" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div></div>`;
+  openSheet('⚠ Novedad de instalación', esc(obras[0]), body, 'Registrar novedad', async () => {
+    const its = lista.filter(i => sel.has(i.id)), mot = $('#novMot').value, det = $('#novDet').value.trim();
+    if(!its.length){ toast('Marca al menos un ítem', true); return false; }
+    if(!mot){ toast('Elige el motivo', true); return false; }
+    if(mot === 'Otro' && !det){ toast('Escribe el detalle de la novedad', true); return false; }
+    const fotos = window._novFotos || [], rutas = [];
+    const ahora = new Date(), ops = [...new Set(its.map(i => i.op_instalacion || i.op))];
+    const sello = [`${fechaHora(ahora)} · ${obras[0]}`, `${mot} · ${ops.slice(0, 4).join(', ')}${ops.length > 4 ? '…' : ''}${SC.instPiso && S.view === 'scan' ? ' · ' + SC.instPiso : ''}`];
+    const carpeta = obras[0].replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '/' + ahora.toISOString().slice(0, 10);
+    try{
+      for(let k = 0; k < fotos.length; k++){
+        const bt = $('#shOk'); if(bt) bt.textContent = `Subiendo foto ${k + 1} de ${fotos.length}…`;
+        const blob = await novSellar(fotos[k].file, sello);
+        const ruta = `${carpeta}/${ahora.getTime()}_${Math.random().toString(36).slice(2, 8)}_${k + 1}.jpg`;
+        await API.novedadFotoSubir(ruta, blob); rutas.push(ruta);
+      }
+      const piso = S.view === 'scan' && SC.instPiso ? SC.instPiso : [...new Set(its.map(i => i.piso).filter(Boolean))].join(', ');
+      const r = await API.novedadCrear(its.map(i => i.id), mot, det, rutas, piso, S.view === 'scan' ? SC.inst : '');
+      fotos.forEach(f => URL.revokeObjectURL(f.url)); window._novFotos = [];
+      toast(`✓ Novedad registrada el ${fechaHora(r && r.creada)}`);
+      if(S.view === 'scan'){ SC.log.unshift({hora: nowTime(), op: ops.length === 1 ? ops[0] : (its[0].op || ''), est: '⚠ Novedad: ' + mot, n: its.length, tot: lista.length, obra: obras[0]}); renderScanLog(); }
+      if(S.view === 'obra' && S.obra === obras[0]){ await cargarNovedades(S.obra); renderList(); renderDetail(); renderObraNovBtn(); }
+    }catch(e){ toast(/novedad_crear|novedades|function|Bucket/i.test(errMsg(e)) ? 'Falta correr el SQL 52 en Supabase (' + errMsg(e) + ')' : errMsg(e), true); return false; }
+  });
+  novFotosPintar();
+}
+function novCard(n, conItems){
+  const its = (n.items || []).map(byId).filter(Boolean);
+  return `<div style="border:1px solid ${novAbierta(n) ? 'var(--danger)' : 'var(--border)'};padding:10px;margin-bottom:8px;font-size:13px">
+    <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1"><b>${fechaHora(n.creada)}</b> · N.º ${n.id}<br><b style="color:${novAbierta(n) ? 'var(--danger)' : 'inherit'}">⚠ ${esc(n.motivo)}</b></div>
+      <span class="subtag ${novAbierta(n) ? '' : 'ok'}">${novAbierta(n) ? 'Abierta' : 'Resuelta'}</span></div>
+    ${conItems ? `<div style="margin-top:4px">${esc(n.ops || '')}${n.piso ? ' · ' + esc(n.piso) : ''}</div>` : ''}
+    ${n.detalle ? `<div style="margin-top:4px;white-space:pre-wrap">${esc(n.detalle)}</div>` : ''}
+    <div class="sc-note" style="margin-top:4px">Reportó: ${esc(n.quien || '—')}${n.instalador ? ' · instalador ' + esc(n.instalador) : ''}${its.length ? ' · ' + esc(novInstaladosTxt(n)) : ''}</div>
+    ${n.resuelta_en ? `<div class="sc-note">Resuelta el ${fechaHora(n.resuelta_en)}${n.resuelta_por ? ' por ' + esc(n.resuelta_por) : ''}${n.resuelta_nota ? ': ' + esc(n.resuelta_nota) : ''}</div>` : ''}
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${(n.fotos || []).length ? `<button class="btn sm" onclick="novFotos(${n.id})">📷 Fotos (${n.fotos.length})</button>` : '<span class="sc-note">Sin fotos</span>'}
+      ${novAbierta(n) && rolEs('gerente','asistente') ? `<button class="btn sm" onclick="novResolver(${n.id})">Marcar resuelta</button>` : ''}</div></div>`;
+}
+function renderObraNovBtn(){
+  const b = $('#novBtn'); if(!b) return;
+  const n = (S.nov || []).filter(novAbierta).length;
+  b.innerHTML = `⚠ Novedades${n ? ` <b style="margin-left:4px;color:var(--danger)">${fmtN(n)}</b>` : ''}`;
+}
+function novLista(){
+  const l = [...(S.nov || [])].sort((a, b) => novAbierta(b) - novAbierta(a) || String(b.creada).localeCompare(String(a.creada)));
+  const body = `${S.nov === null ? '<div class="warn">Falta correr el SQL 52 en Supabase.</div>' : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${puedeNov() ? `<button class="btn sm" onclick="closeSheet(); novNueva(S.sel.size ? selItems() : S.items, null, S.sel.size > 0)">⚠ Registrar novedad</button>` : ''}${l.length ? `<button class="btn sm" onclick="novPDF()">${ICON.down} PDF de evidencia</button>` : ''}</div>
+    <div class="sc-note">Fecha y hora puestas por el servidor al reportar. Los registros no se pueden editar ni borrar.</div>
+    <div>${l.map(n => novCard(n, true)).join('') || '<div class="empty" style="padding:12px 0">Sin novedades en esta obra.</div>'}</div>`;
+  openSheet('Novedades de instalación', esc(S.obra), body, 'Listo', async () => {});
+}
+async function novFotos(id){
+  const n = (S.nov || []).find(x => x.id === id); if(!n) return;
+  let urls; try{ urls = await Promise.all(n.fotos.map(API.novedadFotoUrl)); }catch(e){ return toast(errMsg(e), true); }
+  openSheet('Fotos · novedad N.º ' + n.id, fechaHora(n.creada) + ' · ' + esc(n.motivo), urls.map(u => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" style="width:100%;margin-bottom:8px;border:1px solid var(--border)"></a>`).join(''), 'Listo', async () => {});
+}
+async function novResolver(id){
+  const nota = prompt('¿Cómo se resolvió? (opcional, ej.: "la obra entregó el vano el 30/10")');
+  if(nota === null) return;
+  try{ await API.novedadResolver(id, nota); await cargarNovedades(S.obra); toast('✓ Novedad resuelta'); renderList(); renderDetail(); renderObraNovBtn(); novLista(); }
+  catch(e){ toast(errMsg(e), true); }
+}
+// PDF de evidencia para una disputa: cada novedad con fecha, hora, motivo, ítems y fotos
+async function novPDF(){
+  const l = [...(S.nov || [])].sort((a, b) => String(a.creada).localeCompare(String(b.creada)));
+  if(!l.length) return;
+  toast('Preparando el PDF con las fotos…');
+  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); }catch(e){ return toast(errMsg(e), true); }
+  const logo = await etqLogo();
+  const doc = new jspdf.jsPDF({unit:'mm', format:'letter'}), PW = 215.9, PH = 279.4, M = 14;
+  let y = 0, pag = 0;
+  const enc = () => { pag++;
+    if(logo){ const h = 11; doc.addImage(logo.url, 'PNG', M, 11, h * logo.r, h); }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(20); doc.text('NOVEDADES DE INSTALACIÓN', PW - M, 16, {align:'right'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90); doc.text(`Obra: ${S.obra}   ·   Generado: ${fechaHora(new Date())}${pag > 1 ? '   ·   Hoja ' + pag : ''}`, PW - M, 22, {align:'right'});
+    doc.setDrawColor(180); doc.line(M, 30, PW - M, 30); y = 37; };
+  const salto = h => { if(y + h > PH - 16){ doc.addPage(); enc(); } };
+  const dataURL = blob => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(blob); });
+  enc();
+  doc.setFontSize(8.5); doc.setTextColor(60);
+  const intro = doc.splitTextToSize(`Registro de las novedades que impidieron la instalación de ítems en la obra. La fecha y hora de cada novedad fueron asignadas por el servidor en el momento del reporte y los registros no se pueden modificar ni eliminar. Las fotos llevan impresa la fecha, hora, obra y OP del reporte. Total: ${l.length} novedad${l.length === 1 ? '' : 'es'} (${l.filter(novAbierta).length} abiertas).`, PW - 2 * M);
+  doc.text(intro, M, y); y += intro.length * 3.8 + 4;
+  for(const n of l){
+    const its = (n.items || []).map(byId).filter(Boolean);
+    const filas = [
+      [`N.º ${n.id} · ${fechaHora(n.creada)}`, 'bold', 10],
+      [`Motivo: ${n.motivo}`, 'bold', 9],
+      [`Ítems (${(n.items || []).length}): ${its.length ? its.map(i => `${i.op_instalacion || i.op} ${i.item || ''}${i.ubicacion ? ' (' + lugarCorto(i.ubicacion) + ')' : ''}`).join(', ') : n.ops || ''}${n.piso ? ' · ' + n.piso : ''}`, 'normal', 8.5],
+      n.detalle ? [`Detalle: ${n.detalle}`, 'normal', 8.5] : null,
+      [`Reportó: ${n.quien || '—'}${n.instalador ? ' · instalador ' + n.instalador : ''}${its.length ? ' · ' + novInstaladosTxt(n) : ''}`, 'normal', 8],
+      [n.resuelta_en ? `Resuelta el ${fechaHora(n.resuelta_en)}${n.resuelta_por ? ' por ' + n.resuelta_por : ''}${n.resuelta_nota ? ': ' + n.resuelta_nota : ''}` : 'Estado: ABIERTA', 'bold', 8]
+    ].filter(Boolean).map(([t, f, s]) => { doc.setFont('helvetica', f); doc.setFontSize(s); return [doc.splitTextToSize(t, PW - 2 * M - 6), f, s]; });
+    const hTxt = filas.reduce((s, [ls, , sz]) => s + ls.length * sz * .42 + 1.2, 0) + 4;
+    salto(hTxt + 4);
+    doc.setDrawColor(novAbierta(n) ? 190 : 200, novAbierta(n) ? 60 : 200, novAbierta(n) ? 60 : 200); doc.setLineWidth(.4); doc.rect(M, y - 4, PW - 2 * M, hTxt);
+    let yy = y;
+    for(const [ls, f, s] of filas){ doc.setFont('helvetica', f); doc.setFontSize(s); doc.setTextColor(20); doc.text(ls, M + 3, yy); yy += ls.length * s * .42 + 1.2; }
+    y += hTxt + 2;
+    // Fotos: 3 por fila
+    const fw = (PW - 2 * M - 8) / 3; let col = 0, hFila = 0;
+    for(const ruta of (n.fotos || [])){
+      let im; try{ const u = await dataURL(await API.novedadFotoBajar(ruta)); const i = new Image(); i.src = u; await i.decode(); im = {u, r: i.naturalHeight / i.naturalWidth}; }catch(e){ continue; }
+      const fh = Math.min(fw * im.r, 90);
+      if(col === 0) salto(fh + 3);
+      const fx = M + col * (fw + 4), w = im.r * fw > 90 ? 90 / im.r : fw;
+      doc.addImage(im.u, 'JPEG', fx, y, w, fh); hFila = Math.max(hFila, fh);
+      col++; if(col === 3){ col = 0; y += hFila + 4; hFila = 0; }
+    }
+    if(col) y += hFila + 4;
+    y += 6;
+  }
+  doc.setFontSize(7); doc.setTextColor(140); doc.text(`Novedades de instalación · ${S.obra} · Elíptica`, M, PH - 8);
+  const nombre = `Novedades_${S.obra.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_')}.pdf`;
+  const blob = doc.output('blob'), file = new File([blob], nombre, {type:'application/pdf'}), url = URL.createObjectURL(blob);
+  const puede = !!(navigator.canShare && navigator.canShare({files:[file]}));
+  window._novPdf = {file, url, nombre};
+  openSheet('PDF de novedades', esc(S.obra), `<div class="summary"><b>${l.length} novedad${l.length === 1 ? '' : 'es'}</b> con fecha, hora, motivo y fotos.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_novPdf.file], title:_novPdf.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
 }
 
 // ── Avisos al celular (web push, solo gerente) ──
@@ -1704,7 +1895,7 @@ async function openObra(name, fromPop, anio, pf){
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
   window.scrollTo(0,0);
-  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); }
+  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); await cargarNovedades(name); }
   catch(e){ toast('Error al cargar la obra: '+e.message, true); return; }
   if(S.view !== 'obra' || S.obra !== name) return;
   S.items.sort((a,b) => nat(a.op_instalacion,b.op_instalacion) || nat(a.item,b.item) || a.id-b.id);
@@ -1791,7 +1982,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" id="novBtn" title="Novedades: ítems que no se pudieron instalar (con fecha, hora y fotos)" onclick="novLista()">⚠ Novedades${(() => { const n = (S.nov || []).filter(novAbierta).length; return n ? ` <b style="margin-left:4px;color:var(--danger)">${fmtN(n)}</b>` : ''; })()}</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
         </div>
         ${S.cerradas && S.cerradas.has(S.obra) ? `<div class="summary" style="margin:6px 0 10px">Obra <b>entregada</b> (contrato cerrado) el ${fmtD(String(S.cerradas.get(S.obra).cerrada_en).slice(0,10))}${S.cerradas.get(S.obra).quien ? ' por ' + esc(S.cerradas.get(S.obra).quien) : ''}. No aparece en Obras activas ni en Planta.</div>` : ''}
         <div class="chips" id="chips"></div>
@@ -1839,6 +2030,7 @@ function rowHTML(it){
   const st = stageOf(it);
   let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}${it.acta_id ? ' · Acta ' + esc(actaNum(it.acta_id)) + (it.recepcion_id ? ' ✓ recibido' : ' · entregado, sin firma') : ''}</span>`
             : it.despachado ? `<span class="subtag ${S.remRec && S.remRec.has(it.remision) ? 'ok' : ''}">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}${S.remRec && S.remRec.has(it.remision) ? ' · recibida ✓' : ''}</span>` : '';
+  if(!it.instalado){ const nv = novDe(it.id).filter(novAbierta); if(nv.length) sub += `<span class="subtag" style="color:var(--danger);border-color:var(--danger)" title="${esc(nv[0].motivo)}">⚠ Novedad ${fmtD(String(nv[0].creada).slice(0,10))}</span>`; }
   if(veCobros() && it.despachado){
     const c = com(it);
     const m = (ok, l, n) => `<span class="cobm ${ok?'ok':'pend'}" title="${ok?'Cobrado':'Por cobrar'} ${l}${ok&&n?' · corte '+esc(n):''}">$${l}${ok?' ✓':''}</span>`;
@@ -1904,6 +2096,7 @@ function renderSelbar(){
       <button class="btn sm" onclick="ordenDespacho()">Orden de despacho</button>
       ${isGerente() ? `<button class="btn sm" onclick="sheetDespacho()">Despacho manual</button>` : ''}
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
+      ${puedeNov() ? `<button class="btn sm" onclick="novNueva(selItems(), null, true)">⚠ Novedad</button>` : ''}
       ${registraCobros() ? `<button class="btn sm btn-cob" onclick="sheetCobro('d')">$ Cobro despacho</button>
       <button class="btn sm btn-cob" onclick="sheetCobro('i')">$ Cobro instalación</button>` : ''}
     </div>
@@ -2283,7 +2476,7 @@ async function liquidacionExcel(){
 async function recargarObra(){
   if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar en el ítem abierto. ¿Descartarlos?')) return;
   const keepSel = new Set(S.sel), keepDet = S.detailId;
-  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
+  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); await cargarNovedades(S.obra); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
   catch(e){ return toast('Error: '+e.message, true); }
   S.sel = new Set([...keepSel].filter(id => S.items.some(i=>i.id===id)));
   S.detailId = S.items.some(i=>i.id===keepDet) ? keepDet : null;
@@ -2378,6 +2571,7 @@ function renderDetail(){
           <div class="field"><span class="lbl">Instalador</span>${personaField('pfInst', d.instalador, 'instalador', 'Elegir')}</div>
         </div>` : ''}
         ${it.acta_id ? `<div class="d-meta">En el <b>acta de entrega N.º ${esc(actaNum(it.acta_id))}</b>${it.entregado_en ? ` · entregado en obra ${fmtD(String(it.entregado_en).slice(0,10))}${it.entregado_por ? ' por ' + esc(it.entregado_por) : ''}` : ''}${it.recepcion_id ? ' · <b>recibido con firma</b>' : ''}</div>` : ''}
+        ${(() => { const ns = novDe(it.id); return ns.length || (puedeNov() && !it.instalado) ? `<div class="d-sec" style="padding:0;border:0;margin-top:12px"><div class="lbl">Novedades</div>${ns.map(n => novCard(n, false)).join('')}${puedeNov() && !it.instalado ? `<button class="btn sm" type="button" onclick="novNueva([byId(${it.id})], null, true)">⚠ Registrar novedad (no se pudo instalar)</button>` : ''}</div>` : ''; })()}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
       </fieldset>
@@ -2810,7 +3004,8 @@ function renderScanParams(){
     </div>`;
     if(!pend) setTimeout(instCargarPend, 0);
     h += `<div class="fgrid"><div class="field"><span class="lbl">Fecha instalación</span><input type="date" id="scFecha" value="${SC.fecha}"></div>
-      <div class="field"><span class="lbl">Instalador (obligatorio)</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>`;
+      <div class="field"><span class="lbl">Instalador (obligatorio)</span>${personaField('scInst', SC.inst, '', 'Elegir')}</div></div>
+    <label class="switch" style="margin-top:8px;${SC.nov ? 'border:1px solid var(--danger);padding:8px' : ''}"><span>⚠ <b>No se pudo instalar</b>: lo que escanees queda como <b>novedad</b> (con fecha, hora, motivo y fotos), no como instalado</span><button class="tgl ${SC.nov ? 'on' : ''}" onclick="SC.nov=!SC.nov; renderScanParams()"></button></label>`;
   }
   box.innerHTML = h;
   box.querySelectorAll('input,select').forEach(x => x.addEventListener('change', scGuardarParams));
@@ -2896,6 +3091,10 @@ async function scCodigo(txt, manual){
     if(error) throw error;
     if(!data || !data.length){ scBeep(false); toast('No encontré la OP ' + p.op, true); return; }
     const items = data.sort((a,b) => nat(a.op_instalacion, b.op_instalacion));
+    if(e.k === 'inst' && SC.nov){
+      const obra = p.sub ? (items.find(x => x.op_instalacion === p.sub) || items[0]).obra : items[0].obra;
+      scBeep(true); novNueva(items.filter(x => x.obra === obra), p.sub); return;
+    }
     if(p.sub){
       // Etiqueta de un ítem (sub-OP): se registra de una vez, sin preguntar
       const it = items.find(x => x.op_instalacion === p.sub);
