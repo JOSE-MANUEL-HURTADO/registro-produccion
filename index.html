@@ -460,7 +460,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.87';
+const APP_VERSION = '6.88';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -559,7 +559,11 @@ const API = {
   init(){ this.sb = supabase.createClient(CONFIG.URL, CONFIG.KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:'eliptica-registro'}}); },
   async session(){ const {data} = await this.sb.auth.getSession(); return data.session; },
   async login(email, pw){ const {data,error} = await this.sb.auth.signInWithPassword({email, password:pw}); if(error) throw error; return data.session; },
-  async logout(){ try{ await this.sb.auth.signOut(); }catch(e){} },
+  async logout(){
+    try{ await Promise.race([this.sb.auth.signOut({scope: 'local'}), new Promise(r => setTimeout(r, 3000))]); }catch(e){}
+    try{ for(const k of Object.keys(localStorage)) if(/^sb-|supabase|eliptica-registro/i.test(k)) localStorage.removeItem(k); }catch(e){}
+    try{ for(const k of Object.keys(sessionStorage)) if(/^sb-|supabase|eliptica-registro/i.test(k)) sessionStorage.removeItem(k); }catch(e){}
+  },
   async perfil(uid){ const {data,error} = await this.sb.from('perfiles').select('nombre,rol').eq('id',uid).maybeSingle(); if(error) throw error; return data; },
   // Trae todas las filas de una consulta, de a 1000 (límite de Supabase), en paralelo
   async all(mk){
@@ -954,10 +958,13 @@ async function afterLogin(ses){
   goHome(true);
 }
 
-async function logout(){
-  if(!confirm('¿Cerrar sesión?')) return;
-  await API.logout();
-  location.reload();
+// Cerrar sesión: sin ventanas del sistema (en algunos Mac/Safari no aparecen) y borrando la sesión guardada aunque no haya internet
+function logout(){
+  openSheet('Cerrar sesión', esc((S.perfil && S.perfil.nombre) || (S.user && S.user.email) || ''), '<div class="summary">¿Cerrar la sesión en este equipo? Para volver a entrar necesitas tu correo y contraseña.</div>', 'Cerrar sesión', async () => {
+    await API.logout();
+    location.replace(location.pathname + '?salir=' + Date.now());
+    return false;
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
