@@ -515,7 +515,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.03';
+const APP_VERSION = '7.04';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1260,7 +1260,7 @@ function cambiarEmpresa(){
 }
 const artCod = p => 'ART:' + p.id;
 const artMed = p => `${p.ancho} × ${p.alto}`;
-const artHechos = (p, e) => Math.min(p.cant, Number((p.hechos || {})[e] || 0));
+const artHechos = (p, e) => p.historica ? p.cant : Math.min(p.cant, Number((p.hechos || {})[e] || 0));   // históricas: trabajadas antes de la app
 const artUltimo = p => p.ruta[p.ruta.length - 1];
 const artListas = p => artHechos(p, artUltimo(p));
 // En qué paso va: el primero de la ruta que no tiene todas las piezas
@@ -1359,7 +1359,7 @@ function artPiezaHTML(p){
   const paso = artPaso(p);
   return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.orden_corte ? ' · corte #' + p.orden_corte : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
-    <div class="art-pzs">${paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
+    <div class="art-pzs">${p.historica ? '<b>TERMINADA</b> antes de la app' : paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
       ${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
 }
 function artRutaEditar(id){
