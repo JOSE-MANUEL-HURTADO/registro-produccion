@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon-precomposed" sizes="180x180" href="icons/ios-180.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/logo-32.png?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#181818;--surface:#222222;--surface2:#272727;--surface3:#2f2f2f;--border:#3a3a3a;--border2:#4a4a4a;
@@ -41,6 +41,59 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .hidden{display:none!important;}
 .lbl{font-family:var(--sans);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);}
 .mono{font-family:var(--mono);}
+
+
+/* ════ ÁRTICA ════ negro #272727, blanco, grises #3F3C39 y #324549 · DIN Condensed (títulos) · Futura Condensed Light (cuerpo) · esquinas rectas */
+body.artica{--bg:#272727;--surface:#2f2e2c;--surface2:#3F3C39;--surface3:#34322f;--border:#4a4743;--border2:#5c5853;--text:#ffffff;--text2:#d6d4d1;--muted:#9a9894;--dim:#6b6864;
+  --art-acento:#324549;--art-t:'DIN Condensed','DINCondensed-Bold','Barlow Condensed',sans-serif;--art-b:'Futura Condensed Light','Futura-CondensedLight','Futura Condensed','Barlow Condensed',sans-serif;
+  font-family:var(--art-b);font-weight:300;font-size:16px;background-image:none;}
+body.artica *{border-radius:0!important;}
+html:has(body.artica){background:#272727;}
+body.artica .h1,body.artica .brand-name,body.artica .tab,body.artica .btn,body.artica .lbl,body.artica .section-t,body.artica .cs-t,body.artica .sh-title{font-family:var(--art-t);font-weight:700;letter-spacing:.06em;}
+body.artica .h1{font-size:30px;text-transform:uppercase;}
+body.artica .tabs .tab{font-size:15px;}
+body.artica .btn{font-size:14px;}
+body.artica .btn.primary{background:#fff;color:#272727;}
+body.artica input,body.artica select,body.artica .mono{font-family:var(--art-b);font-size:17px;}
+body.artica .tab.on{border-color:#fff;color:#fff;}
+body.artica .sheet{background:#2f2e2c;}
+.art-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.art-est{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:16px;}
+.art-est>div{background:var(--surface2);padding:10px;}.art-est b{display:block;font-family:var(--art-t,var(--sans));font-size:26px;font-weight:700;}.art-est span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+@media(max-width:640px){.art-est{grid-template-columns:repeat(3,minmax(0,1fr));}}
+.art-op{border:1px solid var(--border);margin-bottom:6px;background:var(--surface);}
+.art-op-h{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:4px 12px;width:100%;padding:10px 12px;text-align:left;align-items:center;}
+.art-op-n{font-family:var(--art-t,var(--mono));font-size:20px;font-weight:700;}.art-op-i{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.art-op-c{text-align:right;}
+.art-bar{grid-column:1/-1;height:4px;background:var(--surface3);}.art-bar i{display:block;height:100%;background:#fff;}
+.art-pz{border-top:1px solid var(--border);}
+.art-pzr{display:grid;grid-template-columns:minmax(0,1.3fr) auto minmax(0,1fr);gap:6px 14px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:center;}
+@media(max-width:760px){.art-pzr{grid-template-columns:1fr;}}
+.art-pzm b{font-family:var(--art-t,var(--mono));font-size:20px;}.art-pzm span{color:var(--muted);font-size:13px;display:block;}
+.art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
+.art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#324549);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
+.art-pzs{font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.art-opsel{max-height:40vh;overflow:auto;border:1px solid var(--border);}.art-opsel label{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);}.art-opsel span{color:var(--muted);font-size:13px;}
+.art-oprow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);}.art-oprow>b{min-width:160px;}.art-oprow div{display:flex;gap:12px;flex-wrap:wrap;}.art-oprow label{display:flex;gap:6px;align-items:center;}.art-oprow select{width:auto;}
+/* Pantalla del operario: el único lugar con verde y rojo */
+.artop{min-height:100vh;display:flex;flex-direction:column;padding:calc(var(--st) + 10px) 14px calc(var(--sb) + 14px);gap:12px;}
+.artop-top{display:flex;justify-content:space-between;align-items:center;}.artop-brand{font-family:var(--art-t);font-size:26px;font-weight:700;letter-spacing:.2em;}
+.artop-who{display:flex;gap:8px;align-items:center;color:var(--text2);}
+.artop-bar{display:flex;align-items:center;gap:14px;border:1px solid var(--border);padding:10px 14px;background:var(--surface2);}
+.artop-est{font-family:var(--art-t);font-size:34px;font-weight:700;text-transform:uppercase;line-height:1;}
+.artop-cnt{margin-left:auto;text-align:right;}.artop-cnt b{display:block;font-family:var(--art-t);font-size:40px;line-height:1;}.artop-cnt span{color:var(--muted);text-transform:uppercase;font-size:12px;letter-spacing:.1em;}
+.artop-panel{flex:1;min-height:42vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;border:1px solid var(--border);background:#323130;transition:background .15s;}
+.artop-panel.st-ok{background:#1f7a3a;border-color:#1f7a3a;}.artop-panel.st-fuera,.artop-panel.st-noruta,.artop-panel.st-nohay,.artop-panel.st-err{background:#b3261e;border-color:#b3261e;}
+.artop-panel.st-ya,.artop-panel.st-deshecho{background:#000;border-color:#fff;}
+.artop-idle{font-family:var(--art-t);font-size:30px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+.artop-estado{font-family:var(--art-t);font-size:30px;font-weight:700;letter-spacing:.1em;}
+.artop-op{font-family:var(--art-t);font-size:clamp(64px,14vw,140px);font-weight:700;line-height:1;}
+.artop-med{font-family:var(--art-t);font-size:clamp(48px,10vw,100px);font-weight:700;line-height:1.05;}
+.artop-tipo{font-size:20px;margin-top:6px;}.artop-n{font-family:var(--art-t);font-size:30px;margin-top:10px;}.artop-msg{font-size:22px;margin-top:10px;}
+.artop-in{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;}.artop-in input{font-size:20px;min-height:56px;}
+.artop-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}.artop-acts .btn{min-height:56px;}
+.artop-vid{width:100%;max-height:30vh;object-fit:cover;background:#000;}
+.artop-elige{display:flex;flex-direction:column;gap:12px;margin-top:20px;}.artop-t{font-family:var(--art-t);font-size:30px;font-weight:700;text-transform:uppercase;}
+.artop-estbtn{min-height:84px;border:1px solid var(--border2);font-family:var(--art-t);font-size:34px;font-weight:700;text-transform:uppercase;background:var(--surface2);}
 
 /* ── Botones ── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:1px solid var(--border2);font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
@@ -460,7 +513,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '6.89';
+const APP_VERSION = '7.00';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -680,6 +733,7 @@ const API = {
   async firmarRemision(rem, nombre, cargo, doc, obs, detalle, firma){ const {data,error} = await this.sb.rpc('firmar_remision', {p_rem:rem, p_nombre:nombre, p_cargo:cargo||null, p_doc:doc||null, p_obs:obs||null, p_detalle:detalle, p_firma:firma}); if(error) throw error; return data; },
   async anularRecibidoRem(rem){ const {error} = await this.sb.rpc('anular_recibido_remision', {p_rem:rem}); if(error) throw error; },
   async campoRemision(rem){ const {data,error} = await this.sb.rpc('campo_remision', {p_rem:rem}); if(error) throw error; return data; },
+  async artCargar(rows){ let n = 0; for(let i = 0; i < rows.length; i += 400){ const {data,error} = await this.sb.rpc('art_cargar', {p: rows.slice(i, i + 400)}); if(error) throw error; n += data || 0; } return n; },
   async novedades(obra){ const {data,error} = await this.sb.from('novedades').select('*').eq('obra', obra).order('creada', {ascending:false}); if(error) throw error; return data || []; },
   async novedadCrear(items, motivo, detalle, fotos, piso, instalador){ const {data,error} = await this.sb.rpc('novedad_crear', {p_items: items, p_motivo: motivo, p_detalle: detalle || null, p_fotos: fotos || [], p_piso: piso || null, p_instalador: instalador || null}); if(error) throw error; return data; },
   async novedadesEnviar(){ const {error} = await this.sb.rpc('novedades_enviar_correo'); if(error) throw error; },
@@ -937,6 +991,7 @@ async function afterLogin(ses){
     await API.logout();
     return renderLogin('Tu usuario no tiene un rol asignado. Pídele al director de operaciones que lo active.');
   }
+  if(esOperarioArtica()) return goArticaOperario();
   if(soloScan()){
     window.addEventListener('popstate', onPop);
     history.replaceState({v:'scan'}, '');
@@ -956,6 +1011,7 @@ async function afterLogin(ses){
   window.addEventListener('popstate', onPop);
   history.replaceState({v:'home'}, '');
   await loadActivos();
+  if(veArtica() && empresa() === 'artica') return goArtica();
   goHome(true);
 }
 
@@ -975,12 +1031,14 @@ const liveHTML = () => `<span class="live ${S.live?'':'off'}" id="live"><i></i>$
 function shell(inner){
   return `${window.__DEMO__ ? DEMO.bar() : ''}
   <header class="top">
-    ${brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
+    ${S.view === 'artica' ? `<div class="brand"><div><div class="brand-name">ÁRTICA</div><div class="brand-sub">Seguimiento del vidrio · v${APP_VERSION}</div></div></div>` : brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
     <div class="top-r">
+      ${veArtica() ? `<button class="btn sm" title="Cambiar de empresa" onclick="cambiarEmpresa()">${S.view === 'artica' ? 'Elíptica' : 'Ártica'} ⇄</button>` : ''}
+      ${S.view === 'artica' && isGerente() ? `<button class="btn sm" title="Abrir la pantalla de una estación" onclick="goArticaOperario()">Estación</button>` : ''}
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(rolTxt(S.perfil.rol))}</span></div>
-      ${puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
-      ${veDash() ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
-      ${isGerente() ? `
+      ${S.view === 'artica' ? '' : puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
+      ${veDash() && S.view !== 'artica' ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
+      ${isGerente() && S.view !== 'artica' ? `
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
       ${isGerente() && !window.__DEMO__ ? `<button class="icon-btn" id="btnAvisos" title="Avisos al celular de cada cambio" onclick="avisos()">🔔</button>` : ''}
       ${vePrecio() ? `<button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
@@ -1181,6 +1239,386 @@ async function novPDF(){
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
 }
 
+// ════════════════════════════════════════════════════════════════
+//  ÁRTICA — seguimiento del vidrio por pieza (OP-ítem + medida) en 6 estaciones
+// ════════════════════════════════════════════════════════════════
+const ART_EST = [['corte','Corte'],['pulido','Pulido'],['mecanizado','Mecanizado'],['templado','Templado'],['lavado','Lavado'],['forrado','Forrado']];
+const ART_NOM = Object.fromEntries(ART_EST);
+const ART_AB = {corte:'C', pulido:'P', mecanizado:'M', templado:'T', lavado:'L', forrado:'F'};
+const veArtica = () => rolEs('gerente','asistente','consulta');
+const esOperarioArtica = () => rolEs('artica');
+const artImprime = () => isGerente();          // transición: solo el gerente imprime etiquetas
+const A = {tab:'avance', piezas:null, err:null, q:'', filtro:'pend', abierta:null, rend:null, rendDias:7, plan:null, ops:null, prefijos:null};
+function empresa(){ try{ return localStorage.getItem('empresa') === 'artica' ? 'artica' : 'eliptica'; }catch(e){ return 'eliptica'; } }
+function aplicarEmpresa(){ document.body.classList.toggle('artica', esOperarioArtica() || (veArtica() && S.view === 'artica')); }
+function cambiarEmpresa(){
+  const e = S.view === 'artica' ? 'eliptica' : 'artica';
+  try{ localStorage.setItem('empresa', e); }catch(x){}
+  if(e === 'artica') goArtica(); else { S.view = 'home'; aplicarEmpresa(); goHome(); }
+}
+const artCod = p => 'ART:' + p.id;
+const artMed = p => `${p.ancho} × ${p.alto}`;
+const artHechos = (p, e) => Math.min(p.cant, Number((p.hechos || {})[e] || 0));
+const artUltimo = p => p.ruta[p.ruta.length - 1];
+const artListas = p => artHechos(p, artUltimo(p));
+// En qué paso va: el primero de la ruta que no tiene todas las piezas
+function artPaso(p){ for(const e of p.ruta) if(artHechos(p, e) < p.cant) return e; return null; }
+
+// ── Datos ──
+Object.assign(API, {
+  async artAvance(){ const out = []; for(let off = 0; ; off += 1000){ const {data,error} = await this.sb.from('art_avance').select('*').order('op').order('linea').range(off, off + 999); if(error) throw error; out.push(...(data || [])); if(!data || data.length < 1000) break; } return out; },
+  async artRegistros(desde){ const out = []; for(let off = 0; ; off += 1000){ const {data,error} = await this.sb.from('art_registros').select('estacion,creado,quien').gte('creado', desde).order('id').range(off, off + 999); if(error) throw error; out.push(...(data || [])); if(!data || data.length < 1000) break; } return out; },
+  async artEscanear(cod, est){ const {data,error} = await this.sb.rpc('art_escanear', {p_codigo: cod, p_estacion: est}); if(error) throw error; return data; },
+  async artDeshacer(est){ const {data,error} = await this.sb.rpc('art_deshacer', {p_estacion: est}); if(error) throw error; return data; },
+  async artMiDia(est){ const {data,error} = await this.sb.rpc('art_mi_dia', {p_estacion: est}); if(error) throw error; return data; },
+  async artBuscar(t){ const {data,error} = await this.sb.rpc('art_buscar', {p_texto: t}); if(error) throw error; return data || []; },
+  async artMisEstaciones(){ const {data,error} = await this.sb.rpc('art_mis_estaciones'); if(error) throw error; return data || []; },
+  async artRutaSet(id, ruta){ const {error} = await this.sb.rpc('art_ruta_set', {p_id: id, p_ruta: ruta}); if(error) throw error; },
+  async artOrdenCorte(l, lote){ const {data,error} = await this.sb.rpc('art_orden_corte', {p: l, p_lote: lote}); if(error) throw error; return data; },
+  async artListos(ops){ const {data,error} = await this.sb.rpc('art_listos', {p_ops: ops}); if(error) throw error; return data || []; },
+  async artOperarios(){ const {data,error} = await this.sb.rpc('art_operarios'); if(error) throw error; return data || []; },
+  async artEstacionesUsuario(id, est){ const {error} = await this.sb.rpc('art_estaciones_usuario', {p_id: id, p_estaciones: est}); if(error) throw error; },
+  async artPrefijos(){ const {data,error} = await this.sb.from('art_prefijos').select('*').order('prefijo'); if(error) throw error; return data || []; },
+  async artPrefijoGuardar(prefijo, estacion){ const q = estacion ? this.sb.from('art_prefijos').upsert({prefijo, estacion}) : this.sb.from('art_prefijos').delete().eq('prefijo', prefijo); const {error} = await q; if(error) throw error; },
+});
+const artFaltaSQL = e => /art_|schema cache|PGRST20/i.test(errMsg(e)) ? 'Falta correr el SQL 54 (Ártica) en Supabase.' : errMsg(e);
+
+// ════════════════ Vista del gerente / asistente ════════════════
+function goArtica(){
+  if(!veArtica()) return;
+  S.view = 'artica'; aplicarEmpresa();
+  history.replaceState({v:'artica'}, '');
+  if(!A.piezas) artCargar(); else renderArtica();
+}
+async function artCargar(){
+  A.err = null; renderArtica();
+  try{ A.piezas = await API.artAvance(); }catch(e){ A.piezas = []; A.err = artFaltaSQL(e); }
+  if(S.view === 'artica') renderArtica();
+}
+function artTab(t){ A.tab = t; if(t === 'rend') A.rend = null; renderArtica(); }
+function renderArtica(){
+  const t = A.tab, tabs = [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
+  let body;
+  if(!A.piezas && !A.err) body = '<div class="loading"><div class="spin"></div>Cargando Ártica</div>';
+  else if(A.err) body = `<div class="warn">${esc(A.err)}</div>`;
+  else body = t === 'rend' ? artRendHTML() : t === 'etq' ? artEtqHTML() : t === 'oper' ? artOperHTML() : artAvanceHTML();
+  $('#app').innerHTML = shell(`<div class="tabs">${tabs.map(([k, n]) => `<button class="tab ${t===k?'on':''}" onclick="artTab('${k}')">${n}</button>`).join('')}</div>
+    <div class="art-wrap">${body}</div>`);
+  if(t === 'avance'){ const q = $('#artQ'); if(q) q.oninput = () => { A.q = q.value; const pos = q.selectionStart; renderArtica(); const j = $('#artQ'); if(j){ j.focus(); j.setSelectionRange(pos, pos); } }; }
+}
+// Avance: obra → OP-ítem → medida, con el paso en que va cada pieza
+function artAvanceHTML(){
+  const q = A.q.trim().toUpperCase();
+  const pz = A.piezas.filter(p => (A.filtro === 'todas' || (A.filtro === 'pend' ? artListas(p) < p.cant : artListas(p) >= p.cant))
+    && (!q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && String(v).toUpperCase().replace(/\s/g, '').includes(q.replace(/\s/g, '')))));
+  const tot = A.piezas.reduce((s, p) => s + p.cant, 0), listas = A.piezas.reduce((s, p) => s + artListas(p), 0);
+  const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of A.piezas){ const e = artPaso(p); if(e) enEst[e] += p.cant - artHechos(p, e); }
+  const porOp = new Map(); for(const p of pz){ if(!porOp.has(p.op)) porOp.set(p.op, []); porOp.get(p.op).push(p); }
+  const ops = [...porOp.entries()].sort((a, b) => nat(a[0], b[0]));
+  return `<div class="art-head"><div><div class="h1">Ártica</div><div class="h1-sub">${fmtN(tot)} piezas de vidrio · ${fmtN(listas)} listas · ${fmtN(tot - listas)} en proceso</div></div>
+      <button class="btn sm ghost" onclick="A.piezas=null;artCargar()">${ICON.ref} Actualizar</button></div>
+    <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(enEst[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join('')}</div>
+    <div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><div class="search">${ICON.search}<input id="artQ" placeholder="OP-ítem, obra, medida (689x1133)…" value="${esc(A.q)}" autocomplete="off" autocapitalize="characters"></div>
+      <select onchange="A.filtro=this.value;renderArtica()"><option value="pend" ${A.filtro==='pend'?'selected':''}>En proceso</option><option value="listas" ${A.filtro==='listas'?'selected':''}>Listas</option><option value="todas" ${A.filtro==='todas'?'selected':''}>Todas</option></select></div>
+    ${!A.piezas.length ? `<div class="empty">Todavía no hay vidrios cargados. ${isGerente() ? 'Se cargan solos al subir el PDF de las OP, o léelos de las órdenes ya cargadas en <b>OPTIMA y etiquetas</b>.' : ''}</div>` : ''}
+    <div class="art-ops">${ops.slice(0, 300).map(([op, l]) => {
+      const t = l.reduce((s, p) => s + p.cant, 0), ok = l.reduce((s, p) => s + artListas(p), 0), ab = A.abierta === op, p0 = l[0];
+      return `<div class="art-op ${ab ? 'on' : ''}"><button class="art-op-h" onclick="A.abierta=A.abierta==='${op}'?null:'${op}';renderArtica()">
+          <span class="art-op-n">${esc(op)}</span><span class="art-op-i">${esc(p0.item || '')} · ${esc(p0.obra || p0.cliente || '')}${p0.tercero ? ' · <b>TERCEROS</b>' : ''}</span>
+          <span class="art-op-c"><b>${fmtN(ok)}</b> / ${fmtN(t)}</span><span class="art-bar"><i style="width:${t ? ok / t * 100 : 0}%"></i></span></button>
+        ${ab ? `<div class="art-pz">${l.map(p => artPiezaHTML(p)).join('')}</div>` : ''}</div>`; }).join('')}</div>
+    ${ops.length > 300 ? '<div class="d-meta">Se muestran las primeras 300 OP. Usa el buscador.</div>' : ''}`;
+}
+function artPiezaHTML(p){
+  const paso = artPaso(p);
+  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.orden_corte ? ' · corte #' + p.orden_corte : ''}</span></div>
+    <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
+    <div class="art-pzs">${paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
+      ${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
+}
+function artRutaEditar(id){
+  const p = A.piezas.find(x => x.id === id); if(!p) return;
+  const orden = ['corte','pulido','mecanizado','lavado','templado','forrado'];
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  openSheet('Ruta del vidrio', esc(p.op) + ' · ' + artMed(p), `<div class="summary">Marca los procesos por los que pasa esta medida. El orden es fijo: corte → pulido → mecanizado → lavado → templado → forrado (el templado se lava antes de templar).</div>
+    ${orden.map(e => `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><input type="checkbox" class="artRk" value="${e}" ${ck} ${p.ruta.includes(e) ? 'checked' : ''}> ${ART_NOM[e]}</label>`).join('')}`, 'Guardar', async () => {
+    const r = [...document.querySelectorAll('.artRk')].filter(c => c.checked).map(c => c.value);
+    if(!r.length){ toast('Elige al menos un proceso', true); return false; }
+    await API.artRutaSet(id, r); p.ruta = orden.filter(e => r.includes(e)); toast('✓ Ruta guardada'); renderArtica();
+  });
+}
+// Rendimiento por estación: piezas por día y por operario
+async function artRendCargar(){
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (A.rendDias - 1));
+  try{ A.rend = await API.artRegistros(d.toISOString()); }catch(e){ A.rend = []; A.err = artFaltaSQL(e); }
+  if(S.view === 'artica' && A.tab === 'rend') renderArtica();
+}
+function artRendHTML(){
+  if(!A.rend){ artRendCargar(); return '<div class="loading"><div class="spin"></div>Cargando registros</div>'; }
+  const dias = []; for(let k = A.rendDias - 1; k >= 0; k--){ const d = new Date(); d.setDate(d.getDate() - k); dias.push(d.toLocaleDateString('en-CA')); }
+  const cnt = {}, quien = {};
+  for(const r of A.rend){ const dd = new Date(r.creado).toLocaleDateString('en-CA'); cnt[r.estacion + dd] = (cnt[r.estacion + dd] || 0) + 1; const k = r.estacion + '|' + (r.quien || '—'); quien[k] = (quien[k] || 0) + 1; }
+  const hoy = dias[dias.length - 1];
+  return `<div class="art-head"><div><div class="h1">Rendimiento por estación</div><div class="h1-sub">Piezas registradas por día · últimos ${A.rendDias} días</div></div>
+      <select style="width:auto" onchange="A.rendDias=+this.value;A.rend=null;renderArtica()">${[7, 15, 30].map(n => `<option value="${n}" ${n===A.rendDias?'selected':''}>${n} días</option>`).join('')}</select></div>
+    <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(cnt[e + hoy] || 0)}</b><span>${n} hoy</span></div>`).join('')}</div>
+    <div class="ctable-wrap"><table class="ctable"><thead><tr><th>Estación</th>${dias.map(d => `<th style="text-align:right">${d.slice(8)}/${d.slice(5, 7)}</th>`).join('')}<th style="text-align:right">Total</th><th style="text-align:right">Prom./día</th></tr></thead>
+      <tbody>${ART_EST.map(([e, n]) => { const v = dias.map(d => cnt[e + d] || 0), t = v.reduce((s, x) => s + x, 0), act = v.filter(x => x).length;
+        return `<tr><td><b>${n}</b></td>${v.map(x => `<td style="text-align:right">${x ? fmtN(x) : '·'}</td>`).join('')}<td style="text-align:right"><b>${fmtN(t)}</b></td><td style="text-align:right">${act ? fmtN(t / act, 1) : '—'}</td></tr>`; }).join('')}</tbody></table></div>
+    <div class="section-t" style="margin-top:18px">Por operario (${A.rendDias} días)</div>
+    <div class="ctable-wrap"><table class="ctable"><thead><tr><th>Estación</th><th>Operario</th><th style="text-align:right">Piezas</th></tr></thead>
+      <tbody>${Object.entries(quien).sort((a, b) => b[1] - a[1]).map(([k, n]) => { const [e, w] = k.split('|'); return `<tr><td>${ART_NOM[e] || e}</td><td>${esc(w)}</td><td style="text-align:right">${fmtN(n)}</td></tr>`; }).join('') || '<tr><td colspan="3" class="empty">Sin registros en el periodo.</td></tr>'}</tbody></table></div>`;
+}
+
+// ════════════════ OPTIMA y etiquetas ════════════════
+function artEtqHTML(){
+  const pend = A.piezas.filter(p => artHechos(p, 'corte') < p.cant);
+  const ops = [...new Set(pend.map(p => p.op))].sort(nat);
+  if(!A.ops) A.ops = new Set();
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  const plan = A.plan;
+  return `<div class="cstep"><b>1</b><div><div class="cs-t">Vidrios de las OP</div><div class="cs-d">Al cargar el PDF de las OP en Elíptica, sus líneas de vidrio entran solas a Ártica. Para las OP que ya estaban cargadas, léelas una vez de las órdenes PDF guardadas.</div>
+      <button class="btn sm" onclick="artLeerExistentes()">Leer vidrios de las ${fmtN(S.ordenes ? S.ordenes.size : 0)} órdenes PDF guardadas</button></div></div>
+    <div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Marca las OP por cortar (${fmtN(pend.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} piezas pendientes de corte) y descarga el archivo con medidas, cantidades y la referencia OP-ítem.</div>
+      <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap"><button class="btn sm" onclick="A.ops=new Set(${esc(JSON.stringify(ops))});renderArtica()">Todas</button><button class="btn sm" onclick="A.ops=new Set();renderArtica()">Ninguna</button>
+        <button class="btn sm primary" onclick="artExportarCSV()" ${A.ops.size ? '' : 'disabled'}>Descargar CSV (${fmtN(A.ops.size)} OP)</button></div>
+      <div class="art-opsel">${ops.map(op => { const l = pend.filter(p => p.op === op); return `<label><input type="checkbox" ${ck} ${A.ops.has(op) ? 'checked' : ''} onchange="this.checked?A.ops.add('${op}'):A.ops.delete('${op}');renderArtica()"> <b>${esc(op)}</b> <span>${esc(l[0].obra || l[0].cliente || '')} · ${fmtN(l.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} pz</span></label>`; }).join('') || '<div class="empty">No hay piezas pendientes de corte.</div>'}</div></div></div>
+    <div class="cstep"><b>3</b><div><div class="cs-t">Cargar el plan optimizado de OPTIMA</div><div class="cs-d">Sube el archivo que exporta OPTIMA con el orden de corte. La app reconoce las medidas aunque vengan giradas (ancho y alto al revés) y deja las etiquetas en ese mismo orden.</div>
+      <label class="btn sm">Elegir archivo del plan (CSV / TXT)<input type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style="display:none" onchange="artLeerPlan(this.files[0]); this.value=''"></label>
+      ${plan ? `<div class="summary" style="margin-top:8px"><b>${esc(plan.nombre)}</b> · ${fmtN(plan.etq.length)} etiquetas en orden de corte${plan.sin.length ? ` · <b style="color:var(--danger)">${fmtN(plan.sin.length)} filas sin pieza que coincida</b>` : ''}${plan.dudosas ? ` · ${plan.dudosas} medidas giradas reconocidas` : ''}</div>
+        ${plan.sin.length ? `<div class="warn">No encontré en Ártica: ${esc(plan.sin.slice(0, 12).join(' · '))}${plan.sin.length > 12 ? '…' : ''}</div>` : ''}` : ''}</div></div>
+    <div class="cstep"><b>4</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ${plan ? '<b>en el orden de corte del plan</b>' : 'por OP y medida (carga el plan de OPTIMA para imprimirlas en el orden de corte)'}. Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" onclick="artImprimirEtq()" ${plan || A.ops.size ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : `Imprimir etiquetas de ${fmtN(A.ops.size)} OP marcadas`}</button>
+        <button class="btn sm" onclick="artReimprimirBuscar()">Reimprimir una etiqueta</button></div></div></div>`;
+}
+// 1. Leer los vidrios de las órdenes PDF ya guardadas
+async function artLeerExistentes(){
+  if(!S.ordenes || !S.ordenes.size) return toast('No hay órdenes PDF guardadas', true);
+  if(!confirm(`Se leerán las ${fmtN(S.ordenes.size)} órdenes PDF guardadas para sacar sus líneas de vidrio. Puede tardar unos minutos. ¿Continuar?`)) return;
+  try{ await qrLibsPDF(); }catch(e){ return toast(errMsg(e), true); }
+  const l = [...S.ordenes].sort(nat); let i = 0, hechas = 0; const filas = [], err = [];
+  $('.art-wrap').innerHTML = '<div class="loading"><div class="spin"></div>Leyendo órdenes…</div>';
+  const worker = async () => { while(i < l.length){ const num = l[i++];
+    try{ const b = await API.ordenBajar(num); const r = await leerOPsPDF(new Uint8Array(await b.arrayBuffer()), num + '.pdf'); filas.push(...artFilasDeOps(r.ops)); }catch(e){ err.push(num); }
+    hechas++; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Leyendo órdenes… ${fmtN(hechas)} de ${fmtN(l.length)} · ${fmtN(filas.length)} líneas de vidrio`; } };
+  await Promise.all([worker(), worker(), worker()]);
+  try{ const n = await API.artCargar(filas); toast(`✓ ${fmtN(n)} líneas de vidrio cargadas en Ártica${err.length ? ` · ${err.length} órdenes no se pudieron leer` : ''}`); }
+  catch(e){ toast(artFaltaSQL(e), true); }
+  A.piezas = null; artCargar();
+}
+// Carga solo vidrios (OP de terceros) desde la revisión del PDF
+async function artCargarVidrios(rows, desdeCarga){
+  if(!confirm(`¿Cargar ${fmtN(rows.length)} líneas de vidrio en Ártica?`)) return;
+  try{ const n = await API.artCargar(rows); toast(`✓ ${fmtN(n)} líneas de vidrio cargadas en Ártica`); if(desdeCarga){ C.estado = 'inicio'; C.vidrios = null; renderCarga(); } A.piezas = null; }
+  catch(e){ toast(artFaltaSQL(e), true); }
+}
+// 2. CSV para OPTIMA: una fila por medida pendiente de corte
+function artExportarCSV(){
+  const l = A.piezas.filter(p => A.ops.has(p.op) && artHechos(p, 'corte') < p.cant).sort((a, b) => nat(a.op, b.op) || a.linea - b.linea);
+  const sep = ';', q = v => { v = String(v ?? ''); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const filas = [['REFERENCIA','CANTIDAD','ANCHO','ALTO','MATERIAL','ID','OBRA','ITEM']].concat(l.map(p => [p.op, p.cant - artHechos(p, 'corte'), p.ancho, p.alto, p.tipo, artCod(p), p.obra || p.cliente || '', p.item || '']));
+  const blob = new Blob(['﻿' + filas.map(r => r.map(q).join(sep)).join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `OPTIMA_${today()}_${A.ops.size}OP.csv`; a.click();
+  toast(`✓ ${fmtN(l.length)} medidas exportadas`);
+}
+// 3. Plan de OPTIMA: cada fila trae referencia y/o medidas en el orden de corte; se expande por cantidad
+async function artLeerPlan(f){
+  if(!f) return;
+  const txt = await f.text();
+  const lineas = txt.replace(/^﻿/, '').split(/\r?\n/).filter(x => x.trim());
+  const sep = [';', '\t', ','].sort((a, b) => lineas[0].split(b).length - lineas[0].split(a).length)[0];
+  const parse = l => { const out = []; let cur = '', qq = false; for(const ch of l){ if(ch === '"') qq = !qq; else if(ch === sep && !qq){ out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; };
+  const rows = lineas.map(parse);
+  const h = rows[0].map(x => x.toUpperCase());
+  const col = re => h.findIndex(x => re.test(x));
+  const tieneHead = h.some(x => /[A-Z]{3,}/.test(x) && !/^ART/.test(x));
+  let iRef = col(/REF|OP|PEDIDO|ORDEN|DESCR|ETIQ/), iId = col(/^ID$|ART/), iA = col(/ANCH|^W$|WIDTH|DIM.?X|LARGO|^X$/), iB = col(/ALT|^H$|HEIGHT|DIM.?Y|^Y$/), iC = col(/CANT|QTY|CNT|PZ|PIEZ/);
+  const datos = tieneHead ? rows.slice(1) : rows;
+  const porId = new Map(A.piezas.map(p => [p.id, p]));
+  const etq = [], sin = [], usado = new Map(); let dudosas = 0;
+  for(const r of datos){
+    const txtR = r.join(' ');
+    let p = null;
+    const mid = txtR.toUpperCase().match(/ART[:\-]?(\d+)/); if(mid) p = porId.get(+mid[1]);
+    const nums = r.map(x => /^\d{2,5}([.,]\d+)?$/.test(x) ? Math.round(pdfNum(x)) : null);
+    const a = iA >= 0 ? Math.round(pdfNum(r[iA])) : null, b = iB >= 0 ? Math.round(pdfNum(r[iB])) : null;
+    let med = a && b ? [a, b] : nums.filter(x => x && x >= 100).slice(0, 2);
+    const cant = iC >= 0 ? (parseInt(r[iC]) || 1) : 1;
+    const ref = (iRef >= 0 ? r[iRef] : txtR).toUpperCase().match(/\d{3,6}-\d+/);
+    if(!p && med.length === 2){
+      const cerca = (x, y) => Math.abs(x - y) <= 2;
+      const cand = A.piezas.filter(q => (!ref || q.op === ref[0]) && ((cerca(q.ancho, med[0]) && cerca(q.alto, med[1])) || (cerca(q.ancho, med[1]) && cerca(q.alto, med[0]))));
+      p = cand.find(q => (usado.get(q.id) || 0) < q.cant) || cand[0] || null;
+      if(p && !(cerca(p.ancho, med[0]) && cerca(p.alto, med[1]))) dudosas++;
+    }
+    if(!p){ sin.push((ref ? ref[0] + ' ' : '') + (med.length === 2 ? med.join('×') : txtR.slice(0, 30))); continue; }
+    for(let k = 0; k < cant; k++){ const n = (usado.get(p.id) || 0) + 1; usado.set(p.id, n); etq.push({p, n}); }
+  }
+  A.plan = {nombre: f.name, etq, sin, dudosas};
+  // Guardar el orden de corte (primera aparición de cada pieza)
+  const orden = []; const vis = new Set(); etq.forEach((e, i) => { if(!vis.has(e.p.id)){ vis.add(e.p.id); orden.push({id: e.p.id, orden: i + 1}); } });
+  try{ if(orden.length) await API.artOrdenCorte(orden, f.name); orden.forEach(o => { const p = porId.get(o.id); if(p){ p.orden_corte = o.orden; p.lote_corte = f.name; } }); }catch(e){ toast(artFaltaSQL(e), true); }
+  renderArtica();
+}
+// 4. Etiquetas 85 × 60 mm: una por pieza
+async function artEtqPDF(lista, nombre){
+  try{ if(!window.jspdf) await loadScript('lib/jspdf.js'); if(!window.qrcode) await loadScript('lib/qrcode.js'); }catch(e){ return toast(errMsg(e), true); }
+  const W = 85, H = 60, doc = new jspdf.jsPDF({unit:'mm', format:[W, H], orientation:'landscape'});
+  const corta = (t, max, size) => { doc.setFontSize(size); t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
+  lista.forEach(({p, n}, i) => {
+    if(i) doc.addPage([W, H], 'landscape');
+    const q = qrcode(0, 'M'); q.addData(artCod(p)); q.make();
+    const S_ = 30, nm = q.getModuleCount(), cs = S_ / nm, qx = W - S_ - 4, qy = 4;
+    doc.setFillColor(0, 0, 0); for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c)) doc.rect(qx + c * cs, qy + r * cs, cs + .02, cs + .02, 'F');
+    doc.setTextColor(0); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ÁRTICA', 4, 7);
+    doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17);
+    doc.setFontSize(17); doc.text(`${p.ancho} × ${p.alto}`, 4, 27);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 33);
+    doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 39);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(`${n}/${p.cant}`, qx + S_ / 2, qy + S_ + 4.5, {align: 'center'});
+    // Ruta: casillas para marcar a mano si hace falta
+    let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+    doc.text([p.tercero ? 'TERCEROS' : '', p.forrado ? 'FORRAR' : '', p.orden_corte ? 'Corte #' + p.orden_corte : ''].filter(Boolean).join(' · '), 4, 57.5);
+    doc.text(artCod(p), W - 4, 57.5, {align: 'right'});
+  });
+  const blob = doc.output('blob'), url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
+  const puede = !!(navigator.canShare && navigator.canShare({files:[file]})); window._artEtq = {file, nombre};
+  openSheet('Etiquetas Ártica', `${fmtN(lista.length)} etiqueta${lista.length === 1 ? '' : 's'} · 85 × 60 mm`, `<div class="summary">Imprime a <b>tamaño real (100 %)</b> en la TSC TTP-247 con el rollo de 85 × 60 mm.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${puede ? `<button class="btn primary" onclick="navigator.share({files:[_artEtq.file], title:_artEtq.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
+      <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF para imprimir</a>
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
+}
+function artImprimirEtq(){
+  let l;
+  if(A.plan) l = A.plan.etq;
+  else l = A.piezas.filter(p => A.ops.has(p.op)).sort((a, b) => nat(a.op, b.op) || a.linea - b.linea).flatMap(p => Array.from({length: p.cant}, (_, k) => ({p, n: k + 1})));
+  if(!l.length) return toast('No hay etiquetas para imprimir', true);
+  artEtqPDF(l, `Etiquetas_Artica_${today()}.pdf`);
+}
+function artReimprimir(id){
+  const p = A.piezas.find(x => x.id === id); if(!p) return;
+  openSheet('Reimprimir etiqueta', esc(p.op) + ' · ' + artMed(p), `<div class="field"><span class="lbl">¿Cuál pieza? (1 a ${p.cant})</span><input id="artN" type="number" min="1" max="${p.cant}" value="1" inputmode="numeric"></div>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="artTodas" style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto"> Todas las ${p.cant} etiquetas de esta medida</label>`, 'Imprimir', async () => {
+    const todas = $('#artTodas').checked, n = Math.min(p.cant, Math.max(1, +$('#artN').value || 1));
+    setTimeout(() => artEtqPDF(todas ? Array.from({length: p.cant}, (_, k) => ({p, n: k + 1})) : [{p, n}], `Etiqueta_${p.op}_${p.ancho}x${p.alto}.pdf`), 60);
+  });
+}
+function artReimprimirBuscar(){
+  openSheet('Reimprimir una etiqueta', 'Busca la OP-ítem o la medida', `<div class="search">${ICON.search}<input id="artRq" placeholder="6291-7 o 356x1133" autocomplete="off" autocapitalize="characters"></div><div id="artRl" style="margin-top:8px"></div>`, 'Cerrar', async () => {});
+  const i = $('#artRq'); i.focus();
+  i.oninput = () => { const q = i.value.trim().toUpperCase().replace(/\s/g, ''); if(q.length < 3){ $('#artRl').innerHTML = ''; return; }
+    const l = A.piezas.filter(p => p.op.includes(q) || (p.ancho + 'X' + p.alto).includes(q) || (p.alto + 'X' + p.ancho).includes(q)).slice(0, 30);
+    $('#artRl').innerHTML = l.map(p => `<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" onclick="artReimprimir(${p.id})"><b>${esc(p.op)}</b>&nbsp; ${artMed(p)} · ${fmtN(p.cant)} pz</button>`).join('') || '<div class="empty">Sin resultados.</div>'; };
+}
+
+// ════════════════ Operarios y pistolas (gerente) ════════════════
+function artOperHTML(){
+  if(!A.oper){ Promise.all([API.artOperarios(), API.artPrefijos()]).then(([o, p]) => { A.oper = o; A.prefijos = p; renderArtica(); }).catch(e => { A.oper = []; A.prefijos = []; toast(artFaltaSQL(e), true); renderArtica(); }); return '<div class="loading"><div class="spin"></div>Cargando</div>'; }
+  const ck = 'style="width:18px;height:18px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  return `<div class="cstep"><b>?</b><div><div class="cs-t">Operarios de Ártica</div><div class="cs-d">Crea el usuario en Supabase como cualquier otro, asígnale el rol <b>Ártica · operario</b> en Elíptica → Cargar datos → Usuarios y aquí marca sus estaciones. Solo verá y escaneará esas estaciones.</div></div></div>
+    ${A.oper.map(o => `<div class="art-oprow"><b>${esc(o.nombre || 'Sin nombre')}</b><div>${ART_EST.map(([e, n]) => `<label><input type="checkbox" ${ck} ${(o.estaciones || []).includes(e) ? 'checked' : ''} onchange="artEstToggle('${o.id}','${e}',this.checked)"> ${n}</label>`).join('')}</div></div>`).join('') || '<div class="empty">Todavía no hay usuarios con el rol Ártica · operario.</div>'}
+    <div class="section-t" style="margin-top:20px">Pistolas con prefijo (equipo compartido)</div>
+    <div class="cs-d" style="margin-bottom:8px">Si varias estaciones usan el mismo equipo, configura cada pistola para que anteponga su prefijo (P1-, P2-…) y asígnale aquí la estación.</div>
+    ${['P1','P2','P3','P4','P5','P6'].map(pp => { const v = (A.prefijos.find(x => x.prefijo === pp) || {}).estacion || ''; return `<div class="art-oprow"><b>${pp}-</b><select onchange="artPrefijo('${pp}', this.value)"><option value="">Sin usar</option>${ART_EST.map(([e, n]) => `<option value="${e}" ${v === e ? 'selected' : ''}>${n}</option>`).join('')}</select></div>`; }).join('')}`;
+}
+async function artEstToggle(id, e, on){
+  const o = A.oper.find(x => x.id === id); if(!o) return;
+  o.estaciones = [...new Set([...(o.estaciones || []).filter(x => x !== e), ...(on ? [e] : [])])];
+  try{ await API.artEstacionesUsuario(id, o.estaciones); toast('✓ Estaciones guardadas'); }catch(err){ toast(errMsg(err), true); }
+}
+async function artPrefijo(pp, e){ try{ await API.artPrefijoGuardar(pp, e); toast('✓ Prefijo guardado'); }catch(err){ toast(errMsg(err), true); } }
+
+// ════════════════ Pantalla del operario (estación) ════════════════
+const AO = {est:null, ests:[], ult:null, hoy:0, busy:false, stream:null, timer:null};
+async function goArticaOperario(){
+  S.view = 'artop'; aplicarEmpresa();
+  $('#app').innerHTML = '<div class="loading"><div class="spin"></div>Cargando estación</div>';
+  try{ AO.ests = await API.artMisEstaciones(); }catch(e){ return $('#app').innerHTML = shellOp(`<div class="warn">${esc(artFaltaSQL(e))}</div>`); }
+  if(!AO.ests.length) return $('#app').innerHTML = shellOp('<div class="warn">Tu usuario no tiene estaciones asignadas. Pídele al director de operaciones que te asigne tu estación.</div>');
+  let g = null; try{ g = localStorage.getItem('art_est'); }catch(e){}
+  AO.est = AO.ests.includes(g) ? g : AO.ests.length === 1 ? AO.ests[0] : null;
+  renderOperario();
+}
+const shellOp = inner => `<div class="artop"><header class="artop-top"><div class="artop-brand">ÁRTICA</div><div class="artop-who">${esc(S.perfil.nombre || S.user.email)}${S.view === 'artop' && veArtica() ? ` <button class="btn sm" onclick="artopSalir()">Salir</button>` : ''} <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button></div></header>${inner}</div>`;
+function artopSalir(){ artopCamStop(); goArtica(); }
+function renderOperario(){
+  if(!AO.est){
+    $('#app').innerHTML = shellOp(`<div class="artop-elige"><div class="artop-t">Elige tu estación</div>${AO.ests.map(e => `<button class="artop-estbtn" onclick="artopEst('${e}')">${ART_NOM[e]}</button>`).join('')}</div>`);
+    return;
+  }
+  const u = AO.ult;
+  $('#app').innerHTML = shellOp(`
+    <div class="artop-bar"><div><span class="lbl">Estación</span><div class="artop-est">${ART_NOM[AO.est]}</div></div>
+      ${AO.ests.length > 1 ? `<button class="btn sm" onclick="AO.est=null;renderOperario()">Cambiar</button>` : ''}
+      <div class="artop-cnt"><b id="aoHoy">${fmtN(AO.hoy)}</b><span>hoy</span></div></div>
+    <div id="aoPanel" class="artop-panel ${u ? 'st-' + u.estado : ''}">${artopPanelHTML(u)}</div>
+    <form id="aoForm" class="artop-in" autocomplete="off"><input id="aoCod" placeholder="Escanea con la pistola o escribe el código" autocomplete="off" autocapitalize="characters" inputmode="text"><button class="btn primary" type="submit">OK</button></form>
+    <div class="artop-acts"><button class="btn" onclick="artopDeshacer()">Deshacer último</button><button class="btn" onclick="artopBuscar()">Buscar código</button><button class="btn" id="aoCamBtn" onclick="artopCam()">${ICON.scan} Cámara</button></div>
+    <video id="aoVid" class="artop-vid hidden" playsinline muted></video>`);
+  const f = $('#aoForm'), i = $('#aoCod');
+  f.onsubmit = ev => { ev.preventDefault(); const v = i.value.trim(); i.value = ''; if(v) artopEscanear(v); };
+  i.focus();
+  // La pistola escribe como teclado: mantener el foco en el campo
+  document.onclick = ev => { if(S.view === 'artop' && !ev.target.closest('button,input,select,a,.ov')) { const x = $('#aoCod'); if(x) x.focus(); } };
+  API.artMiDia(AO.est).then(d => { AO.hoy = d.hoy || 0; const h = $('#aoHoy'); if(h) h.textContent = fmtN(AO.hoy); }).catch(() => {});
+}
+function artopEst(e){ AO.est = e; AO.ult = null; try{ localStorage.setItem('art_est', e); }catch(x){} renderOperario(); }
+function artopPanelHTML(u){
+  if(!u) return `<div class="artop-idle">Escanea el QR de la pieza</div>`;
+  const p = u.pieza, t = {ok:'REGISTRADA', fuera:'FUERA DE SECUENCIA', noruta:'NO PASA POR AQUÍ', ya:'YA ESCANEADA', nohay:'CÓDIGO NO VÁLIDO', err:'ERROR', deshecho:'DESHECHO'}[u.estado] || '';
+  return `<div class="artop-estado">${t}${u.estado === 'ok' && u.listo ? ' · PIEZA LISTA' : ''}</div>
+    ${p ? `<div class="artop-op">${esc(p.op)}</div><div class="artop-med">${p.ancho} × ${p.alto}</div>
+      <div class="artop-tipo">${esc(p.tipo)}${p.item ? ' · ' + esc(p.item) : ''}</div>
+      ${u.hechos != null ? `<div class="artop-n">${fmtN(u.hechos)} de ${fmtN(p.cant)} en ${(ART_NOM[u.estacion] || '').toLowerCase()}</div>` : ''}` : ''}
+    ${u.msg && u.estado !== 'ok' ? `<div class="artop-msg">${esc(u.msg)}</div>` : ''}${u.estacion && u.estacion !== AO.est ? `<div class="artop-msg">Estación por prefijo: ${esc(ART_NOM[u.estacion] || u.estacion)}</div>` : ''}`;
+}
+function artopPintar(u){ AO.ult = u; const p = $('#aoPanel'); if(p){ p.className = 'artop-panel st-' + u.estado; p.innerHTML = artopPanelHTML(u); } }
+async function artopEscanear(cod){
+  if(AO.busy) return; AO.busy = true;
+  try{
+    const r = await API.artEscanear(cod, AO.est);
+    artopPintar(r); scBeep(r.estado === 'ok');
+    if(r.hoy != null && (!r.estacion || r.estacion === AO.est)){ AO.hoy = r.hoy; const h = $('#aoHoy'); if(h) h.textContent = fmtN(AO.hoy); }
+  }catch(e){ artopPintar({estado:'err', msg: artFaltaSQL(e)}); scBeep(false); }
+  finally{ AO.busy = false; const i = $('#aoCod'); if(i) i.focus(); }
+}
+async function artopDeshacer(){
+  try{ const r = await API.artDeshacer(AO.est); AO.hoy = Math.max(0, AO.hoy - 1); artopPintar({estado:'deshecho', pieza: r.pieza, msg: 'Se quitó el último registro de ' + (ART_NOM[r.estacion] || '').toLowerCase()}); const h = $('#aoHoy'); if(h) h.textContent = fmtN(AO.hoy); }
+  catch(e){ toast(errMsg(e), true); }
+}
+function artopBuscar(){
+  openSheet('Buscar código', 'OP-ítem o medida', `<div class="search">${ICON.search}<input id="aoBq" placeholder="6291-7 o 356x1133" autocomplete="off" autocapitalize="characters"></div><div id="aoBl" style="margin-top:8px"></div>`, 'Cerrar', async () => {});
+  const i = $('#aoBq'); i.focus(); let t = null;
+  i.oninput = () => { clearTimeout(t); t = setTimeout(async () => { const q = i.value.trim(); if(q.length < 3) return;
+    try{ const l = await API.artBuscar(q); $('#aoBl').innerHTML = l.map(p => `<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px;min-height:52px" onclick="closeSheet();artopEscanear('ART:${p.id}')"><b>${esc(p.op)}</b>&nbsp; ${p.ancho} × ${p.alto} · ${fmtN(p.cant)} pz</button>`).join('') || '<div class="empty">Sin resultados.</div>'; }
+    catch(e){ $('#aoBl').innerHTML = `<div class="warn">${esc(errMsg(e))}</div>`; } }, 300); };
+}
+// Cámara (tablets sin pistola)
+async function artopCam(){
+  if(AO.stream) return artopCamStop();
+  try{
+    if(!('BarcodeDetector' in window) && !window.jsQR) await loadScript('lib/jsqr.js');
+    AO.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    const v = $('#aoVid'); v.classList.remove('hidden'); v.srcObject = AO.stream; v.play().catch(() => {});
+    let det = null; try{ if('BarcodeDetector' in window) det = new BarcodeDetector({formats:['qr_code']}); }catch(e){}
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', {willReadFrequently:true}); let last = '', lastT = 0;
+    AO.timer = setInterval(async () => {
+      if(AO.busy || $('#ov') || v.readyState < 2) return;
+      let txt = null;
+      try{ if(det){ const r = await det.detect(v); if(r && r[0]) txt = r[0].rawValue; }
+        else if(window.jsQR){ const w = 480, h = Math.round(v.videoHeight * w / v.videoWidth) || 360; cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h); const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h, {inversionAttempts:'dontInvert'}); if(r) txt = r.data; } }catch(e){}
+      if(txt && (txt !== last || Date.now() - lastT > 2500)){ last = txt; lastT = Date.now(); artopEscanear(txt); }
+    }, 200);
+  }catch(e){ toast('No se pudo abrir la cámara: ' + errMsg(e), true); }
+}
+function artopCamStop(){ clearInterval(AO.timer); AO.timer = null; if(AO.stream){ AO.stream.getTracks().forEach(t => t.stop()); AO.stream = null; } const v = $('#aoVid'); if(v) v.classList.add('hidden'); }
+
+// Elíptica · ensamble: cuántos vidrios del ítem están listos en Ártica (informativo, no bloquea)
+async function artVidriosItem(op){
+  try{ const r = await API.artListos([op]); return r[0] || null; }catch(e){ return null; }
+}
+
 // ── Avisos al celular (web push, solo gerente) ──
 const VAPID_PUB = 'BIs30XQvC_QlybChrV8iLMrTKXXveez0hBV8lBhw-lyIVGw6hj2RNbd6NVyTfQp3mDKULsFxYdJyB_pGlqj1XgA';
 function b64uBytes(b){ b = b.replace(/-/g,'+').replace(/_/g,'/'); const r = atob(b + '='.repeat((4 - b.length % 4) % 4)); return Uint8Array.from(r, c => c.charCodeAt(0)); }
@@ -1271,6 +1709,7 @@ function indiceAnual(){
 function goHome(replace){
   if(soloScan()) return goScan();
   S.view = 'home'; S.obra = null; S.sel.clear(); S.detailId = null; S.draft = null;
+  document.body.classList.remove('artica');
   if(!replace) history.pushState({v:'home'}, '');
   renderHome();
 }
@@ -1922,6 +2361,7 @@ function onPop(ev){
   const st = ev.state || {v:'home'};
   if(S.view === 'scan' && st.v !== 'scan'){ scStop(); closeSheet(); }
   if(st.v === 'scan' && puedeEscanear()){ goScan(); return; }
+  if(st.v === 'artica' && veArtica()){ goArtica(); return; }
   if(soloScan()){ history.replaceState({v:'scan'}, ''); goScan(); return; }
   if(st.v === 'obra' && S.view === 'obra' && st.obra === S.obra){
     if(S.detailId && !st.d){
@@ -2550,6 +2990,7 @@ function renderDetail(){
           ${info.map(([k,v]) => `<div><div class="k">${k}</div><div class="v">${esc(v||'—')}</div></div>`).join('')}
         </div>
         ${tieneOrden(it.op) ? `<div style="margin-top:12px">${ordenBtnHTML(it.op, 'Ver orden de producción ' + esc(opNum(it.op)))}</div>` : ''}
+        <div class="d-meta" id="artVid" data-op="${esc(it.op || '')}"></div>
         ${it.notas_importacion ? `<div class="note">Nota del Excel original: ${esc(it.notas_importacion)}</div>` : ''}
       </div>
       <fieldset class="d-fs" ${puedeRegistrar() ? '' : 'disabled'}>
@@ -2606,6 +3047,9 @@ function renderDetail(){
     </div>
   </div>`;
   const b = box.querySelector('.d-body'); if(b) b.scrollTop = scroll;
+  const av = $('#artVid'); if(av && it.op){ (S.artCache = S.artCache || new Map()); const c = S.artCache.get(it.op);
+    const pinta = r => { const x = $('#artVid'); if(x && x.dataset.op === it.op) x.innerHTML = r ? `Vidrios Ártica: <b>${fmtN(r.listos)} de ${fmtN(r.total)}</b> listos` : ''; };
+    if(c !== undefined) pinta(c); else artVidriosItem(it.op).then(r => { S.artCache.set(it.op, r); pinta(r); }); }
 }
 
 function dSet(k, v){ S.draft[k] = v; S.draft._dirty = true; renderDetail(); }
@@ -3146,6 +3590,7 @@ async function scCodigo(txt, manual){
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
       if(await scAplicar([it], items.length, e) === false) return;
+      if(e.k === 'ini' && it.op) artVidriosItem(it.op).then(r => { if(r) setTimeout(() => toast(`Vidrios Ártica ${it.op}: ${fmtN(r.listos)} de ${fmtN(r.total)} listos`), 1800); });
       scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num + (it.piso ? ' · ' + pisoLbl(it.piso) : '') + (it.ubicacion ? ' · ' + lugarCorto(it.ubicacion) : '') : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
     }
@@ -4962,7 +5407,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
@@ -5168,26 +5613,16 @@ async function leerOrdenesPDF(files){
     const ops = [], pdfs = [];
     for(const [fi, file] of files.entries()){
       C.msg = `Leyendo ${file.name} (${fi + 1} de ${files.length})`; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = C.msg;
-      const pdf = await pdfjsLib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
-      let actual = null, num = null;
-      for(let pn = 1; pn <= pdf.numPages; pn++){
-        const tc = await (await pdf.getPage(pn)).getTextContent();
-        const it = tc.items.filter(t => t.str.trim()).map(t => ({s: t.str.trim(), x: t.transform[4], x2: t.transform[4] + t.width, y: t.transform[5]}));
-        const one = re => it.find(t => re.test(t.s));
-        const nm = one(/^N[uú]mero\s*:/i), m = nm && nm.s.match(/(\d{3,6})-(\d+)/);
-        if(m){
-          const op = m[1].replace(/^0+(?=\d)/, '') + '-' + m[2];
-          if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = file.name; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
-        }
-        // Nombre completo del vidrio (en el encabezado sale cortado): se busca en la lista de materiales
-        if(actual && actual.vidrioCorto && !actual.vidrio){ const v = it.find(t => t.s.length > actual.vidrioCorto.length && t.s.startsWith(actual.vidrioCorto)); if(v) actual.vidrio = v.s; }
-      }
-      await pdf.destroy();
-      if(num) pdfs.push({num, file});
+      const r = await leerOPsPDF(new Uint8Array(await file.arrayBuffer()), file.name);
+      ops.push(...r.ops);
+      if(r.num) pdfs.push({num: r.num, file});
     }
     if(!ops.length) throw new Error('No encontré órdenes de producción en ese PDF (busco el "Número: 006291-1" del encabezado).');
+    // Ártica: las líneas de vidrio de cada OP (las OP de terceros solo traen vidrio: no crean ítems en Elíptica)
+    C.vidrios = artFilasDeOps(ops);
     const filas = [];
     for(const o of ops){
+      if(o.tercero) continue;
       const unidades = dividirUbicacion(o.ubicacion, o.cant || 1);
       unidades.forEach((u, k) => {
         const f = {n: o.op + ' · ' + o.archivo, errors: [], warns: [], d: {
@@ -5211,6 +5646,47 @@ async function leerOrdenesPDF(files){
   }
   renderCarga();
 }
+// Lee un PDF de órdenes: encabezado de cada OP y sus líneas de vidrio (todas las páginas de la OP)
+async function leerOPsPDF(data, nombre){
+  const pdf = await pdfjsLib.getDocument({data}).promise;
+  const ops = []; let actual = null, num = null;
+  for(let pn = 1; pn <= pdf.numPages; pn++){
+    const tc = await (await pdf.getPage(pn)).getTextContent();
+    const it = tc.items.filter(t => t.str.trim()).map(t => ({s: t.str.trim(), x: t.transform[4], x2: t.transform[4] + t.width, y: t.transform[5]}));
+    const one = re => it.find(t => re.test(t.s));
+    const nm = one(/^N[uú]mero\s*:/i), m = nm && nm.s.match(/(\d{3,6})-(\d+)/);
+    if(m){
+      const op = m[1].replace(/^0+(?=\d)/, '') + '-' + m[2];
+      if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = nombre; actual.vidrios = []; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
+    }
+    if(!actual) continue;
+    // Nombre completo del vidrio (en el encabezado sale cortado): se busca en la lista de materiales
+    if(actual.vidrioCorto && !actual.vidrio){ const v = it.find(t => t.s.length > actual.vidrioCorto.length && t.s.startsWith(actual.vidrioCorto)); if(v) actual.vidrio = v.s; }
+    vidriosPagina(it, actual);
+  }
+  await pdf.destroy();
+  for(const o of ops) o.tercero = !o.alum && o.vidrios.length > 0;
+  return {ops, num};
+}
+// Líneas de vidrio de la lista de materiales: "LAM CRUDO INCOL 3+3 (6 MM)   8   689   1133" = tipo, cantidad (ya calculada), ancho, alto
+function vidriosPagina(it, o){
+  const filas = [];
+  for(const t of [...it].sort((a, b) => b.y - a.y || a.x - b.x)){ let f = filas.find(r => Math.abs(r.y - t.y) < 2.5); if(!f){ f = {y: t.y, t: []}; filas.push(f); } f.t.push(t); }
+  const norm = x => String(x || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const heads = [o.vidrioCorto, o.vidrio2Corto].filter(Boolean).map(norm);
+  for(const f of filas){
+    const s = f.t.sort((a, b) => a.x - b.x).map(t => t.s).join(' ').replace(/\s+/g, ' ').trim();
+    if(/^(HS[PA]\d|RECTA|RETIC)/i.test(s) || /^[A-Z]{2,}\d{3,}\b/.test(s)){ o.alum = true; continue; }
+    const m = s.match(/^(.+?)\s+(\d{1,4})\s+(\d{2,5})\s+(\d{2,5})(?:\s|$)/); if(!m) continue;
+    const ref = norm(m[1]);
+    const esVid = heads.length ? heads.some(h => ref.startsWith(h) || h.startsWith(ref)) : /(LAM|TEMP|CRUDO|INCOL|BRONCE|GRIS|ESPEJO|REFLEC|VIDRIO|\bMM\b)/.test(ref);
+    if(!esVid || /VINILO|PEL[IÍ]CULA|ADHESIV|EMPAQUE/.test(ref)) continue;
+    o.vidrios.push({tipo: m[1].trim(), cant: +m[2], ancho: +m[3], alto: +m[4]});
+  }
+}
+// Filas para art_piezas (una por línea de vidrio de la OP)
+const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: o.item || null,
+  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!o.forrado, tercero: !!o.tercero})));
 // Lee los datos de la primera página de una OP usando la posición de cada encabezado
 function ordenPagina(it, op){
   const cx = t => (t.x + t.x2) / 2;
@@ -5223,12 +5699,14 @@ function ordenPagina(it, op){
     return out;
   };
   const a = enFila('Sistema', 16), b = enFila('M2', 16), c = enFila('Punt.', 16);
-  const o = {op, sistema: a['Sistema'] || null, item: a['Item'] || null, cant: parseInt(a['Cantidad']) || 1, vidrioCorto: a['Vidrio 1'] || null, vidrio: null};
+  const o = {op, sistema: a['Sistema'] || null, item: a['Item'] || null, cant: parseInt(a['Cantidad']) || 1, vidrioCorto: a['Vidrio 1'] || null, vidrio2Corto: a['Vidrio 2'] || null, vidrio: null};
+  o.forrado = /vidrio/i.test(enFila('Cierre', 16)['Polifless'] || '');
   const lado = ks => { const v = ks.map(k => pdfNum(b[k])).filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) : null; };
   o.m2 = pdfNum(b['M2']); o.ancho = lado(['Ancho 1','Ancho 2','Ancho 3']); o.alto = lado(['Alto 1','Alto 2','Alto 3']);
   if(o.m2 == null && o.ancho && o.alto) o.m2 = Math.round(o.ancho * o.alto / 1e4) / 100;
   if(o.m2 && o.ancho && o.alto && Math.abs(o.ancho * o.alto / 1e6 - o.m2) / o.m2 > 0.08) o.avisoM2 = `Revisa medidas: ${fmtN(o.ancho)} × ${fmtN(o.alto)} no da ${fmtN(o.m2, 2)} m²`;
   o.puntos = pdfNum(c['Punt.']); o.tiempo = pdfNum(c['Tiem.']); o.valor = pdfNum(c['Valor']) || null;
+  const cl = it.find(t => t.s === 'Cliente:'); if(cl){ const v = it.filter(t => Math.abs(t.y - cl.y) < 2 && t.x > cl.x2).sort((p, q) => p.x - q.x)[0]; o.cliente = v ? v.s.toUpperCase() : null; }
   const ob = it.find(t => t.s === 'Obra:'); if(ob){ const v = it.filter(t => Math.abs(t.y - ob.y) < 2 && t.x > ob.x2).sort((p, q) => p.x - q.x)[0]; o.obra = v ? v.s.toUpperCase() : null; }
   const fe = it.find(t => /^Fecha\s*:/.test(t.s)); if(fe){
     const v = (fe.s.replace(/^Fecha\s*:\s*/, '') || (it.filter(t => Math.abs(t.y - fe.y) < 2 && t.x > fe.x2).sort((p, q) => p.x - q.x)[0] || {}).s || '');
@@ -5297,6 +5775,8 @@ function revisionHTML(){
   const lista = C.soloProblemas ? C.filas.filter(f => f.errors.length || f.warns.some(w => !/^(M² calculado|Sin precio|Sin FECHA OP)/.test(w))) : C.filas;
   const opsTxt = s => { const a = [...s].sort(nat); return a.length > 4 ? a.slice(0,4).join(', ')+` y ${a.length-4} más` : a.join(', '); };
   return `
+    ${C.vidrios && C.vidrios.length ? (() => { const v = C.vidrios, ter = [...new Set(v.filter(x => x.tercero).map(x => x.op))];
+      return `<div class="summary" style="margin-bottom:10px"><b>Ártica:</b> ${fmtN(v.length)} línea${v.length===1?'':'s'} de vidrio · ${fmtN(v.reduce((s, x) => s + x.cant, 0))} piezas en ${fmtN(new Set(v.map(x => x.op)).size)} OP${ter.length ? ` · <b>${ter.length} OP de terceros</b> (solo vidrio, no crean ítems en Elíptica): ${esc(ter.join(', '))}` : ''}</div>`; })() : ''}
     <div class="summary" style="margin-bottom:14px">Archivo <b>${esc(C.archivo)}</b> · ${fmtN(C.filas.length)} filas leídas ·
       <b style="color:var(--inst)">${fmtN(ok.length)} listas para cargar</b>${bad.length ? ` · <b style="color:var(--danger)">${fmtN(bad.length)} con errores</b> (no se cargarán)` : ''}</div>
     ${porObra.size ? `<div class="grid-obras" style="margin-bottom:18px">${[...porObra.values()].sort((a,b)=>b.n-a.n).map(o => {
@@ -5327,12 +5807,13 @@ function revisionHTML(){
     ${lista.length > 500 ? `<div class="d-meta">Se muestran las primeras 500 filas.</div>` : ''}
     <div class="carga-foot">
       <button class="btn" onclick="C.estado='inicio';renderCarga()">Elegir otro archivo</button>
-      <button class="btn primary" onclick="confirmarCarga()" ${ok.length?'':'disabled'}>Cargar ${fmtN(ok.length)} ítems</button>
+      <button class="btn primary" onclick="confirmarCarga()" ${ok.length || (C.vidrios && C.vidrios.length) ? '' : 'disabled'}>${ok.length ? `Cargar ${fmtN(ok.length)} ítems` : 'Cargar solo los vidrios en Ártica'}</button>
     </div>`;
 }
 
 async function confirmarCarga(){
   const ok = C.filas.filter(f => !f.errors.length);
+  if(!ok.length && C.vidrios && C.vidrios.length) return artCargarVidrios(C.vidrios, true);
   if(!ok.length) return;
   const obras = [...new Set(ok.map(f=>f.d.obra))];
   if(!confirm(`¿Cargar ${ok.length} ítems en ${obras.length === 1 ? 'la obra '+obras[0] : obras.length+' obras'}?\n\nEntrarán en estado EN COLA y tu asistente los verá de inmediato.`)) return;
@@ -5346,6 +5827,7 @@ async function confirmarCarga(){
     try{ await API.insertComercial(com); C.errComercial = null; }
     catch(e){ C.errComercial = errMsg(e); }
     C.cargados = {ids: ins.map(r=>r.id), obras, n: ins.length, total: rows.length};
+    if(C.vidrios && C.vidrios.length && isGerente()){ try{ C.cargados.vid = await API.artCargar(C.vidrios); }catch(e){ C.cargados.vidErr = errMsg(e); } }
     if(C.pdfs && C.pdfs.length){
       const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = 'Subiendo las órdenes con su QR…';
       let sub = 0; const err = [];
@@ -5367,6 +5849,8 @@ function resultadoHTML(){
   return `<div class="result ${c.error?'bad':''}">
       <div class="h1" style="font-size:20px">${c.error ? 'La carga quedó incompleta' : '✓ Carga completa'}</div>
       <div class="h1-sub" style="font-size:14px;margin-top:8px">${fmtN(c.n)} de ${fmtN(c.total)} ítems guardados en la base${c.error ? `. Error: ${esc(c.error)}` : ''}.</div>
+      ${c.vid ? `<div class="h1-sub" style="font-size:14px;margin-top:6px">✓ Ártica: ${fmtN(c.vid)} línea${c.vid===1?'':'s'} de vidrio cargada${c.vid===1?'':'s'}.</div>` : ''}
+      ${c.vidErr ? `<div class="warn" style="margin-top:12px">Los vidrios de Ártica no se cargaron: ${esc(c.vidErr)}${/art_cargar|function/.test(c.vidErr) ? ' (falta el SQL 54)' : ''}.</div>` : ''}
       ${c.pdfSub ? `<div class="h1-sub" style="font-size:14px;margin-top:6px">✓ ${fmtN(c.pdfSub)} orden${c.pdfSub===1?'':'es'} PDF subida${c.pdfSub===1?'':'s'} con su código QR.</div>` : ''}
       ${c.pdfErr && c.pdfErr.length ? `<div class="warn" style="margin-top:12px">No se pudieron subir estas órdenes PDF: ${esc(c.pdfErr.join(' · '))}. Súbelas desde la pestaña Órdenes PDF.</div>` : ''}
       ${C.errComercial ? `<div class="warn" style="margin-top:12px">Los ítems quedaron cargados pero <b>los precios no</b> se guardaron: ${esc(C.errComercial)}. Deshaz la carga y vuelve a intentarlo.</div>` : ''}
