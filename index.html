@@ -513,7 +513,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.00';
+const APP_VERSION = '7.01';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3048,7 +3048,7 @@ function renderDetail(){
   </div>`;
   const b = box.querySelector('.d-body'); if(b) b.scrollTop = scroll;
   const av = $('#artVid'); if(av && it.op){ (S.artCache = S.artCache || new Map()); const c = S.artCache.get(it.op);
-    const pinta = r => { const x = $('#artVid'); if(x && x.dataset.op === it.op) x.innerHTML = r ? `Vidrios Ártica: <b>${fmtN(r.listos)} de ${fmtN(r.total)}</b> listos` : ''; };
+    const pinta = r => { const x = $('#artVid'); if(x && x.dataset.op === it.op) x.innerHTML = r ? `Vidrios Ártica: <b>${fmtN(r.listos)} de ${fmtN(r.total)}</b> listos${r.total && r.listos / r.total >= 0.7 ? ' · proceso Vidrio marcado solo (70 %)' : ' · al 70 % se marca Vidrio solo'}` : ''; };
     if(c !== undefined) pinta(c); else artVidriosItem(it.op).then(r => { S.artCache.set(it.op, r); pinta(r); }); }
 }
 
