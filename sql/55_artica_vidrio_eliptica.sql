@@ -4,8 +4,8 @@
 --  Se puede correr más de una vez sin problema.
 -- ════════════════════════════════════════════════════════════════
 --  Cada vez que en Ártica una pieza termina su ruta (último escaneo = lista),
---  se calcula cuánto vidrio de esa OP-ítem está listo. Al llegar al 70 %,
---  todos los ítems de esa OP en Elíptica quedan con el proceso Vidrio en X.
+--  se revisa cada medida de esa OP-ítem. Cuando TODAS las medidas tienen al menos
+--  el 70 % de sus piezas listas, los ítems de esa OP en Elíptica quedan con Vidrio en X.
 --  Si después se deshace un escaneo, la marca en Elíptica NO se quita sola
 --  (se quita a mano si hace falta). Las OP de terceros no aplican.
 -- ════════════════════════════════════════════════════════════════
@@ -18,11 +18,14 @@ grant all on public.art_vidrio_auto to service_role;
 
 create or replace function public.art_sync_vidrio_op(p_op text)
 returns int language plpgsql security definer set search_path = public as $$
-declare tot numeric; ok numeric; n int := 0;
+declare n_med int; n_ok int; tot numeric; ok numeric; n int := 0;
 begin
-  select sum(p.cant), sum(least(p.cant, (select count(*) from public.art_registros g where g.pieza_id = p.id and g.estacion = p.ruta[array_length(p.ruta, 1)])))
-    into tot, ok from public.art_piezas p where p.op = p_op and not p.tercero;
-  if coalesce(tot, 0) = 0 or ok / tot < 0.7 then return 0; end if;
+  -- Cada medida (línea de vidrio) de la OP-ítem debe tener al menos el 70 % de sus piezas listas
+  select count(*), count(*) filter (where l >= 0.7 * cant), sum(cant), sum(l)
+    into n_med, n_ok, tot, ok
+    from (select p.cant, least(p.cant, (select count(*) from public.art_registros g where g.pieza_id = p.id and g.estacion = p.ruta[array_length(p.ruta, 1)])) l
+            from public.art_piezas p where p.op = p_op and not p.tercero) x;
+  if coalesce(n_med, 0) = 0 or n_ok < n_med then return 0; end if;
   update public.items set vidrio_proc = 'X' where op = p_op and vidrio_proc is distinct from 'X';
   get diagnostics n = row_count;
   insert into public.art_vidrio_auto (op, pct, items) values (p_op, round(ok / tot * 100), n) on conflict (op) do nothing;
