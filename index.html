@@ -62,6 +62,7 @@ body.artica .sheet{background:#2f2e2c;}
 .art-est{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:16px;}
 .art-est>div{background:var(--surface2);padding:10px;}.art-est b{display:block;font-family:var(--art-t,var(--sans));font-size:26px;font-weight:700;}.art-est span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
 @media(max-width:640px){.art-est{grid-template-columns:repeat(3,minmax(0,1fr));}}
+.art-seg{display:flex;border:1px solid var(--border2);margin-bottom:12px;width:max-content;max-width:100%;}.art-seg button{padding:10px 18px;font-family:var(--art-t,var(--sans));font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-right:1px solid var(--border2);}.art-seg button:last-child{border-right:0;}.art-seg button.on{background:#fff;color:#272727;}.art-seg b{margin-left:6px;}
 .art-oc-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 6px;}.art-oc-nums div{display:flex;flex-direction:column;gap:2px;}.art-oc-nums b{font-size:18px;font-weight:600;font-family:var(--art-t,var(--mono));}.art-oc-nums span{font-size:9.5px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;}
 .art-op{border:1px solid var(--border);margin-bottom:6px;background:var(--surface);}
 .art-op-h{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:4px 12px;width:100%;padding:10px 12px;text-align:left;align-items:center;}
@@ -515,7 +516,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.04';
+const APP_VERSION = '7.05';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1315,29 +1316,33 @@ function artObraCard(obra, l){
   const en = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of l){ const e = artPaso(p); if(e) en[e] += p.cant - artHechos(p, e); }
   const ops = new Set(l.map(p => p.op)).size, ter = l.some(p => p.tercero);
   return `<button class="obra-card" onclick="A.obra=decodeURIComponent('${encodeURIComponent(obra)}');A.abierta=null;renderArtica();window.scrollTo(0,0)">
-    <div><div class="oc-name">${esc(obra)}${ter ? ' <span class="badge-new">Terceros</span>' : ''}</div><div class="oc-meta">${fmtN(ops)} OP · ${fmtN(t)} piezas · ${fmtN(t - ok)} en proceso</div></div>
+    <div><div class="oc-name">${esc(obra)}${ter ? ' <span class="badge-new">Cliente</span>' : ''}</div><div class="oc-meta">${fmtN(ops)} OP · ${fmtN(t)} piezas · ${fmtN(t - ok)} en proceso</div></div>
     <div class="bar"><i style="width:${t ? ok / t * 100 : 0}%;background:#fff"></i></div>
     <div class="art-oc-nums">${ART_EST.map(([e, n]) => `<div><b>${fmtN(en[e])}</b><span>${({mecanizado:'Mecaniz.', templado:'Templado'})[e] || n}</span></div>`).join('')}<div><b style="color:#fff">${fmtN(ok)}</b><span>Listas</span></div></div></button>`;
 }
+function artOrigen(v){ A.origen = v; A.obra = null; try{ localStorage.setItem('art_origen', v); }catch(e){} renderArtica(); }
 function artAvanceHTML(){
+  if(!A.origen){ try{ A.origen = localStorage.getItem('art_origen') || 'todas'; }catch(e){ A.origen = 'todas'; } }
+  const base = A.piezas.filter(p => A.origen === 'todas' || (A.origen === 'cli' ? p.tercero : !p.tercero));
+  const seg = `<div class="art-seg">${[['todas','Todo'],['eli','Elíptica'],['cli','Clientes']].map(([k, n]) => `<button class="${A.origen === k ? 'on' : ''}" onclick="artOrigen('${k}')">${n} <b>${fmtN(A.piezas.filter(p => k === 'todas' || (k === 'cli' ? p.tercero : !p.tercero)).filter(p => artListas(p) < p.cant).reduce((s, p) => s + p.cant - artListas(p), 0))}</b></button>`).join('')}</div>`;
   const q = A.q.trim().toUpperCase().replace(/\s/g, '');
   const coincide = p => !q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && String(v).toUpperCase().replace(/\s/g, '').includes(q));
   const estado = p => A.filtro === 'todas' || (A.filtro === 'pend' ? artListas(p) < p.cant : artListas(p) >= p.cant);
-  const tot = A.piezas.reduce((s, p) => s + p.cant, 0), listas = A.piezas.reduce((s, p) => s + artListas(p), 0);
-  const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of A.piezas){ const e = artPaso(p); if(e) enEst[e] += p.cant - artHechos(p, e); }
+  const tot = base.reduce((s, p) => s + p.cant, 0), listas = base.reduce((s, p) => s + artListas(p), 0);
+  const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of base){ const e = artPaso(p); if(e) enEst[e] += p.cant - artHechos(p, e); }
   const filtros = `<div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><div class="search">${ICON.search}<input id="artQ" placeholder="${A.obra ? 'OP-ítem o medida (689x1133)…' : 'Obra, OP-ítem o medida…'}" value="${esc(A.q)}" autocomplete="off" autocapitalize="characters"></div>
       <select onchange="A.filtro=this.value;renderArtica()"><option value="pend" ${A.filtro==='pend'?'selected':''}>En proceso</option><option value="listas" ${A.filtro==='listas'?'selected':''}>Listas</option><option value="todas" ${A.filtro==='todas'?'selected':''}>Todas</option></select></div>`;
   if(!A.obra){
-    const porObra = new Map(); for(const p of A.piezas) if(estado(p) && coincide(p)){ const o = artObra(p); if(!porObra.has(o)) porObra.set(o, []); porObra.get(o).push(p); }
+    const porObra = new Map(); for(const p of base) if(estado(p) && coincide(p)){ const o = artObra(p); if(!porObra.has(o)) porObra.set(o, []); porObra.get(o).push(p); }
     const obras = [...porObra.entries()].sort((a, b) => b[1].reduce((s, p) => s + p.cant - artListas(p), 0) - a[1].reduce((s, p) => s + p.cant - artListas(p), 0) || nat(a[0], b[0]));
-    return `<div class="art-head"><div><div class="h1">Obras activas</div><div class="h1-sub">${fmtN(new Set(A.piezas.map(artObra)).size)} obras · ${fmtN(tot)} piezas de vidrio · ${fmtN(listas)} listas · ${fmtN(tot - listas)} en proceso</div></div>
+    return `<div class="art-head"><div><div class="h1">${A.origen === 'cli' ? 'Clientes' : A.origen === 'eli' ? 'Obras de Elíptica' : 'Obras activas'}</div><div class="h1-sub">${fmtN(new Set(base.map(artObra)).size)} ${A.origen === 'cli' ? 'clientes' : 'obras'} · ${fmtN(tot)} piezas de vidrio · ${fmtN(listas)} listas · ${fmtN(tot - listas)} en proceso</div></div>
         <button class="btn sm ghost" onclick="A.piezas=null;artCargar()">${ICON.ref} Actualizar</button></div>
       <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(enEst[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join('')}</div>
-      ${filtros}
+      ${seg}${filtros}
       ${!A.piezas.length ? `<div class="empty">Todavía no hay vidrios cargados. ${isGerente() ? 'Se cargan solos al subir el PDF de las OP, o léelos de las órdenes ya cargadas en <b>OPTIMA y etiquetas</b>.' : ''}</div>`
         : obras.length ? `<div class="grid-obras">${obras.map(([o, l]) => artObraCard(o, l)).join('')}</div>` : '<div class="empty">Ninguna obra coincide.</div>'}`;
   }
-  const deObra = A.piezas.filter(p => artObra(p) === A.obra);
+  const deObra = base.filter(p => artObra(p) === A.obra);
   const pz = deObra.filter(p => estado(p) && coincide(p));
   const t0 = deObra.reduce((s, p) => s + p.cant, 0), ok0 = deObra.reduce((s, p) => s + artListas(p), 0);
   const en0 = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of deObra){ const e = artPaso(p); if(e) en0[e] += p.cant - artHechos(p, e); }
@@ -1347,7 +1352,7 @@ function artAvanceHTML(){
     <div class="art-head"><div><div class="h1">${esc(A.obra)}</div><div class="h1-sub">${fmtN(new Set(deObra.map(p => p.op)).size)} OP · ${fmtN(t0)} piezas · ${fmtN(ok0)} listas · ${fmtN(t0 - ok0)} en proceso</div></div>
       <button class="btn sm ghost" onclick="A.piezas=null;artCargar()">${ICON.ref} Actualizar</button></div>
     <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(en0[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join('')}</div>
-    ${filtros}
+    ${seg}${filtros}
     <div class="art-ops">${ops.map(([op, l]) => {
       const t = l.reduce((s, p) => s + p.cant, 0), ok = l.reduce((s, p) => s + artListas(p), 0), ab = A.abierta === op, p0 = l[0];
       return `<div class="art-op ${ab ? 'on' : ''}"><button class="art-op-h" onclick="A.abierta=A.abierta==='${op}'?null:'${op}';renderArtica()">
