@@ -521,7 +521,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.13';
+const APP_VERSION = '7.14';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -5930,7 +5930,7 @@ async function confirmarCarga(){
   const obras = [...new Set(ok.map(f=>f.d.obra))];
   if(!confirm(`¿Cargar ${ok.length} ítems en ${obras.length === 1 ? 'la obra '+obras[0] : obras.length+' obras'}?\n\nEntrarán en estado EN COLA y tu asistente los verá de inmediato.`)) return;
   C.estado = 'cargando'; C.progreso = 0; renderCarga();
-  const rows = ok.map(f => { const {precio, ...d} = f.d; return d; });
+  const rows = ok.map(f => { const {precio, obraOrig, ...d} = f.d; return d; });   // obraOrig: solo para mostrar el alias, no va a la base
   let ins = [];
   try{
     ins = await API.insertItems(rows, n => { C.progreso = n; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = `Cargando ítems… ${fmtN(n)} de ${fmtN(rows.length)}`; });
