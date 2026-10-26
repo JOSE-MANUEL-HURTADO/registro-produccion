@@ -438,7 +438,7 @@ header{align-items:center;}
     </div>
   </div>
   <div class="card">
-    <div class="card-header"><span class="card-title">Top Dise&ntilde;os</span></div>
+    <div class="card-header"><span class="card-title">Top Sistemas</span></div>
     <canvas id="disenoChart" height="260"></canvas>
   </div>
 </div>
@@ -510,7 +510,7 @@ header{align-items:center;}
     </div>
     <div class="modal-grid-2">
       <div class="modal-card"><div class="modal-card-title">Top Ensambladores</div><div style="position:relative;height:180px;width:100%;overflow:hidden;"><canvas id="modalEnsamChart"></canvas></div></div>
-      <div class="modal-card"><div class="modal-card-title">Top Dise&ntilde;os</div><div style="position:relative;height:180px;width:100%;overflow:hidden;"><canvas id="modalDisenoChart"></canvas></div></div>
+      <div class="modal-card"><div class="modal-card-title">Top Sistemas</div><div style="position:relative;height:180px;width:100%;overflow:hidden;"><canvas id="modalDisenoChart"></canvas></div></div>
     </div>
   </div>
 </div>
@@ -1103,7 +1103,7 @@ function openObraModal(obraName){
           tooltip:{callbacks:{title:ctx=>ensD[ctx[0].dataIndex].n,label:ctx=>` ${ctx.raw.toLocaleString('es-CO')} unid`}}},
           scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{callback:v=>v.toLocaleString('es-CO')}},y:{grid:{display:false}}}}});
     }
-    // Diseños
+    // Sistemas
     const disD=(obra.diseño||[]).slice(0,8);
     if(disD.length){
       const disCtx=document.getElementById('modalDisenoChart').getContext('2d');
@@ -1452,12 +1452,20 @@ async function processFile(file){
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function showError(msg){const el=document.getElementById('uploadError');el.textContent=msg;el.classList.add('show');}
 
+// Sistema: la columna SISTEMA; si viene vacía se saca del diseño (ELI.053/… → ELI, SIENA F1.T -XO → SIENA F1)
+function sistemaDe(r){
+  const s0=String(r.SISTEMA||'').trim().toUpperCase(); if(s0) return s0;
+  let t=String(r.DISEÑO||r.DISENO||'').toUpperCase().replace(/\.\s+/g,'.').trim();
+  t=t.split(/\s*-\s*/)[0]; t=t.replace(/([A-ZÁÉÍÓÚÑ]{2,})\.\S*/,'$1');
+  const w=[]; for(const x of t.split(/\s+/)){ if(/[\d\/]/.test(x)) break; w.push(x); }
+  return w.join(' ').trim()||'SIN SISTEMA';
+}
 function processRawData(raw){
   const MES_ORD=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const parseRow=r=>({
     OBRA:String(r.OBRA||'SIN OBRA').trim(),M2:Number(r.M2)||0,PRECIO:Number(r.PRECIO)||0,
     AÑO:parseInt(r['AÑO PRODUCCION'])||0,MES:String(r['MES PRODUCCION']||'').toLowerCase().trim(),
-    ENSAMBLADOR:String(r.ENSAMBLADOR||'SIN ASIGNAR').trim(),DISEÑO:String(r.DISEÑO||'SIN DISEÑO').trim(),
+    ENSAMBLADOR:String(r.ENSAMBLADOR||'SIN ASIGNAR').trim(),DISEÑO:String(r.DISEÑO||'SIN DISEÑO').trim(),SISTEMA:sistemaDe(r),
     STATUS:String(r['STATUS PLANTA']||'SIN STATUS').trim().toUpperCase(),
     INSTALACION:String(r.INSTALACION||'NO').trim().toUpperCase()
   });
@@ -1489,7 +1497,7 @@ function processRawData(raw){
   const by_mes=Object.values(mesMap).map(r=>({...r,m2:Math.round(r.m2*10)/10,precio:Math.round(r.precio)}));
   const ensamMap={};df.forEach(r=>{if(!ensamMap[r.ENSAMBLADOR])ensamMap[r.ENSAMBLADOR]={ENSAMBLADOR:r.ENSAMBLADOR,items:0,m2:0};ensamMap[r.ENSAMBLADOR].items++;ensamMap[r.ENSAMBLADOR].m2+=r.M2;});
   const by_ensam=Object.values(ensamMap).sort((a,b)=>b.items-a.items).slice(0,20).map(r=>({...r,m2:Math.round(r.m2*10)/10}));
-  const diseñoMap={};df.forEach(r=>{if(!diseñoMap[r.DISEÑO])diseñoMap[r.DISEÑO]={DISEÑO:r.DISEÑO,items:0};diseñoMap[r.DISEÑO].items++;});
+  const diseñoMap={};df.forEach(r=>{if(!diseñoMap[r.SISTEMA])diseñoMap[r.SISTEMA]={DISEÑO:r.SISTEMA,items:0};diseñoMap[r.SISTEMA].items++;});
   const by_diseño=Object.values(diseñoMap).sort((a,b)=>b.items-a.items).slice(0,10);
 
   // status_counts: fabricated statuses + EN COLA separately
@@ -1528,7 +1536,7 @@ function processRawData(raw){
     const cRows=colaRows.filter(r=>r.OBRA===obra);
     const mes={};MES_ORD.forEach(m=>{const mr=fabRows.filter(r=>r.MES===m);mes[m]={items:mr.length,m2:Math.round(mr.reduce((s,r)=>s+r.M2,0)*100)/100};});
     const em={};fabRows.forEach(r=>{em[r.ENSAMBLADOR]=(em[r.ENSAMBLADOR]||0)+1;});
-    const dm={};fabRows.forEach(r=>{dm[r.DISEÑO]=(dm[r.DISEÑO]||0)+1;});
+    const dm={};fabRows.forEach(r=>{dm[r.SISTEMA]=(dm[r.SISTEMA]||0)+1;});
     // status from fabricated rows (includes DESPACHADO, ENSAMBLADO, PRODUCCIÓN), plus EN COLA separately
     const sm={};fabRows.forEach(r=>{sm[r.STATUS]=(sm[r.STATUS]||0)+1;});
     if(cRows.length){
@@ -1840,7 +1848,7 @@ function closeProdDetail(){
 const SB = supabase.createClient('https://fnwndrdebndlirmejlgb.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges',
   {auth:{persistSession:true, autoRefreshToken:true, storageKey:'eliptica-registro'}});
-const DASH_COLS = 'OBRA,ITEM,"UBICACIÓN",PISO,"DISEÑO",VIDRIO,ANCHO,ALTO,M2,"OP INSTALACION",CORTADO,TROQUELADO,MECANIZADO,PROGRAMADO,"VIDRIO PROCESO",PREALISTADO,"HORA DE INICIO","DIA INICIO",ENSAMBLADOR,"STATUS PLANTA",INSTALACION,"MES PRODUCCION","AÑO PRODUCCION",PRECIO';
+const DASH_COLS = 'OBRA,ITEM,"UBICACIÓN",PISO,"DISEÑO",VIDRIO,ANCHO,ALTO,M2,"OP INSTALACION",CORTADO,TROQUELADO,MECANIZADO,PROGRAMADO,"VIDRIO PROCESO",PREALISTADO,"HORA DE INICIO","DIA INICIO",ENSAMBLADOR,"STATUS PLANTA",INSTALACION,"MES PRODUCCION","AÑO PRODUCCION",PRECIO,SISTEMA';
 let liveBusy = false, liveTimer = null, liveChan = null;
 
 function gate(msg, btn){
