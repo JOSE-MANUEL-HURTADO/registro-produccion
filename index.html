@@ -84,7 +84,14 @@ input[type=checkbox]:disabled{opacity:.4;cursor:default;}.art-opsel label{displa
 .art-oprow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);}.art-oprow>b{min-width:160px;}.art-oprow div{display:flex;gap:12px;flex-wrap:wrap;}.art-oprow label{display:flex;gap:6px;align-items:center;}.art-oprow select{width:auto;}
 /* Pantalla del operario: el único lugar con verde y rojo */
 .artop{min-height:100vh;display:flex;flex-direction:column;padding:calc(var(--st) + 10px) 14px calc(var(--sb) + 14px);gap:12px;}
-.artop-top{display:flex;justify-content:space-between;align-items:center;}.artop-brand{font-family:var(--art-t);font-size:26px;font-weight:700;letter-spacing:.2em;}
+.artop-top{display:flex;justify-content:space-between;align-items:center;}.artop-brand{display:flex;align-items:center;gap:12px;}
+.art-sym{height:44px;width:auto;flex:none;display:block;}
+.artop .art-sym{height:36px;}.artop .art-name{font-size:19px;letter-spacing:.28em;}
+.art-name{font-family:var(--sans);font-weight:300;font-size:24px;letter-spacing:.32em;line-height:1;text-transform:uppercase;color:#fff;}
+.art-name sup{font-size:.35em;letter-spacing:0;vertical-align:top;margin-left:-.2em;}
+.art-brand .brand-sub{font-family:var(--art-t);font-weight:700;letter-spacing:.24em;color:#d6d4d1;font-size:11px;margin-top:7px;}
+.top .art-name{font-size:21px;}
+@media(max-width:640px){.top .art-sym{height:36px;}.top .art-name{font-size:16px;letter-spacing:.26em;}}
 .artop-who{display:flex;gap:8px;align-items:center;color:var(--text2);}
 .artop-bar{display:flex;align-items:center;gap:14px;border:1px solid var(--border);padding:10px 14px;background:var(--surface2);}
 .artop-est{font-family:var(--art-t);font-size:34px;font-weight:700;text-transform:uppercase;line-height:1;}
@@ -526,7 +533,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.15';
+const APP_VERSION = '7.16';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -615,6 +622,8 @@ const ICON = {
   ref:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10"/></svg>'
 };
 const SYMBOL = '<svg viewBox="30 60 990 755" aria-hidden="true"><path fill="none" stroke="#fff" stroke-width="22" stroke-linejoin="round" d="M48 80H1000V160L920 240H210M210 160H1000M210 160V318H1000V475H210M210 240L48 395H1000L920 475M210 475L48 632H1000V795H178M210 475V632M210 555H1000M1000 632L920 712H48"/></svg>';
+// Logo de Ártica según su manual: símbolo + ÁRTICA (geométrica liviana, muy espaciada) + descriptor
+const artBrandHTML = sub => `<div class="brand art-brand"><img class="art-sym" src="icons/artica_simbolo.png" alt=""><div><div class="art-name">Ártica<sup>®</sup></div><div class="brand-sub">${sub}</div></div></div>`;
 const brandHTML = sub => `<div class="brand">${SYMBOL}<div><div class="brand-name">Elíptica<sup>®</sup></div><div class="brand-sub">${sub}</div></div></div>`;
 
 // ════════════════════════════════════════════════════════════════
@@ -1057,7 +1066,7 @@ const liveHTML = () => `<span class="live ${S.live?'':'off'}" id="live"><i></i>$
 function shell(inner){
   return `${window.__DEMO__ ? DEMO.bar() : ''}
   <header class="top">
-    ${S.view === 'artica' ? `<div class="brand"><div><div class="brand-name">ÁRTICA</div><div class="brand-sub">Seguimiento del vidrio · v${APP_VERSION}</div></div></div>` : brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
+    ${S.view === 'artica' ? artBrandHTML('Vidrio arquitectónico · v' + APP_VERSION) : brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
     <div class="top-r">
       ${veArtica() ? `<button class="btn sm" title="Cambiar de empresa" onclick="cambiarEmpresa()">${S.view === 'artica' ? 'Elíptica' : 'Ártica'} ⇄</button>` : ''}
       ${S.view === 'artica' && isGerente() ? `<button class="btn sm primary" title="Escanear piezas de vidrio en una estación" onclick="goArticaOperario(true)">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
@@ -1603,7 +1612,7 @@ async function goArticaOperario(cam, codigo){
   AO.est = AO.ests.includes(g) ? g : AO.ests.length === 1 ? AO.ests[0] : null;
   renderOperario();
 }
-const shellOp = inner => `<div class="artop"><header class="artop-top"><div class="artop-brand">ÁRTICA</div><div class="artop-who">${esc(S.perfil.nombre || S.user.email)}${S.view === 'artop' && veArtica() ? ` <button class="btn sm" onclick="artopSalir()">Salir</button>` : ''} <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button></div></header>${inner}</div>`;
+const shellOp = inner => `<div class="artop"><header class="artop-top"><div class="artop-brand"><img class="art-sym" src="icons/artica_simbolo.png" alt=""><span class="art-name">Ártica<sup>®</sup></span></div><div class="artop-who">${esc(S.perfil.nombre || S.user.email)}${S.view === 'artop' && veArtica() ? ` <button class="btn sm" onclick="artopSalir()">Salir</button>` : ''} <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button></div></header>${inner}</div>`;
 function artopSalir(){ artopCamStop(); goArtica(); }
 function renderOperario(){
   if(!AO.est){
