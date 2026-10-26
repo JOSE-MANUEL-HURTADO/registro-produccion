@@ -63,7 +63,15 @@ function buildParts(rows){
 }
 
 // ── Ejecución en el Mac (JavaScript for Automation) ─────────────
+// Si falla (internet caído, Mac recién despertado, Supabase lento) lo reintenta 2 veces más, cada 5 minutos
 function run(argv){
+  let ult;
+  for(let k = 1; k <= 3; k++){
+    try{ return respaldar(k, 3); }catch(e){ ult = e; if(k < 3) delay(300); }
+  }
+  throw ult;
+}
+function respaldar(intento, total){
   ObjC.import('Foundation');
   const app = Application.currentApplication(); app.includeStandardAdditions = true;
   const HOME = ObjC.unwrap($.NSHomeDirectory());
@@ -85,7 +93,7 @@ function run(argv){
     // 1. Iniciar sesión con el usuario de respaldo
     writeText(tmp + '/login.json', JSON.stringify({email: cfg.email, password: pw}));
     sh(`chmod 600 ${q(tmp + '/login.json')}`);
-    const code = sh(`/usr/bin/curl -sS --max-time 60 -o ${q(tmp + '/tok.json')} -w '%{http_code}' -X POST ${q(cfg.url + '/auth/v1/token?grant_type=password')} -H ${q('apikey: ' + cfg.key)} -H 'Content-Type: application/json' --data @${q(tmp + '/login.json')}`);
+    const code = sh(`/usr/bin/curl -sS --connect-timeout 30 --retry 3 --retry-delay 20 --retry-all-errors --max-time 60 -o ${q(tmp + '/tok.json')} -w '%{http_code}' -X POST ${q(cfg.url + '/auth/v1/token?grant_type=password')} -H ${q('apikey: ' + cfg.key)} -H 'Content-Type: application/json' --data @${q(tmp + '/login.json')}`);
     sh(`rm -f ${q(tmp + '/login.json')}`);
     const tj = JSON.parse(readText(tmp + '/tok.json'));
     if(code !== '200' || !tj.access_token) throw new Error('No se pudo iniciar sesión (' + code + '): ' + (tj.error_description || tj.msg || tj.message || ''));
@@ -96,7 +104,7 @@ function run(argv){
     let rows = [];
     for(let off = 0, k = 0; ; off += 1000, k++){
       const f = tmp + '/p' + k + '.json';
-      const c = sh(`/usr/bin/curl -sS --max-time 180 -o ${q(f)} -w '%{http_code}' -H @${q(tmp + '/h.txt')} ${q(cfg.url + '/rest/v1/base_exportable?select=*&offset=' + off + '&limit=1000')}`);
+      const c = sh(`/usr/bin/curl -sS --connect-timeout 30 --retry 3 --retry-delay 20 --retry-all-errors --max-time 180 -o ${q(f)} -w '%{http_code}' -H @${q(tmp + '/h.txt')} ${q(cfg.url + '/rest/v1/base_exportable?select=*&offset=' + off + '&limit=1000')}`);
       const arr = JSON.parse(readText(f));
       if(c !== '200' || !Array.isArray(arr)) throw new Error('Error al descargar (' + c + '): ' + JSON.stringify(arr).slice(0, 200));
       for(const r of arr) rows.push(r);
@@ -140,7 +148,7 @@ function run(argv){
     const fallas = []; let extra = '';
     const rpc = (fn, body, out) => {
       writeText(tmp + '/b.json', JSON.stringify(body || {}));
-      const c = sh(`/usr/bin/curl -sS --max-time 180 -o ${q(out)} -w '%{http_code}' -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/b.json')} ${q(cfg.url + '/rest/v1/rpc/' + fn)}`);
+      const c = sh(`/usr/bin/curl -sS --connect-timeout 30 --retry 3 --retry-delay 20 --retry-all-errors --max-time 180 -o ${q(out)} -w '%{http_code}' -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/b.json')} ${q(cfg.url + '/rest/v1/rpc/' + fn)}`);
       const txt = readText(out);
       if(c !== '200') throw new Error(fn + ' (' + c + '): ' + String(txt).slice(0, 200));
       return txt;
@@ -207,7 +215,7 @@ function run(argv){
         const local = pdir + '/' + o.name;
         if(man[o.name] === o.updated_at && existe(local)) continue;
         const enc = o.name.split('/').map(encodeURIComponent).join('/');
-        const c = sh(`/usr/bin/curl -sS --max-time 180 -o ${q(tmp + '/pdf.bin')} -w '%{http_code}' -H @${q(tmp + '/h2.txt')} ${q(cfg.url + '/storage/v1/object/authenticated/ordenes/' + enc)}`);
+        const c = sh(`/usr/bin/curl -sS --connect-timeout 30 --retry 3 --retry-delay 20 --retry-all-errors --max-time 180 -o ${q(tmp + '/pdf.bin')} -w '%{http_code}' -H @${q(tmp + '/h2.txt')} ${q(cfg.url + '/storage/v1/object/authenticated/ordenes/' + enc)}`);
         if(c !== '200'){ errores++; continue; }
         const sub = local.slice(0, local.lastIndexOf('/'));
         if(existe(local)){   // cambió en la app: guardar la versión anterior
@@ -226,7 +234,7 @@ function run(argv){
 
     // 7. Anotar la copia en la app (aparece en el aviso del gerente)
     writeText(tmp + '/r.json', JSON.stringify({p_origen: 'mac', p_filas: rows.length}));
-    sh(`/usr/bin/curl -sS --max-time 60 -o /dev/null -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/r.json')} ${q(cfg.url + '/rest/v1/rpc/registrar_respaldo')}`);
+    sh(`/usr/bin/curl -sS --connect-timeout 30 --retry 3 --retry-delay 20 --retry-all-errors --max-time 60 -o /dev/null -X POST -H @${q(tmp + '/h.txt')} -H 'Content-Type: application/json' --data @${q(tmp + '/r.json')} ${q(cfg.url + '/rest/v1/rpc/registrar_respaldo')}`);
 
     const falla = fallas.length ? ' · AVISO: ' + fallas.join(' | ') : '';
     log((fallas.length ? 'PARCIAL ' : 'OK ') + rows.length + ' filas' + extra + ' -> ' + destino + '/' + nombre + aviso + falla);
@@ -234,8 +242,8 @@ function run(argv){
     else notify(rows.length.toLocaleString('es-CO') + ' registros' + extra + (aviso ? ' en Respaldos Eliptica' : ''), nombre);
     return (fallas.length ? 'PARCIAL ' : 'OK ') + rows.length + ' filas' + extra + ' -> ' + destino + '/' + nombre + aviso + falla;
   }catch(e){
-    log('ERROR ' + e.message);
-    notify('No se pudo hacer la copia: ' + e.message, 'Revisa el registro en Consola');
+    log('ERROR (intento ' + intento + ' de ' + total + ') ' + e.message);
+    if(intento >= total) notify('No se pudo hacer la copia: ' + e.message, 'Revisa el registro en Consola');
     throw e;
   }finally{
     if(tmp) try{ sh(`rm -rf ${q(tmp)}`); }catch(e){}
@@ -249,7 +257,7 @@ ANTES=$(wc -l < "$LOG" 2>/dev/null || echo 0)
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 for i in {1..180}; do
   sleep 5
-  NUEVO=$(tail -n +$((ANTES+1)) "$LOG" 2>/dev/null | grep -E "OK |PARCIAL |ERROR " | tail -1 || true)
+  NUEVO=$(tail -n +$((ANTES+1)) "$LOG" 2>/dev/null | grep -E "OK |PARCIAL |ERROR \(intento 3" | tail -1 || true)
   [[ -n "$NUEVO" ]] && break
 done
 echo ""
