@@ -131,6 +131,7 @@ a.btn{color:var(--text);}
   display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .top .brand-name{font-size:20px;}
 .top .brand svg{width:32px;height:25px;}
+.op-res{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;}.op-res button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:1px solid var(--border);background:var(--surface);width:100%;font-size:13px;}.op-res button:hover{border-color:var(--text2);}.op-res small{color:var(--text2);letter-spacing:.06em;}.op-res-e{font-size:12px;color:var(--text2);white-space:nowrap;}
 .top-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
 @media(max-width:640px){.top-r{gap:6px;}.top-r .icon-btn{width:40px;height:40px;}}
 .who{text-align:right;font-family:var(--sans);font-size:12px;letter-spacing:.08em;color:var(--text2);}
@@ -518,7 +519,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.08';
+const APP_VERSION = '7.09';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -776,6 +777,14 @@ const API = {
   async pushGuardar(sub){ const j = sub.toJSON(); const {error} = await this.sb.from('push_subs').upsert({endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, dispositivo: navigator.userAgent.slice(0,200)}); if(error) throw error; },
   async pushQuitar(endpoint){ const {error} = await this.sb.from('push_subs').delete().eq('endpoint', endpoint); if(error) throw error; },
   async obraAliasGuardar(alias, obra){ const {error} = await this.sb.from('obras_alias').upsert({alias, obra}); if(error) throw error; },
+  // Buscar OP en toda la base: "6251-7", "6251" (todas sus sub-OP), "006251-7", "6251-7.2" (OP de instalación)
+  async buscarOP(q){
+    q = String(q || '').toUpperCase().replace(/\s+/g, '').replace(/^0+(?=\d)/, '');
+    if(!q) return [];
+    let r = this.sb.from('items').select('obra,op,op_instalacion,item,status,despachado,instalado').order('id').limit(2000);
+    r = q.includes('.') ? r.ilike('op_instalacion', q + '%') : q.includes('-') ? r.or(`op.eq.${q},op.ilike.${q}%`) : r.or(`op.eq.${q},op.ilike.${q}-%`);
+    const {data, error} = await r; if(error) throw error; return data || [];
+  },
   async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
   // ── Órdenes de producción en PDF (carpeta privada "ordenes", un archivo por número: ops/6235.pdf) ──
   async ordenesLista(){
@@ -1772,7 +1781,7 @@ function renderHome(){
     </div>
     <div class="home-head">
       <div><div class="h1">${anual ? 'Obras por año' : 'Obras activas'}</div><div class="h1-sub">${sub}</div>${puedeRegistrar() && !anual ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}</div>
-      <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
+      <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra u OP (6251-7)…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div id="yearChips"></div>
     <div class="legend">${legend.map(([c,t]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')}</div>
@@ -2299,14 +2308,15 @@ function renderAnualBox(){
   const q = S.q.trim().toUpperCase();
   const m = idx.byYear.get(S.anio) || new Map();
   const list = [...m.values()].filter(o => !q || o.obra.toUpperCase().includes(q)).sort((a,b) => nat(a.obra,b.obra));
+  const opH = esQOP(q) ? opBuscarHTML() : '';
   const all = [...m.values()];
   const soloCola = all.filter(o => o.cola === o.n).length;
   const resumen = S.anio === 'S/F'
     ? `<div class="h1-sub" style="margin:-4px 0 14px">${fmtN(all.length)} obras con ítems sin fecha de producción registrada</div>`
     : `<div class="h1-sub" style="margin:-4px 0 14px"><b style="color:var(--text)">${fmtN(all.length - soloCola)}</b> obras con producción en ${S.anio}${soloCola ? ` · <b style="color:var(--cola)">${fmtN(soloCola)}</b> solo con ítems en cola (OP de ${S.anio})` : ''}</div>`;
-  $('#obrasBox').innerHTML = resumen + (list.length
+  $('#obrasBox').innerHTML = resumen + opH + (list.length
     ? `<div class="grid-obras">${list.map(o => anualCard(o, idx.obraYears.get(o.obra))).join('')}</div>`
-    : `<div class="empty">No hay obras${q ? ' que coincidan con “'+esc(S.q)+'”' : ''} en ${esc(S.anio)}.</div>`);
+    : opH ? '' : `<div class="empty">No hay obras${q ? ' que coincidan con “'+esc(S.q)+'”' : ''} en ${esc(S.anio)}.</div>`);
 }
 
 function anualCard(o, ys){
@@ -2332,15 +2342,17 @@ function toggleSoloCola(){ S.soloCola = !S.soloCola; try{ localStorage.setItem('
 function renderObrasBox(res){
   const q = S.q.trim().toUpperCase();
   const conCola = res.filter(o => o['EN COLA'] > 0).length;
-  let list = q ? res.filter(o => o.obra.toUpperCase().includes(q)) : res;
+  const qOP = esQOP(q);
+  let list = q ? res.filter(o => o.obra.toUpperCase().includes(q) || (qOP && obraTieneQ(o.obra, q))) : res;
   if(S.soloCola) list = list.filter(o => o['EN COLA'] > 0);
   let h = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <button class="chip ${S.soloCola ? 'on' : ''}" onclick="toggleSoloCola()" title="Ocultar las obras que no tienen ítems en cola">Solo con ítems en cola · ${fmtN(conCola)}</button>
       ${S.soloCola && res.length > conCola ? `<small style="opacity:.7">${fmtN(res.length - conCola)} obra${res.length - conCola === 1 ? '' : 's'} oculta${res.length - conCola === 1 ? '' : 's'}</small>` : ''}</div>`;
+  if(qOP) h += opBuscarHTML();
   h += list.length ? `<div class="grid-obras">${list.map(obraCard).join('')}</div>`
-                   : `<div class="empty">${q ? 'Ninguna obra activa coincide con “'+esc(S.q)+'”.' : S.soloCola ? 'Ninguna obra activa tiene ítems en cola.' : 'No hay obras con ítems pendientes.'}</div>`;
+                   : qOP ? '' : `<div class="empty">${q ? 'Ninguna obra activa coincide con “'+esc(S.q)+'”.' : S.soloCola ? 'Ninguna obra activa tiene ítems en cola.' : 'No hay obras con ítems pendientes.'}</div>`;
   // Otras obras (terminadas): búsqueda en toda la base
-  if(q.length >= 2){
+  if(q.length >= 2 && !qOP){
     if(S.obrasAll){
       const act = new Set(res.map(o=>o.obra));
       const cnt = new Map();
@@ -2353,6 +2365,29 @@ function renderObrasBox(res){
   }
   $('#obrasBox').innerHTML = h;
 }
+
+// Búsqueda de OP desde la pantalla de obras: si lo escrito parece una OP, se busca en toda la base
+const esQOP = q => /^0*\d{3,6}(-\d{0,3})?(\.\d{0,3})?$/.test(String(q || '').replace(/\s+/g, ''));
+let _opT = null;
+function opBuscarHTML(){
+  const q = S.q.trim();
+  if(!esQOP(q)) return '';
+  const r = S.opRes;
+  if(!r || r.q !== q){
+    clearTimeout(_opT);
+    _opT = setTimeout(async () => { let l = []; try{ l = await API.buscarOP(q); }catch(e){ l = null; } S.opRes = {q, l};
+      if(S.view === 'home' && S.q.trim() === q){ const b = $('#opBox'); if(b) b.innerHTML = opBuscarHTML(); } }, 250);
+    return '<div id="opBox"><div class="section-t">OP</div><div class="loading" style="padding:10px"><div class="spin"></div>Buscando la OP en toda la base</div></div>';
+  }
+  if(!r.l) return '<div id="opBox"><div class="warn">No se pudo buscar la OP. Revisa la conexión.</div></div>';
+  const g = new Map(); for(const it of r.l){ const k = it.obra + '|' + it.op; if(!g.has(k)) g.set(k, {obra: it.obra, op: it.op, item: it.item, n: 0, cola: 0, desp: 0, inst: 0}); const x = g.get(k); x.n++; if(it.status === 'EN COLA' && !it.despachado) x.cola++; if(it.despachado) x.desp++; if(it.instalado) x.inst++; }
+  const l = [...g.values()].sort((a, b) => nat(a.op, b.op));
+  const est = x => x.inst === x.n ? 'Instalada' : x.desp === x.n ? 'Despachada' : x.cola === x.n ? 'En cola' : `${fmtN(x.n - x.cola)} de ${fmtN(x.n)} fabricadas`;
+  return `<div id="opBox"><div class="section-t">OP que coinciden con “${esc(q)}”</div>${l.length ? `<div class="op-res">${l.slice(0, 60).map(x =>
+    `<button onclick="openObra(decodeURIComponent('${encodeURIComponent(x.obra)}'), false, '', {op: decodeURIComponent('${encodeURIComponent(x.op)}'), estado: 'TODOS'})"><span><b>OP ${esc(x.op)}</b>${x.item ? ' · ' + esc(x.item) : ''}<br><small>${esc(x.obra)}</small></span><span class="op-res-e">${fmtN(x.n)} u · ${est(x)}</span></button>`).join('')}</div>` : '<div class="empty">No hay ninguna OP con ese número en la base.</div>'}</div>`;
+}
+// Obras que contienen la OP buscada (de los ítems activos ya cargados)
+const obraTieneQ = (obra, q) => { const qq = q.replace(/\s+/g, '').replace(/^0+(?=\d)/, ''); return S.activos.some(it => it.obra === obra && [it.op, it.op_instalacion].some(v => v && String(v).toUpperCase().startsWith(qq))); };
 
 async function buscarTodas(){
   $('#obrasBox').insertAdjacentHTML('beforeend','<div class="loading"><div class="spin"></div>Buscando en toda la base</div>');
