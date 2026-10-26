@@ -94,6 +94,7 @@ body.artica .sheet{background:#2f2e2c;}
 .artop-tipo{font-size:20px;margin-top:6px;}.artop-n{font-family:var(--art-t);font-size:30px;margin-top:10px;}.artop-msg{font-size:22px;margin-top:10px;}
 .artop-in{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;}.artop-in input{font-size:20px;min-height:56px;}
 .artop-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}.artop-acts .btn{min-height:56px;}
+@media(max-width:640px){.artop-acts .btn{font-size:11px;letter-spacing:.06em;padding:6px 4px;white-space:normal;line-height:1.2;}.artop-panel{min-height:34vh;}.artop-acts{grid-template-columns:1fr 1fr;}.artop-acts #aoCamBtn{grid-column:1/-1;order:-1;min-height:64px;font-size:14px;}}
 .artop-vid{width:100%;max-height:30vh;object-fit:cover;background:#000;}
 .artop-elige{display:flex;flex-direction:column;gap:12px;margin-top:20px;}.artop-t{font-family:var(--art-t);font-size:30px;font-weight:700;text-transform:uppercase;}
 .artop-estbtn{min-height:84px;border:1px solid var(--border2);font-family:var(--art-t);font-size:34px;font-weight:700;text-transform:uppercase;background:var(--surface2);}
@@ -130,7 +131,8 @@ a.btn{color:var(--text);}
   display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .top .brand-name{font-size:20px;}
 .top .brand svg{width:32px;height:25px;}
-.top-r{display:flex;align-items:center;gap:8px;}
+.top-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+@media(max-width:640px){.top-r{gap:6px;}.top-r .icon-btn{width:40px;height:40px;}}
 .who{text-align:right;font-family:var(--sans);font-size:12px;letter-spacing:.08em;color:var(--text2);}
 .who .rol{display:block;font-size:10px;letter-spacing:.22em;color:var(--muted);text-transform:uppercase;}
 .icon-btn{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);color:var(--text2);}
@@ -516,7 +518,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.06';
+const APP_VERSION = '7.07';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1037,7 +1039,7 @@ function shell(inner){
     ${S.view === 'artica' ? `<div class="brand"><div><div class="brand-name">ÁRTICA</div><div class="brand-sub">Seguimiento del vidrio · v${APP_VERSION}</div></div></div>` : brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
     <div class="top-r">
       ${veArtica() ? `<button class="btn sm" title="Cambiar de empresa" onclick="cambiarEmpresa()">${S.view === 'artica' ? 'Elíptica' : 'Ártica'} ⇄</button>` : ''}
-      ${S.view === 'artica' && isGerente() ? `<button class="btn sm" title="Abrir la pantalla de una estación" onclick="goArticaOperario()">Estación</button>` : ''}
+      ${S.view === 'artica' && isGerente() ? `<button class="btn sm primary" title="Escanear piezas de vidrio en una estación" onclick="goArticaOperario(true)">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(rolTxt(S.perfil.rol))}</span></div>
       ${S.view === 'artica' ? '' : puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       ${veDash() && S.view !== 'artica' ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
@@ -1563,8 +1565,8 @@ async function artPrefijo(pp, e){ try{ await API.artPrefijoGuardar(pp, e); toast
 
 // ════════════════ Pantalla del operario (estación) ════════════════
 const AO = {est:null, ests:[], ult:null, hoy:0, busy:false, stream:null, timer:null};
-async function goArticaOperario(){
-  S.view = 'artop'; aplicarEmpresa();
+async function goArticaOperario(cam, codigo){
+  S.view = 'artop'; aplicarEmpresa(); AO.autoCam = !!cam; AO.pend = codigo || null;
   $('#app').innerHTML = '<div class="loading"><div class="spin"></div>Cargando estación</div>';
   try{ AO.ests = await API.artMisEstaciones(); }catch(e){ return $('#app').innerHTML = shellOp(`<div class="warn">${esc(artFaltaSQL(e))}</div>`); }
   if(!AO.ests.length) return $('#app').innerHTML = shellOp('<div class="warn">Tu usuario no tiene estaciones asignadas. Pídele al director de operaciones que te asigne tu estación.</div>');
@@ -1576,7 +1578,7 @@ const shellOp = inner => `<div class="artop"><header class="artop-top"><div clas
 function artopSalir(){ artopCamStop(); goArtica(); }
 function renderOperario(){
   if(!AO.est){
-    $('#app').innerHTML = shellOp(`<div class="artop-elige"><div class="artop-t">Elige tu estación</div>${AO.ests.map(e => `<button class="artop-estbtn" onclick="artopEst('${e}')">${ART_NOM[e]}</button>`).join('')}</div>`);
+    $('#app').innerHTML = shellOp(`<div class="artop-elige"><div class="artop-t">${isGerente() ? '¿En qué estación vas a escanear?' : 'Elige tu estación'}</div>${AO.ests.map(e => `<button class="artop-estbtn" onclick="artopEst('${e}')">${ART_NOM[e]}</button>`).join('')}</div>`);
     return;
   }
   const u = AO.ult;
@@ -1584,13 +1586,15 @@ function renderOperario(){
     <div class="artop-bar"><div><span class="lbl">Estación</span><div class="artop-est">${ART_NOM[AO.est]}</div></div>
       ${AO.ests.length > 1 ? `<button class="btn sm" onclick="AO.est=null;renderOperario()">Cambiar</button>` : ''}
       <div class="artop-cnt"><b id="aoHoy">${fmtN(AO.hoy)}</b><span>hoy</span></div></div>
+    <video id="aoVid" class="artop-vid hidden" playsinline muted></video>
     <div id="aoPanel" class="artop-panel ${u ? 'st-' + u.estado : ''}">${artopPanelHTML(u)}</div>
     <form id="aoForm" class="artop-in" autocomplete="off"><input id="aoCod" placeholder="Escanea con la pistola o escribe el código" autocomplete="off" autocapitalize="characters" inputmode="text"><button class="btn primary" type="submit">OK</button></form>
-    <div class="artop-acts"><button class="btn" onclick="artopDeshacer()">Deshacer último</button><button class="btn" onclick="artopBuscar()">Buscar código</button><button class="btn" id="aoCamBtn" onclick="artopCam()">${ICON.scan} Cámara</button></div>
-    <video id="aoVid" class="artop-vid hidden" playsinline muted></video>`);
+    <div class="artop-acts"><button class="btn" onclick="artopDeshacer()">Deshacer último</button><button class="btn" onclick="artopBuscar()">Buscar código</button><button class="btn" id="aoCamBtn" onclick="artopCam()">${ICON.scan} Cámara</button></div>`);
   const f = $('#aoForm'), i = $('#aoCod');
   f.onsubmit = ev => { ev.preventDefault(); const v = i.value.trim(); i.value = ''; if(v) artopEscanear(v); };
-  i.focus();
+  if(!matchMedia('(pointer:coarse)').matches) i.focus();   // en celular no abrir el teclado
+  if(AO.pend){ const c = AO.pend; AO.pend = null; setTimeout(() => artopEscanear(c), 50); }
+  else if(AO.autoCam && !AO.stream){ AO.autoCam = false; artopCam(); }
   // La pistola escribe como teclado: mantener el foco en el campo
   document.onclick = ev => { if(S.view === 'artop' && !ev.target.closest('button,input,select,a,.ov')) { const x = $('#aoCod'); if(x) x.focus(); } };
   API.artMiDia(AO.est).then(d => { AO.hoy = d.hoy || 0; const h = $('#aoHoy'); if(h) h.textContent = fmtN(AO.hoy); }).catch(() => {});
@@ -3559,6 +3563,10 @@ async function scCodigo(txt, manual){
   const now = Date.now();
   if(!manual && txt === SC.last && now - SC.lastT < 4000) return;
   SC.last = txt; SC.lastT = now;
+  if(/^\s*(P\d+-)?ART[:\-]?\d+\s*$/i.test(txt)){
+    if(!isGerente()){ scBeep(false); return toast('Esa es una etiqueta de vidrio de Ártica: se escanea en la pantalla de la estación', true); }
+    scBeep(true); scStop(); return goArticaOperario(false, txt.trim());
+  }
   const p = scParse(txt);
   if(!p){ scBeep(false); return toast('Ese código no es de una OP de Elíptica', true); }
   if((p.acta || p.rem || p.od) && esInstalador()){ scBeep(false); return toast('Escanea el QR de la OP o la etiqueta del ítem que instalaste', true); }
