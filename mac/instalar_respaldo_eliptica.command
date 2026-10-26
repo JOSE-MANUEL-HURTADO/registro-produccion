@@ -310,7 +310,7 @@ touch "$LOG"; ANTES=$(wc -l < "$LOG")
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 for i in {1..90}; do
   sleep 2
-  NUEVO=$(tail -n +$((ANTES+1)) "$LOG" 2>/dev/null | grep -E "OK |PARCIAL |ERROR" | tail -1)
+  NUEVO=$(tail -n +$((ANTES+1)) "$LOG" 2>/dev/null | grep -E "OK |PARCIAL |ERROR \(intento 3" | tail -1)
   [[ -n "$NUEVO" ]] && break
 done
 echo ""
