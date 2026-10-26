@@ -533,7 +533,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.18';
+const APP_VERSION = '7.19';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -792,6 +792,7 @@ const API = {
   async obrasAlias(){ const {data,error} = await this.sb.from('obras_alias').select('alias,obra'); if(error) throw error; return data || []; },
   async pushGuardar(sub){ const j = sub.toJSON(); const {error} = await this.sb.from('push_subs').upsert({endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, dispositivo: navigator.userAgent.slice(0,200)}); if(error) throw error; },
   async pushQuitar(endpoint){ const {error} = await this.sb.from('push_subs').delete().eq('endpoint', endpoint); if(error) throw error; },
+  async obraAliasBorrar(alias){ const {error} = await this.sb.from('obras_alias').delete().eq('alias', alias); if(error) throw error; },
   async obraAliasGuardar(alias, obra){ const {error} = await this.sb.from('obras_alias').upsert({alias, obra}); if(error) throw error; },
   // Buscar OP en toda la base: "6251-7", "6251" (todas sus sub-OP), "006251-7", "6251-7.2" (OP de instalación)
   async buscarOP(q){
@@ -5739,6 +5740,19 @@ async function obraIgual(i, destino){
   catch(e){ toast(`Se cargará en ${destino} (no se pudo recordar para la próxima: ${errMsg(e)})`, true); }
 }
 
+// Corregir una obra elegida por error (o que vino de un alias guardado): pasarla a otra obra o dejarla como obra nueva
+async function obraCambiar(actual, destino){
+  if(!destino) return;
+  const fs = C.filas.filter(f => f.d.obra === actual && f.d.obraOrig), origs = [...new Set(fs.map(f => f.d.obraOrig))];
+  if(!fs.length) return;
+  for(const f of fs){ if(destino === '__nueva__'){ f.d.obra = f.d.obraOrig; delete f.d.obraOrig; } else f.d.obra = destino; }
+  obrasRevisar(C.filas); renderCarga();
+  try{
+    for(const o of origs){ if(destino === '__nueva__') await API.obraAliasBorrar(o); else await API.obraAliasGuardar(o, destino); }
+    toast(destino === '__nueva__' ? `✓ Queda como obra nueva: ${origs.join(', ')}` : `✓ Se cargará en ${destino}. La próxima vez que una OP diga "${origs.join(', ')}" se hará solo`);
+  }catch(e){ toast('Cambiado aquí, pero no se pudo guardar para la próxima: ' + errMsg(e), true); }
+}
+
 // ════════════════════════════════════════════════════════════════
 //  CARGAR DESDE LAS ÓRDENES DE PRODUCCIÓN (PDF): se leen obra, OP, ítem, sistema, cantidad, vidrio,
 //  medidas, m², ubicación y fecha; cada cantidad se divide en OP de instalación (6291-1.1, .2 …)
@@ -5925,6 +5939,7 @@ function revisionHTML(){
       return `<div class="obra-card" style="cursor:default">
         <div><div class="oc-name">${esc(o.obra)} ${inf.nueva ? `<span class="badge-new">${inf.parecida?'Nombre distinto':'Obra nueva'}</span>` : ''}</div>
         <div class="oc-meta">OP ${esc(opsTxt(o.ops)) || '—'}${orig.length ? ` · en la OP dice ${esc(orig.join(', '))}` : ''}</div>
+        ${orig.length && !inf.nueva && isGerente() ? `<select style="margin-top:6px;width:100%" onchange="obraCambiar(decodeURIComponent('${encodeURIComponent(o.obra)}'), this.value)"><option value="">¿No es esta obra? Cámbiala…</option><option value="__nueva__">↩ Es una obra nueva: ${esc(orig.join(', '))}</option>${obrasParecidas(orig[0]).filter(x => x !== o.obra).map(x => `<option>${esc(x)}</option>`).join('')}</select>` : ''}
         ${inf.nueva && isGerente() ? `<select style="margin-top:6px;width:100%" onchange="obraIgual(${k}, this.value)"><option value="">¿Es una obra que ya existe? Elígela…</option>${obrasParecidas(o.obra).map(x => `<option>${esc(x)}</option>`).join('')}</select>` : ''}</div>
         <div class="oc-nums" style="grid-template-columns:repeat(3,1fr)">
           <div><b>${fmtN(o.n)}</b><span>Ítems</span></div>
