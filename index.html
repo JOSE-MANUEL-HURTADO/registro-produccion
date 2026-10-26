@@ -131,6 +131,8 @@ a.btn{color:var(--text);}
   display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .top .brand-name{font-size:20px;}
 .top .brand svg{width:32px;height:25px;}
+.av-btn{position:relative;font-size:17px;}.av-n{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#b3261e;color:#fff;font-size:11px;line-height:20px;text-align:center;font-family:var(--sans);}
+.av-lista{display:flex;flex-direction:column;gap:8px;}.av-it{border:1px solid var(--border);padding:10px 12px;font-size:13px;line-height:1.5;}.av-it.nuevo{border-color:var(--cola);box-shadow:inset 3px 0 0 var(--cola);}.av-top{display:flex;justify-content:space-between;gap:10px;}.av-top span{color:var(--text2);font-size:12px;white-space:nowrap;}.av-sub{color:var(--text2);font-size:12px;}
 .op-res{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;}.op-res button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:1px solid var(--border);background:var(--surface);width:100%;font-size:13px;}.op-res button:hover{border-color:var(--text2);}.op-res small{color:var(--text2);letter-spacing:.06em;}.op-res-e{font-size:12px;color:var(--text2);white-space:nowrap;}
 .top-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
 @media(max-width:640px){.top-r{gap:6px;}.top-r .icon-btn{width:40px;height:40px;}}
@@ -519,7 +521,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.09';
+const APP_VERSION = '7.10';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -883,6 +885,10 @@ const API = {
   async deleteItems(ids){
     for(let i=0; i<ids.length; i+=150){ const {error} = await this.sb.from('items').delete().in('id', ids.slice(i,i+150)); if(error) throw error; }
   },
+  // Avisos en la app (asistente): órdenes de despacho, programaciones y líneas de ensamble que crea el director
+  async avisos(){ const {data,error} = await this.sb.from('avisos').select('*').eq('para', S.user.id).order('creada', {ascending:false}).limit(60); if(error) throw error; return data || []; },
+  async avisosLeer(){ const {error} = await this.sb.from('avisos').update({leida: new Date().toISOString()}).eq('para', S.user.id).is('leida', null); if(error) throw error; },
+  avisosEscuchar(cb){ this.chanAv = this.sb.channel('avisos-' + S.user.id).on('postgres_changes', {event:'INSERT', schema:'public', table:'avisos', filter:'para=eq.' + S.user.id}, p => cb(p.new)).subscribe(); },
   realtime(cb, status){
     this.chan = this.sb.channel('items-cambios')
       .on('postgres_changes', {event:'*', schema:'public', table:'items'}, p => cb(p))
@@ -1019,6 +1025,7 @@ async function afterLogin(ses){
   API.ensambladores().then(l => S.ensambladores = l).catch(()=>{});
   loadOrdenes();
   if(isGerente()) loadRespaldo();
+  if(rolEs('asistente')) avisosIniciar();
   if(rolEs('cobros')) S.homeTab = 'cobros';
   if(registraInst()) cargarPersonas();
   API.realtime(onRemoteChange, st => { S.live = st === 'SUBSCRIBED'; const el=$('#live'); if(el) el.outerHTML = liveHTML(); });
@@ -1056,6 +1063,7 @@ function shell(inner){
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
       ${isGerente() && !window.__DEMO__ ? `<button class="icon-btn" id="btnAvisos" title="Avisos al celular de cada cambio" onclick="avisos()">🔔</button>` : ''}
       ${vePrecio() ? `<button class="icon-btn" title="Exportar base a Excel" onclick="exportar()">${ICON.down}</button>` : ''}
+      ${rolEs('asistente') ? `<button class="icon-btn av-btn" title="Avisos del director" onclick="avisosVer()">🔔<b id="avN" class="av-n" style="${AV.n ? '' : 'display:none'}">${AV.n}</b></button>` : ''}
       <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button>
     </div>
   </header>
@@ -1662,6 +1670,30 @@ function artopCamStop(){ clearInterval(AO.timer); AO.timer = null; if(AO.stream)
 // Elíptica · ensamble: cuántos vidrios del ítem están listos en Ártica (informativo, no bloquea)
 async function artVidriosItem(op){
   try{ const r = await API.artListos([op]); return r[0] || null; }catch(e){ return null; }
+}
+
+// ── Avisos en la app para la asistente (los crea la base cuando el director arma despachos, programaciones o líneas) ──
+const AV = {l: [], n: 0};
+async function avisosIniciar(){
+  try{ AV.l = await API.avisos(); }catch(e){ AV.l = []; }
+  avisosPintar();
+  try{ API.avisosEscuchar(a => { AV.l.unshift(a); avisosPintar(); try{ if(navigator.vibrate) navigator.vibrate([60, 40, 60]); }catch(e){}
+    toast(`🔔 ${a.tipo}${a.ops ? ' · OP ' + a.ops : ''}`); if($('#avLista')) avisosVer(); }); }catch(e){}
+  setInterval(async () => { try{ const l = await API.avisos(); if(l.length && (!AV.l.length || l[0].id !== AV.l[0].id)){ AV.l = l; avisosPintar(); } }catch(e){} }, 120000);
+}
+function avisosPintar(){ AV.n = AV.l.filter(a => !a.leida).length; const b = $('#avN'); if(b){ b.textContent = AV.n > 99 ? '99+' : AV.n; b.style.display = AV.n ? '' : 'none'; } }
+const avHora = t => { const d = new Date(t), hoy = new Date(); const h = d.toLocaleTimeString('es-CO', {hour:'numeric', minute:'2-digit'});
+  return d.toDateString() === hoy.toDateString() ? 'Hoy ' + h : d.toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) + ' · ' + h; };
+function avisosVer(){
+  const l = AV.l;
+  openSheet('Avisos', l.length ? `${fmtN(AV.n)} sin leer · órdenes de despacho, programaciones y líneas de ensamble del director` : 'Sin avisos',
+    `<div id="avLista" class="av-lista">${l.map(a => `<div class="av-it ${a.leida ? '' : 'nuevo'}">
+        <div class="av-top"><b>${esc(a.tipo)}</b><span>${avHora(a.creada)}</span></div>
+        ${a.ops ? `<div>OP <b>${esc(a.ops)}</b></div>` : ''}
+        ${a.items ? `<div class="av-sub">Ítem${(a.items || '').includes(',') ? 's' : ''}: ${esc(a.items)}${a.n ? ` · ${fmtN(a.n)} unidad${a.n === 1 ? '' : 'es'}` : ''}</div>` : ''}
+        <div class="av-sub">${esc(a.obra || '')}${a.quien ? ' · ' + esc(a.quien) : ''}</div></div>`).join('') || '<div class="empty">Todavía no hay avisos.</div>'}</div>`,
+    'Listo', async () => {});
+  if(AV.n){ API.avisosLeer().then(() => { const t = new Date().toISOString(); AV.l.forEach(a => { if(!a.leida) a.leida = t; }); avisosPintar(); }).catch(() => {}); }
 }
 
 // ── Avisos al celular (web push, solo gerente) ──
