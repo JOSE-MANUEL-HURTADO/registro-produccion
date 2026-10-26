@@ -521,7 +521,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.10';
+const APP_VERSION = '7.11';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1687,7 +1687,8 @@ const avHora = t => { const d = new Date(t), hoy = new Date(); const h = d.toLoc
 function avisosVer(){
   const l = AV.l;
   openSheet('Avisos', l.length ? `${fmtN(AV.n)} sin leer · órdenes de despacho, programaciones y líneas de ensamble del director` : 'Sin avisos',
-    `<div id="avLista" class="av-lista">${l.map(a => `<div class="av-it ${a.leida ? '' : 'nuevo'}">
+    `<div class="summary" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px"><span>Para recibirlos con la app cerrada, actívalos en este celular.</span><button class="btn sm" onclick="closeSheet();avisos()">🔔 Activar</button></div>
+    <div id="avLista" class="av-lista">${l.map(a => `<div class="av-it ${a.leida ? '' : 'nuevo'}">
         <div class="av-top"><b>${esc(a.tipo)}</b><span>${avHora(a.creada)}</span></div>
         ${a.ops ? `<div>OP <b>${esc(a.ops)}</b></div>` : ''}
         ${a.items ? `<div class="av-sub">Ítem${(a.items || '').includes(',') ? 's' : ''}: ${esc(a.items)}${a.n ? ` · ${fmtN(a.n)} unidad${a.n === 1 ? '' : 'es'}` : ''}</div>` : ''}
@@ -1720,7 +1721,7 @@ async function avisos(){
     if(per !== 'granted') return alert('No diste permiso de notificaciones. Actívalo en Ajustes → Notificaciones → Elíptica (o Registro de producción) y vuelve a tocar 🔔.');
     const nueva = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64uBytes(VAPID_PUB)});
     await API.pushGuardar(nueva);
-    toast('✓ Avisos activados: te llegará cada cambio que hagan los demás usuarios');
+    toast(isGerente() ? '✓ Avisos activados: te llegará cada cambio que hagan los demás usuarios' : '✓ Avisos activados: te llegarán al celular las órdenes de despacho, programaciones y líneas de ensamble del director');
   }catch(e){
     toast(/push_subs|schema cache|PGRST/i.test(errMsg(e)) ? 'Falta correr el SQL 50 en Supabase' : 'No se pudieron activar: ' + errMsg(e), true);
   }
