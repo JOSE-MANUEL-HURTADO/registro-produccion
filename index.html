@@ -75,7 +75,12 @@ body.artica .sheet{background:#2f2e2c;}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
 .art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#324549);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
 .art-pzs{font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
-.art-opsel{max-height:40vh;overflow:auto;border:1px solid var(--border);}.art-opsel label{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);}.art-opsel span{color:var(--muted);font-size:13px;}
+.art-opsel{max-height:40vh;overflow:auto;border:1px solid var(--border);}.art-opsel label{cursor:pointer;}.art-opsel label.on{background:rgba(255,255,255,.08);}
+/* Casillas legibles en el tema oscuro (en Safari el chulo salía blanco sobre blanco) */
+input[type=checkbox]{-webkit-appearance:none!important;appearance:none!important;flex:none;width:22px!important;height:22px!important;min-height:0!important;padding:0!important;margin:0;border:2px solid var(--text);background:transparent;display:inline-grid;place-content:center;cursor:pointer;border-radius:0;vertical-align:middle;}
+input[type=checkbox]:checked{background:var(--text);}
+input[type=checkbox]:checked::after{content:'';width:6px;height:11px;border:solid var(--bg);border-width:0 3px 3px 0;transform:translate(0,-1px) rotate(45deg);}
+input[type=checkbox]:disabled{opacity:.4;cursor:default;}.art-opsel label{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);}.art-opsel span{color:var(--muted);font-size:13px;}
 .art-oprow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);}.art-oprow>b{min-width:160px;}.art-oprow div{display:flex;gap:12px;flex-wrap:wrap;}.art-oprow label{display:flex;gap:6px;align-items:center;}.art-oprow select{width:auto;}
 /* Pantalla del operario: el único lugar con verde y rojo */
 .artop{min-height:100vh;display:flex;flex-direction:column;padding:calc(var(--st) + 10px) 14px calc(var(--sb) + 14px);gap:12px;}
@@ -521,7 +526,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.14';
+const APP_VERSION = '7.15';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1431,17 +1436,24 @@ function artEtqHTML(){
   return `<div class="cstep"><b>1</b><div><div class="cs-t">Vidrios de las OP</div><div class="cs-d">Al cargar el PDF de las OP en Elíptica, sus líneas de vidrio entran solas a Ártica. Para las OP que ya estaban cargadas, léelas una vez de las órdenes PDF guardadas.</div>
       <button class="btn sm" onclick="artLeerExistentes()">Leer vidrios de las ${fmtN(S.ordenes ? S.ordenes.size : 0)} órdenes PDF guardadas</button></div></div>
     <div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Marca las OP por cortar (${fmtN(pend.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} piezas pendientes de corte) y descarga el archivo con medidas, cantidades y la referencia OP-ítem.</div>
-      <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap"><button class="btn sm" onclick="A.ops=new Set(${esc(JSON.stringify(ops))});renderArtica()">Todas</button><button class="btn sm" onclick="A.ops=new Set();renderArtica()">Ninguna</button>
-        <button class="btn sm primary" onclick="artExportarCSV()" ${A.ops.size ? '' : 'disabled'}>Descargar CSV (${fmtN(A.ops.size)} OP)</button></div>
-      <div class="art-opsel">${ops.map(op => { const l = pend.filter(p => p.op === op); return `<label><input type="checkbox" ${ck} ${A.ops.has(op) ? 'checked' : ''} onchange="this.checked?A.ops.add('${op}'):A.ops.delete('${op}');renderArtica()"> <b>${esc(op)}</b> <span>${esc(l[0].obra || l[0].cliente || '')} · ${fmtN(l.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} pz</span></label>`; }).join('') || '<div class="empty">No hay piezas pendientes de corte.</div>'}</div></div></div>
+      <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap"><button class="btn sm" onclick="artOpTodas(true)">Todas</button><button class="btn sm" onclick="artOpTodas(false)">Ninguna</button>
+        <button class="btn sm primary" id="artCsvBtn" onclick="artExportarCSV()" ${A.ops.size ? '' : 'disabled'}>Descargar CSV (${fmtN(A.ops.size)} OP)</button></div>
+      <div class="art-opsel">${ops.map(op => { const l = pend.filter(p => p.op === op); return `<label class="${A.ops.has(op) ? 'on' : ''}"><input type="checkbox" class="art-ck" data-op="${esc(op)}" ${A.ops.has(op) ? 'checked' : ''} onchange="artOpSel(this)"> <b>${esc(op)}</b> <span>${esc(l[0].obra || l[0].cliente || '')} · ${fmtN(l.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} pz</span></label>`; }).join('') || '<div class="empty">No hay piezas pendientes de corte.</div>'}</div></div></div>
     <div class="cstep"><b>3</b><div><div class="cs-t">Cargar el plan optimizado de OPTIMA</div><div class="cs-d">Sube el archivo que exporta OPTIMA con el orden de corte. La app reconoce las medidas aunque vengan giradas (ancho y alto al revés) y deja las etiquetas en ese mismo orden.</div>
       <label class="btn sm">Elegir archivo del plan (CSV / TXT)<input type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style="display:none" onchange="artLeerPlan(this.files[0]); this.value=''"></label>
       ${plan ? `<div class="summary" style="margin-top:8px"><b>${esc(plan.nombre)}</b> · ${fmtN(plan.etq.length)} etiquetas en orden de corte${plan.sin.length ? ` · <b style="color:var(--danger)">${fmtN(plan.sin.length)} filas sin pieza que coincida</b>` : ''}${plan.dudosas ? ` · ${plan.dudosas} medidas giradas reconocidas` : ''}</div>
         ${plan.sin.length ? `<div class="warn">No encontré en Ártica: ${esc(plan.sin.slice(0, 12).join(' · '))}${plan.sin.length > 12 ? '…' : ''}</div>` : ''}` : ''}</div></div>
     <div class="cstep"><b>4</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ${plan ? '<b>en el orden de corte del plan</b>' : 'por OP y medida (carga el plan de OPTIMA para imprimirlas en el orden de corte)'}. Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" onclick="artImprimirEtq()" ${plan || A.ops.size ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : `Imprimir etiquetas de ${fmtN(A.ops.size)} OP marcadas`}</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" id="artEtqBtn" onclick="artImprimirEtq()" ${plan || A.ops.size ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : `Imprimir etiquetas de ${fmtN(A.ops.size)} OP marcadas`}</button>
         <button class="btn sm" onclick="artReimprimirBuscar()">Reimprimir una etiqueta</button></div></div></div>`;
 }
+// Marcar OP sin volver a dibujar la página (la lista no salta)
+function artOpBotones(){
+  const c = $('#artCsvBtn'); if(c){ c.disabled = !A.ops.size; c.textContent = `Descargar CSV (${fmtN(A.ops.size)} OP)`; }
+  const e = $('#artEtqBtn'); if(e && !A.plan){ e.disabled = !A.ops.size; e.textContent = `Imprimir etiquetas de ${fmtN(A.ops.size)} OP marcadas`; }
+}
+function artOpSel(el){ const op = el.dataset.op; el.checked ? A.ops.add(op) : A.ops.delete(op); el.closest('label').classList.toggle('on', el.checked); artOpBotones(); }
+function artOpTodas(si){ document.querySelectorAll('.art-ck').forEach(el => { el.checked = si; si ? A.ops.add(el.dataset.op) : A.ops.delete(el.dataset.op); el.closest('label').classList.toggle('on', si); }); artOpBotones(); }
 // 1. Leer los vidrios de las órdenes PDF ya guardadas
 async function artLeerExistentes(){
   if(!S.ordenes || !S.ordenes.size) return toast('No hay órdenes PDF guardadas', true);
