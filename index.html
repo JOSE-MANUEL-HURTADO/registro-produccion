@@ -521,7 +521,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.11';
+const APP_VERSION = '7.12';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -804,7 +804,7 @@ const API = {
   async ordenSubir(num, file){ const {error} = await this.sb.storage.from('ordenes').upload('ops/' + num + '.pdf', file, {upsert:true, contentType:'application/pdf', cacheControl:'3600'}); if(error) throw error; },
   async ensambladores(){ const {data,error} = await this.sb.from('ensambladores').select('nombre').eq('activo',true).order('nombre'); if(error) throw error; return data.map(r=>r.nombre); },
   async update(ids, patch){
-    if(rolEs('cobros','instalador')) return this.instalacion(ids, patch);   // solo instalación, por la función de la base
+    if(rolEs('cobros','instalador','entrega')) return this.instalacion(ids, patch);   // solo instalación, por la función de la base
     let out = [];
     for(let i=0; i<ids.length; i+=150){
       const {data,error} = await this.sb.from('items').update(patch).in('id', ids.slice(i,i+150)).select('*');
@@ -1016,7 +1016,7 @@ async function afterLogin(ses){
     window.addEventListener('popstate', onPop);
     history.replaceState({v:'scan'}, '');
     if(esPlanta()){ API.ensambladores().then(l => S.ensambladores = l).catch(()=>{}); cargarPersonas(); }
-    if(esInstalador()) cargarPersonas();
+    if(esInstalador() || rolEs('entrega')) cargarPersonas();
     S.view = ''; SC.est = scEstaciones()[0].k; SC.fecha = today();
     return goScan();
   }
@@ -3449,7 +3449,7 @@ const SC_EST = [
 const SC = {est:null, parcial:false, ens:'', rem:'', inst:'', instPiso:'', instPend:null, od:null, fecha:null, log:[], stream:null, timer:null, last:'', lastT:0, det:null, busy:false};
 const SC_CAMPO = {
   conductor: [{k:'rem', t:'Recibido de remisión'}],
-  entrega:   [{k:'entr', t:'Entrega a obra'}],
+  entrega:   [{k:'entr', t:'Entrega a obra'}, {k:'inst', t:'Instalación'}],   // entrega a obra también instala (SQL 64)
   recibe:    [{k:'rec', t:'Recibir en obra'}]
 };
 const SC_PLANTA = () => SC_EST.filter(e => (e.proc && e.k !== 'programado') || ['ini','fin','desp'].includes(e.k));   // sin programar, instalar ni entregar
@@ -3497,14 +3497,14 @@ function goScan(){
   if(!SC.est || !scEstaciones().some(e => e.k === SC.est)) SC.est = scEstaciones()[0].k;
   if(!SC.fecha) SC.fecha = today();
   SC.instPiso = ''; SC.instPend = null;   // el piso de instalación se confirma cada vez que se entra al escáner
-  if(esInstalador()) SC.inst = '';         // y el instalador elige su nombre cada vez (no hay uno por defecto)
+  if(esInstalador() || rolEs('entrega')) SC.inst = '';         // y el instalador elige su nombre cada vez (no hay uno por defecto)
   renderScan();
 }
 function renderScan(){
   $('#app').innerHTML = shell(`
     ${soloScan() ? '' : `<button class="back" onclick="history.back()">${ICON.back} Volver</button>`}
-    <div class="obra-title"><div><div class="h1">${esCampo() || esInstalador() ? esc(scEst().t) : 'Escanear OP'}</div><div class="h1-sub">${esInstalador() ? 'Elige el piso y escanea la OP o la etiqueta de lo que instalaste' : esCampo() ? 'Escanea el código QR' : 'Elige la estación y escanea el código de la orden · ' + liveHTML()}</div></div></div>
-    <div class="sc-est" ${esCampo() || esInstalador() ? 'style="display:none"' : ''}>${scEstaciones().map(e => `<button class="chip ${SC.est===e.k?'on':''}" onclick="scSetEst('${e.k}')">${e.t}</button>`).join('')}</div>
+    <div class="obra-title"><div><div class="h1" id="scTit">${esCampo() || esInstalador() ? esc(scEst().t) : 'Escanear OP'}</div><div class="h1-sub">${esInstalador() ? 'Elige el piso y escanea la OP o la etiqueta de lo que instalaste' : esCampo() ? 'Escanea el código QR' : 'Elige la estación y escanea el código de la orden · ' + liveHTML()}</div></div></div>
+    <div class="sc-est" ${(esCampo() || esInstalador()) && scEstaciones().length < 2 ? 'style="display:none"' : ''}>${scEstaciones().map(e => `<button class="chip ${SC.est===e.k?'on':''}" onclick="scSetEst('${e.k}')">${e.t}</button>`).join('')}</div>
     <div id="scParams" class="sc-params"></div>
     <div class="sc-wrap">
       <div class="sc-cam" id="scCam">
@@ -3513,8 +3513,8 @@ function renderScan(){
         <div class="sc-hint" id="scHint"></div>
       </div>
       <div class="sc-side">
-        <div class="field"><span class="lbl">${esCampo() && SC.est !== 'entr' ? 'O escribe el número (remisión o acta)' : 'O escribe la OP (también sirve un lector de códigos)'}</span>
-          <div class="sc-man"><input id="scMan" placeholder="${esCampo() && SC.est !== 'entr' ? 'Ej. 00-273' : 'Ej. 6235-3'}" autocomplete="off" autocapitalize="characters" inputmode="text"><button class="btn" onclick="scManual()">Buscar</button></div></div>
+        <div class="field"><span class="lbl" id="scManLbl">${esCampo() && !['entr','inst'].includes(SC.est) ? 'O escribe el número (remisión o acta)' : 'O escribe la OP (también sirve un lector de códigos)'}</span>
+          <div class="sc-man"><input id="scMan" placeholder="${esCampo() && !['entr','inst'].includes(SC.est) ? 'Ej. 00-273' : 'Ej. 6235-3'}" autocomplete="off" autocapitalize="characters" inputmode="text"><button class="btn" onclick="scManual()">Buscar</button></div></div>
         <div class="section-t">Registrado en esta sesión</div>
         <div id="scLog" class="sc-log"></div>
       </div>
@@ -3536,7 +3536,9 @@ async function instCargarPend(){
   if(scEst().k === 'inst') renderScanParams();
 }
 function instPiso(v){ SC.instPiso = v; renderScanParams(); }
-function scSetEst(k){ scGuardarParams(); SC.est = k; document.querySelectorAll('.sc-est .chip').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').includes(`'${k}'`))); renderScanParams(); }
+function scSetEst(k){ scGuardarParams(); SC.est = k; document.querySelectorAll('.sc-est .chip').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').includes(`'${k}'`)));
+  if(esCampo()){ const t = $('#scTit'); if(t) t.textContent = scEst().t; if(k === 'inst' && !S.personas) cargarPersonas(); }
+  renderScanParams(); }
 function renderScanParams(){
   const e = scEst(), box = $('#scParams'); if(!box) return;
   let h = '';
@@ -3623,7 +3625,7 @@ function scBeep(ok){
     o.frequency.value = ok ? 1200 : 300; g.gain.value = .08; o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + .12); setTimeout(() => a.close(), 300); }catch(e){}
 }
 function scManual(){ const m = $('#scMan'); let v = m.value.trim(); if(!v) return; m.value = '';
-  if(esCampo() && SC.est !== 'entr' && !/^ELP-/i.test(v)) v = 'ELP-REM:' + v;   // conductor / recibe escriben el número de remisión
+  if(esCampo() && !['entr','inst'].includes(SC.est) && !/^ELP-/i.test(v)) v = 'ELP-REM:' + v;   // conductor / recibe escriben el número de remisión
   scCodigo(v, true); }
 
 // ── Al leer un código ──
@@ -3653,7 +3655,7 @@ async function scCodigo(txt, manual){
   SC.busy = true;
   try{
     let data, error;
-    if(esCampo()) data = await API.campoItemsOp(p.op);
+    if(esCampo() && e.k !== 'inst') data = await API.campoItemsOp(p.op);
     else ({data, error} = await API.sb.from('items').select('*').eq('op', p.op).order('id'));
     if(error) throw error;
     if(!data || !data.length){ scBeep(false); toast('No encontré la OP ' + p.op, true); return; }
@@ -5515,7 +5517,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas e instalación)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
