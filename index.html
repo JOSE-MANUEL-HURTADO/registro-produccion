@@ -521,7 +521,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.12';
+const APP_VERSION = '7.13';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -4674,7 +4674,7 @@ function renderProgBox(recargar){
   h += `<div class="section-t" style="margin-top:18px">Líneas de ensamble</div>`;
   h += lineas.length ? `<div class="pl-grid">${lineas.map(([ens, l]) => {
     const pend = l.filter(i => !i.dia_inicio), curso = l.filter(i => i.dia_inicio);
-    const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => nat(fecha(a[0].programacion_id), fecha(b[0].programacion_id)) || nat(a[0].op, b[0].op));
+    const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => ordLinea(a) - ordLinea(b) || nat(fecha(a[0].programacion_id), fecha(b[0].programacion_id)) || nat(a[0].op, b[0].op));
     return `<div class="pl-card"><div class="pl-head"><span class="n">${esc(ens)}</span><span class="m"><b>${fmtN(pend.length)}</b> por iniciar · ${fmtN(curso.length)} en curso</span></div>
       ${filas.map(f => { const i0 = f[0], pi = f.filter(i => !i.dia_inicio).length, ok = f.filter(i => !i.dia_inicio && listoEns(i)).length;
         return `<button class="pl-row" onclick="openObra(decodeURIComponent('${encQ(i0.obra)}'), false, '', {estado:'TODOS', op:decodeURIComponent('${encQ(i0.op)}'), q:''})"><span class="o">${esc(i0.obra)} · <em>OP ${esc(i0.op)}</em></span><span class="k">${fmtN(f.length)}</span>
@@ -4841,12 +4841,14 @@ function progPDF(pg, items){
     filas, pie: 'Prioridad: esta programación va primero. Al terminar cada proceso regístrelo en la app (escáner) para que el ensamble no se bloquee.',
     nombre: 'Programacion_' + pg.id + '.pdf', firmas: ['Corte', 'Troquelado', 'Mecanizado', 'Vidrio']});
 }
+// Orden de la línea de ensamble: el orden en que se asignó (ens_orden, SQL 66); lo más antiguo primero
+const ordLinea = f => Math.min(...f.map(i => i.ens_orden != null ? Number(i.ens_orden) : 9e15));
 function lineaPDF(ens){
   const l = (PG.items || []).filter(i => i.ens_asignado === ens && !i.dia_final && !i.despachado);
   const fecha = id => (PG.lista.find(p => p.id === id) || {}).fecha_req || '';
-  const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => nat(fecha(a[0].programacion_id) || '9', fecha(b[0].programacion_id) || '9') || nat(a[0].op, b[0].op))
+  const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => ordLinea(a) - ordLinea(b) || nat(fecha(a[0].programacion_id) || '9', fecha(b[0].programacion_id) || '9') || nat(a[0].op, b[0].op))
     .map(f => { const i0 = f[0]; return {v: [fecha(i0.programacion_id) ? fmtD(fecha(i0.programacion_id)) : '—', 'N.º ' + i0.programacion_id, i0.obra, i0.op, i0.diseno, i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) : '', fmtN(f.length), f.map(i => i.op_instalacion.split('.').pop()).join(', '), pisosTxt(f), fmtN(f.filter(i => !i.dia_inicio && listoEns(i)).length), '□']}; });
-  pdfTabla({titulo: 'LÍNEA DE ENSAMBLE', sub: ens + ' · ' + fmtD(today()), info: `${fmtN(l.length)} unidades asignadas, en orden de prioridad (fecha requerida). "Listos" = con cortado, troquelado y mecanizado completos (y programados).`,
+  pdfTabla({titulo: 'LÍNEA DE ENSAMBLE', sub: ens + ' · ' + fmtD(today()), info: `${fmtN(l.length)} unidades asignadas, en el orden en que se asignaron (primero lo más urgente). "Listos" = con cortado, troquelado y mecanizado completos (y programados).`,
     cols: [['Para', 20, 'l'], ['Prog.', 16, 'l'], ['Obra', 46, 'l'], ['OP', 18, 'l'], ['Diseño', 48, 'l'], ['Medida', 22, 'l'], ['Cant.', 11, 'r'], ['Unidades (.n)', 30, 'l'], ['Pisos', 20, 'l'], ['Listos', 13, 'r'], ['Hecho', 11.4, 'c']],
     filas, pie: 'Al iniciar y terminar cada unidad, escanee su etiqueta en la app (Inicio / Ensamble terminado).', nombre: 'Linea_' + ens.replace(/\W+/g, '_') + '.pdf', firmas: ['Ensamblador', 'Supervisor']});
 }
