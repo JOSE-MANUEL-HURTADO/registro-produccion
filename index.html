@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.22';
+const APP_VERSION = '7.23';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1325,6 +1325,10 @@ Object.assign(API, {
   async artOrdenCorte(l, lote){ const {data,error} = await this.sb.rpc('art_orden_corte', {p: l, p_lote: lote}); if(error) throw error; return data; },
   async artOptimaMarcar(l, lote){ const {data,error} = await this.sb.rpc('art_optima_marcar', {p: l, p_lote: lote}); if(error) throw error; return data; },
   async artOptimaDevolver(ids){ const {data,error} = await this.sb.rpc('art_optima_devolver', {p_ids: ids}); if(error) throw error; return data; },
+  async artHistorial(id){
+    const [r1, r2] = await Promise.all([this.sb.from('art_registros').select('estacion,creado,quien,n').eq('pieza_id', id).order('creado'), this.sb.from('art_reprocesos').select('*').eq('pieza_id', id).order('creado')]);
+    if(r1.error) throw r1.error; return {reg: r1.data || [], rep: r2.error ? null : (r2.data || [])}; },
+  async artReprocesar(id, n, nota){ const {data,error} = await this.sb.rpc('art_reprocesar', {p_id: id, p_cant: n, p_nota: nota}); if(error) throw error; return data; },
   async artListos(ops){ const {data,error} = await this.sb.rpc('art_listos', {p_ops: ops}); if(error) throw error; return data || []; },
   async artOperarios(){ const {data,error} = await this.sb.rpc('art_operarios'); if(error) throw error; return data || []; },
   async artEstacionesUsuario(id, est){ const {error} = await this.sb.rpc('art_estaciones_usuario', {p_id: id, p_estaciones: est}); if(error) throw error; },
@@ -1374,11 +1378,11 @@ function artAvanceHTML(){
   const seg = `<div class="art-seg">${[['todas','Todo'],['eli','Elíptica'],['cli','Clientes']].map(([k, n]) => `<button class="${A.origen === k ? 'on' : ''}" onclick="artOrigen('${k}')">${n} <b>${fmtN(A.piezas.filter(p => k === 'todas' || (k === 'cli' ? p.tercero : !p.tercero)).filter(p => artListas(p) < p.cant).reduce((s, p) => s + p.cant - artListas(p), 0))}</b></button>`).join('')}</div>`;
   const q = A.q.trim().toUpperCase().replace(/\s/g, '');
   const coincide = p => !q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && String(v).toUpperCase().replace(/\s/g, '').includes(q));
-  const estado = p => A.filtro === 'todas' || (A.filtro === 'pend' ? artListas(p) < p.cant : artListas(p) >= p.cant);
+  const estado = p => A.filtro === 'todas' || (A.filtro === 'reproc' ? (p.rotas || 0) > 0 : A.filtro === 'pend' ? artListas(p) < p.cant : artListas(p) >= p.cant);
   const tot = base.reduce((s, p) => s + p.cant, 0), listas = base.reduce((s, p) => s + artListas(p), 0);
   const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of base){ const e = artPaso(p); if(e) enEst[e] += p.cant - artHechos(p, e); }
   const filtros = `<div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><div class="search">${ICON.search}<input id="artQ" placeholder="${A.obra ? 'OP-ítem o medida (689x1133)…' : 'Obra, OP-ítem o medida…'}" value="${esc(A.q)}" autocomplete="off" autocapitalize="characters"></div>
-      <select onchange="A.filtro=this.value;renderArtica()"><option value="pend" ${A.filtro==='pend'?'selected':''}>En proceso</option><option value="listas" ${A.filtro==='listas'?'selected':''}>Listas</option><option value="todas" ${A.filtro==='todas'?'selected':''}>Todas</option></select></div>`;
+      <select onchange="A.filtro=this.value;renderArtica()"><option value="pend" ${A.filtro==='pend'?'selected':''}>En proceso</option><option value="listas" ${A.filtro==='listas'?'selected':''}>Listas</option><option value="todas" ${A.filtro==='todas'?'selected':''}>Todas</option><option value="reproc" ${A.filtro==='reproc'?'selected':''}>Reprocesadas</option></select></div>`;
   if(!A.obra){
     const porObra = new Map(); for(const p of base) if(estado(p) && coincide(p)){ const o = artObra(p); if(!porObra.has(o)) porObra.set(o, []); porObra.get(o).push(p); }
     const obras = [...porObra.entries()].sort((a, b) => b[1].reduce((s, p) => s + p.cant - artListas(p), 0) - a[1].reduce((s, p) => s + p.cant - artListas(p), 0) || nat(a[0], b[0]));
@@ -1412,7 +1416,32 @@ function artPiezaHTML(p){
   return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.orden_corte ? ' · corte #' + p.orden_corte : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
-      ${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
+      <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
+}
+// Trazabilidad de una medida: qué piezas pasaron por cada estación (número de etiqueta), cuándo y quién, y sus reprocesos
+async function artHistorial(id){
+  const p = A.piezas.find(x => x.id === id); if(!p) return;
+  openSheet('Historial · ' + esc(p.op), `${artMed(p)} · ${fmtN(p.cant)} pz · ${esc(p.tipo)}`, '<div class="loading"><div class="spin"></div>Cargando</div>', 'Listo', async () => {});
+  let h; try{ h = await API.artHistorial(id); }catch(e){ $('#shBody').innerHTML = `<div class="warn">${esc(errMsg(e))}</div>`; return; }
+  const fh = t => new Date(t).toLocaleString('es-CO', {day:'2-digit', month:'short', hour:'numeric', minute:'2-digit'});
+  const ev = h.reg.map(r => ({t: r.creado, k: 'r', r})).concat((h.rep || []).map(r => ({t: r.creado, k: 'x', r}))).sort((a, b) => String(a.t).localeCompare(String(b.t)));
+  const porEst = p.ruta.map(e => { const l = h.reg.filter(r => r.estacion === e), ns = [...new Set(l.map(r => r.n).filter(n => n != null))].sort((a, b) => a - b);
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><b>${ART_NOM[e]}</b><span>${fmtN(artHechos(p, e))} de ${fmtN(p.cant)}${ns.length ? ` · piezas ${ns.join(', ')}` : ''}</span></div>`; }).join('');
+  $('#shBody').innerHTML = `${p.historica ? `<div class="summary" style="margin-bottom:8px">Medida terminada antes de la app (${fmtN(p.base || p.cant)} pz sin escaneos).</div>` : ''}
+    ${(p.rotas || 0) > 0 ? `<div class="warn" style="margin-bottom:8px">⚠ ${fmtN(p.rotas)} pieza${p.rotas === 1 ? '' : 's'} mandada${p.rotas === 1 ? '' : 's'} a reprocesar</div>` : ''}
+    <div class="section-t" style="margin-top:0">Por estación</div>${porEst}
+    <div class="section-t">Movimientos</div>
+    <div style="max-height:40vh;overflow:auto;flex:none">${ev.map(x => x.k === 'r'
+      ? `<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="min-width:120px;color:var(--text2)">${fh(x.t)}</span><span style="flex:1"><b>${ART_NOM[x.r.estacion] || x.r.estacion}</b>${x.r.n != null ? ` · pieza ${x.r.n}/${p.cant}` : ''}</span><span style="color:var(--text2)">${esc(x.r.quien || '')}</span></div>`
+      : `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;color:#fff;background:rgba(179,38,30,.25)"><span style="min-width:120px">${fh(x.t)}</span><span style="flex:1"><b>⚠ Reproceso · ${fmtN(x.r.cant)} pz</b> · ${esc(x.r.origen || '')}${x.r.nota ? ' · ' + esc(x.r.nota) : ''}</span><span>${esc(x.r.quien || '')}</span></div>`).join('') || '<div class="empty">Sin escaneos todavía.</div>'}</div>
+    ${h.rep === null ? '<div class="sc-note" style="margin-top:6px">Falta activar el registro de reprocesos en la base (SQL 70).</div>' : ''}
+    ${(isGerente() || esOperarioArtica()) && artHechos(p, 'corte') > 0 ? `<div style="margin-top:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="artRpN" type="number" min="1" max="${artHechos(p, 'corte')}" value="1" inputmode="numeric" style="width:80px"><input id="artRpNota" placeholder="¿Qué pasó? (ej. se rompió en templado)" style="flex:1;min-width:180px"><button class="btn sm" style="color:var(--danger)" onclick="artReprocesarUI(${p.id})">Mandar a reprocesar</button></div>` : ''}`;
+}
+async function artReprocesarUI(id){
+  const n = Math.max(1, Math.round(+($('#artRpN') || {}).value || 1)), nota = (($('#artRpNota') || {}).value || '').trim();
+  if(!confirm(`¿Mandar ${n} pieza${n === 1 ? '' : 's'} de esta medida a reprocesar? Vuelve${n === 1 ? '' : 'n'} a pendiente desde corte.`)) return;
+  try{ const k = await API.artReprocesar(id, n, nota || null); const p = A.piezas.find(x => x.id === id); if(p) p.rotas = (p.rotas || 0) + (k || n); toast(`✓ ${k || n} pieza${(k || n) === 1 ? '' : 's'} a reprocesar`); artHistorial(id); renderArtica(); }
+  catch(e){ toast(/art_reprocesar|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar los reprocesos en la base (SQL 70)' : errMsg(e), true); }
 }
 function artRutaEditar(id){
   const p = A.piezas.find(x => x.id === id); if(!p) return;
@@ -1614,7 +1643,7 @@ async function artEtqPDF(lista, nombre){
   const corta = (t, max, size) => { doc.setFontSize(size); t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
   lista.forEach(({p, n}, i) => {
     if(i) doc.addPage([W, H], 'landscape');
-    const q = qrcode(0, 'M'); q.addData(artCod(p)); q.make();
+    const q = qrcode(0, 'M'); q.addData(artCod(p) + '-' + n); q.make();   // el QR lleva el número de la pieza (ART:123-5)
     const S_ = 30, nm = q.getModuleCount(), cs = S_ / nm, qx = W - S_ - 4, qy = 4;
     doc.setFillColor(0, 0, 0); for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c)) doc.rect(qx + c * cs, qy + r * cs, cs + .02, cs + .02, 'F');
     doc.setTextColor(0);
@@ -1630,7 +1659,7 @@ async function artEtqPDF(lista, nombre){
     let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
     doc.text([p.tercero ? 'TERCEROS' : '', p.forrado ? 'FORRAR' : '', p.orden_corte ? 'Corte #' + p.orden_corte : ''].filter(Boolean).join(' · '), 4, 57.5);
-    doc.text(artCod(p), W - 4, 57.5, {align: 'right'});
+    doc.text(artCod(p) + '-' + n, W - 4, 57.5, {align: 'right'});
   });
   const blob = doc.output('blob'), url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
   const puede = !!(navigator.canShare && navigator.canShare({files:[file]})); window._artEtq = {file, nombre};
@@ -1722,7 +1751,7 @@ function artopPanelHTML(u){
   return `<div class="artop-estado">${t}${u.estado === 'ok' && u.listo ? ' · PIEZA LISTA' : ''}</div>
     ${p ? `<div class="artop-op">${esc(p.op)}</div><div class="artop-med">${p.ancho} × ${p.alto}</div>
       <div class="artop-tipo">${esc(p.tipo)}${p.item ? ' · ' + esc(p.item) : ''}</div>
-      ${u.hechos != null ? `<div class="artop-n">${fmtN(u.hechos)} de ${fmtN(p.cant)} en ${(ART_NOM[u.estacion] || '').toLowerCase()}</div>` : ''}` : ''}
+      ${u.n ? `<div class="artop-n">Pieza ${fmtN(u.n)} de ${fmtN(p.cant)}</div>` : ''}${u.hechos != null ? `<div class="artop-n">${fmtN(u.hechos)} de ${fmtN(p.cant)} en ${(ART_NOM[u.estacion] || '').toLowerCase()}</div>` : ''}` : ''}
     ${u.msg && u.estado !== 'ok' ? `<div class="artop-msg">${esc(u.msg)}</div>` : ''}${u.estacion && u.estacion !== AO.est ? `<div class="artop-msg">Estación por prefijo: ${esc(ART_NOM[u.estacion] || u.estacion)}</div>` : ''}`;
 }
 function artopPintar(u){ AO.ult = u; const p = $('#aoPanel'); if(p){ p.className = 'artop-panel st-' + u.estado; p.innerHTML = artopPanelHTML(u); } }
