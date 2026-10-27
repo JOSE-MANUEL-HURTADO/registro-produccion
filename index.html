@@ -75,6 +75,10 @@ body.artica .sheet{background:#2f2e2c;}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
 .art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#324549);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
 .art-pzs{font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.art-lote-obra{font-family:var(--art-t);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:14px 0 6px;font-size:15px;}
+.art-lote{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);margin-bottom:6px;background:var(--surface);}
+.art-lote > div:first-child{display:flex;flex-direction:column;gap:2px;}.art-lote span{color:var(--muted);font-size:13px;}
+.art-env{margin-top:14px;}.art-env summary{cursor:pointer;font-family:var(--art-t);font-weight:700;letter-spacing:.04em;padding:8px 0;color:var(--text2);}
 .art-opsel{max-height:40vh;overflow:auto;border:1px solid var(--border);}.art-opsel label{cursor:pointer;}.art-opsel label.on{background:rgba(255,255,255,.08);}
 /* Casillas legibles en el tema oscuro (en Safari el chulo salía blanco sobre blanco) */
 input[type=checkbox]{-webkit-appearance:none!important;appearance:none!important;flex:none;width:22px!important;height:22px!important;min-height:0!important;padding:0!important;margin:0;border:2px solid var(--text);background:transparent;display:inline-grid;place-content:center;cursor:pointer;border-radius:0;vertical-align:middle;}
@@ -533,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.20';
+const APP_VERSION = '7.21';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1319,6 +1323,8 @@ Object.assign(API, {
   async artMisEstaciones(){ const {data,error} = await this.sb.rpc('art_mis_estaciones'); if(error) throw error; return data || []; },
   async artRutaSet(id, ruta){ const {error} = await this.sb.rpc('art_ruta_set', {p_id: id, p_ruta: ruta}); if(error) throw error; },
   async artOrdenCorte(l, lote){ const {data,error} = await this.sb.rpc('art_orden_corte', {p: l, p_lote: lote}); if(error) throw error; return data; },
+  async artOptimaMarcar(l, lote){ const {data,error} = await this.sb.rpc('art_optima_marcar', {p: l, p_lote: lote}); if(error) throw error; return data; },
+  async artOptimaDevolver(ids){ const {data,error} = await this.sb.rpc('art_optima_devolver', {p_ids: ids}); if(error) throw error; return data; },
   async artListos(ops){ const {data,error} = await this.sb.rpc('art_listos', {p_ops: ops}); if(error) throw error; return data || []; },
   async artOperarios(){ const {data,error} = await this.sb.rpc('art_operarios'); if(error) throw error; return data || []; },
   async artEstacionesUsuario(id, est){ const {error} = await this.sb.rpc('art_estaciones_usuario', {p_id: id, p_estaciones: est}); if(error) throw error; },
@@ -1451,16 +1457,13 @@ function artEtqHTML(){
   const plan = A.plan;
   return `<div class="cstep"><b>1</b><div><div class="cs-t">Vidrios de las OP</div><div class="cs-d">Al cargar el PDF de las OP en Elíptica, sus líneas de vidrio entran solas a Ártica. Para las OP que ya estaban cargadas, léelas una vez de las órdenes PDF guardadas.</div>
       <button class="btn sm" onclick="artLeerExistentes()">Leer vidrios de las ${fmtN(S.ordenes ? S.ordenes.size : 0)} órdenes PDF guardadas</button></div></div>
-    <div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Marca las OP por cortar (${fmtN(pend.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} piezas pendientes de corte) y descarga el archivo con medidas, cantidades y la referencia OP-ítem.</div>
-      <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap"><button class="btn sm" onclick="artOpTodas(true)">Todas</button><button class="btn sm" onclick="artOpTodas(false)">Ninguna</button>
-        <button class="btn sm primary" id="artCsvBtn" onclick="artExportarCSV()" ${A.ops.size ? '' : 'disabled'}>Descargar CSV (${fmtN(A.ops.size)} OP)</button></div>
-      <div class="art-opsel">${ops.map(op => { const l = pend.filter(p => p.op === op); return `<label class="${A.ops.has(op) ? 'on' : ''}"><input type="checkbox" class="art-ck" data-op="${esc(op)}" ${A.ops.has(op) ? 'checked' : ''} onchange="artOpSel(this)"> <b>${esc(op)}</b> <span>${esc(l[0].obra || l[0].cliente || '')} · ${fmtN(l.reduce((s, p) => s + p.cant - artHechos(p, 'corte'), 0))} pz</span></label>`; }).join('') || '<div class="empty">No hay piezas pendientes de corte.</div>'}</div></div></div>
+    ${artOptimaHTML()}
     <div class="cstep"><b>3</b><div><div class="cs-t">Cargar el plan optimizado de OPTIMA</div><div class="cs-d">Sube el archivo que exporta OPTIMA con el orden de corte. La app reconoce las medidas aunque vengan giradas (ancho y alto al revés) y deja las etiquetas en ese mismo orden.</div>
       <label class="btn sm">Elegir archivo del plan (CSV / TXT)<input type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style="display:none" onchange="artLeerPlan(this.files[0]); this.value=''"></label>
       ${plan ? `<div class="summary" style="margin-top:8px"><b>${esc(plan.nombre)}</b> · ${fmtN(plan.etq.length)} etiquetas en orden de corte${plan.sin.length ? ` · <b style="color:var(--danger)">${fmtN(plan.sin.length)} filas sin pieza que coincida</b>` : ''}${plan.dudosas ? ` · ${plan.dudosas} medidas giradas reconocidas` : ''}</div>
         ${plan.sin.length ? `<div class="warn">No encontré en Ártica: ${esc(plan.sin.slice(0, 12).join(' · '))}${plan.sin.length > 12 ? '…' : ''}</div>` : ''}` : ''}</div></div>
-    <div class="cstep"><b>4</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ${plan ? '<b>en el orden de corte del plan</b>' : 'por OP y medida (carga el plan de OPTIMA para imprimirlas en el orden de corte)'}. Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" id="artEtqBtn" onclick="artImprimirEtq()" ${plan || A.ops.size ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : `Imprimir etiquetas de ${fmtN(A.ops.size)} OP marcadas`}</button>
+    <div class="cstep"><b>4</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ${plan ? '<b>en el orden de corte del plan</b>' : 'por lote, en el orden del archivo enviado (carga el plan de OPTIMA para imprimirlas en el orden de corte). También puedes imprimir cada lote desde "Enviados a OPTIMA"'}. Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" id="artEtqBtn" onclick="artImprimirEtq()" ${plan || A.ultLote ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : A.ultLote ? `Imprimir etiquetas del último lote (${fmtN(A.ultLote.etq.length)})` : 'Exporta un lote primero'}</button>
         <button class="btn sm" onclick="artReimprimirBuscar()">Reimprimir una etiqueta</button></div></div></div>`;
 }
 // Marcar OP sin volver a dibujar la página (la lista no salta)
@@ -1492,13 +1495,75 @@ async function artCargarVidrios(rows, desdeCarga){
   catch(e){ toast(artFaltaSQL(e), true); }
 }
 // 2. CSV para OPTIMA: una fila por medida pendiente de corte
-function artExportarCSV(){
-  const l = A.piezas.filter(p => A.ops.has(p.op) && artHechos(p, 'corte') < p.cant).sort((a, b) => nat(a.op, b.op) || a.linea - b.linea);
+// ── OPTIMA por lotes: obra + tipo de vidrio (templado, laminado, crudo) + calibre + color ──
+// OPTIMA solo optimiza juntas láminas iguales; lo enviado sale de la lista (vuelve si se rompe una pieza ya cortada)
+function vidrioCar(t){
+  const s = String(t || '').toUpperCase().replace(/\s+/g, ' ');
+  const tipo = /\bLAM/.test(s) ? 'LAMINADO' : /TEMP/.test(s) ? 'TEMPLADO' : 'CRUDO';
+  let cal = (s.match(/(\d+(?:[.,]\d+)?\s*\+\s*\d+(?:[.,]\d+)?)/) || [])[1];
+  if(cal) cal = cal.replace(/\s/g, ''); else { const m = s.match(/(\d+(?:[.,]\d+)?)\s*MM/); cal = m ? m[1].replace(',', '.') + ' MM' : 'SIN CALIBRE'; }
+  let col = s.replace(/\(.*?\)/g, ' ').replace(/\b(LAMINADO|LAM|TEMPLADO|TEMP|CRUDO|VIDRIO)\b\.?/g, ' ')
+    .replace(/\d+(?:[.,]\d+)?\s*\+\s*\d+(?:[.,]\d+)?/g, ' ').replace(/\d+(?:[.,]\d+)?\s*MM\b/g, ' ').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+  col = col.replace(/\bINCOL(ORO)?\b/, 'INCOLORO') || 'INCOLORO';
+  return {tipo, cal, col, txt: `${tipo} ${cal} ${col}`};
+}
+const artEnPlan = p => p.optima_en ? Math.max(0, (p.optima_pend || 0) - (p.corte_post_optima || 0)) : 0;   // piezas que siguen en el plan de OPTIMA
+const artPorEnviar = p => Math.max(0, p.cant - artHechos(p, 'corte') - artEnPlan(p));
+function artLotes(){
+  const m = new Map();
+  for(const p of A.piezas){ const n = artPorEnviar(p); if(!n) continue;
+    const c = vidrioCar(p.tipo), obra = artObra(p), k = obra + '|' + c.txt;
+    if(!m.has(k)) m.set(k, {k, obra, car: c, piezas: [], n: 0, ops: new Set(), cliente: !!p.tercero});
+    const g = m.get(k); g.piezas.push(p); g.n += n; g.ops.add(p.op); }
+  return [...m.values()].sort((a, b) => nat(a.obra, b.obra) || a.car.txt.localeCompare(b.car.txt));
+}
+function artOptimaHTML(){
+  const lotes = artLotes(); A._lotes = lotes;
+  const porObra = [...grp(lotes, l => l.obra).entries()];
+  const env = new Map(); for(const p of A.piezas){ const n = artEnPlan(p); if(!n) continue; const k = p.optima_lote || 'Sin nombre'; if(!env.has(k)) env.set(k, {k, piezas: [], n: 0, en: p.optima_en}); const g = env.get(k); g.piezas.push(p); g.n += n; if(p.optima_en > g.en) g.en = p.optima_en; }
+  const enviados = [...env.values()].sort((a, b) => String(b.en).localeCompare(String(a.en))); A._env = enviados;
+  const opsTxt = s => { const a = [...s].sort(nat); return a.length > 5 ? a.slice(0, 5).join(', ') + ` y ${a.length - 5} más` : a.join(', '); };
+  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un archivo por <b>obra, tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Al descargarlo, ese lote sale de esta lista y pasa a "Enviados a OPTIMA". Si se rompe una pieza ya cortada, vuelve a aparecer aquí.</div>
+      ${porObra.length ? porObra.map(([obra, ls]) => `<div class="art-lote-obra">${esc(obra)}${ls[0].cliente ? ' <span class="badge-new">Cliente</span>' : ''}</div>
+        ${ls.map(l => `<div class="art-lote"><div><b>${esc(l.car.tipo)} · ${esc(l.car.cal)} · ${esc(l.car.col)}</b><span>${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div>
+          <button class="btn sm primary" onclick="artExportarLote(${lotes.indexOf(l)})">${ICON.down} CSV</button></div>`).join('')}`).join('')
+        : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
+      ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
+        ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k)}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="artEtqLote(${i})">Etiquetas</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver a la lista</button></div></div>`).join('')}</details>` : ''}</div></div>`;
+}
+async function artExportarLote(i){
+  const l = (A._lotes || [])[i]; if(!l) return;
+  const ps = [...l.piezas].sort((a, b) => nat(a.op, b.op) || a.linea - b.linea);
   const sep = ';', q = v => { v = String(v ?? ''); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  const filas = [['REFERENCIA','CANTIDAD','ANCHO','ALTO','MATERIAL','ID','OBRA','ITEM']].concat(l.map(p => [p.op, p.cant - artHechos(p, 'corte'), p.ancho, p.alto, p.tipo, artCod(p), p.obra || p.cliente || '', p.item || '']));
+  const filas = [['REFERENCIA','CANTIDAD','ANCHO','ALTO','MATERIAL','ID','OBRA','ITEM']].concat(ps.map(p => [p.op, artPorEnviar(p), p.ancho, p.alto, p.tipo, artCod(p), p.obra || p.cliente || '', p.item || '']));
+  const ahora = new Date(), hhmm = ahora.toTimeString().slice(0, 5);
+  const nombre = `${l.obra} · ${l.car.tipo} ${l.car.cal} ${l.car.col} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
+  const archivo = `OPTIMA_${l.obra}_${l.car.tipo}_${l.car.cal}_${l.car.col}_${today()}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.csv';
+  // Etiquetas de este lote (numeradas desde lo ya cortado)
+  const etq = ps.flatMap(p => { const n = artPorEnviar(p), h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: n}, (_, k) => ({p, n: h + k + 1})); });
+  // Primero la descarga (Safari solo deja descargar en el mismo toque), luego se marca como enviado
   const blob = new Blob(['﻿' + filas.map(r => r.map(q).join(sep)).join('\r\n')], {type: 'text/csv;charset=utf-8'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `OPTIMA_${today()}_${A.ops.size}OP.csv`; a.click();
-  toast(`✓ ${fmtN(l.length)} medidas exportadas`);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = archivo; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000);
+  try{ await API.artOptimaMarcar(ps.map(p => ({id: p.id, pend: artEnPlan(p) + artPorEnviar(p)})), nombre); }
+  catch(e){ return toast(/art_optima|optima_|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'El archivo se descargó, pero falta activar los lotes de OPTIMA en la base (SQL 69): el lote sigue en la lista' : 'El archivo se descargó, pero no se pudo marcar como enviado: ' + errMsg(e), true); }
+  const t = new Date().toISOString();
+  for(const p of ps){ const tot = artEnPlan(p) + artPorEnviar(p); p.optima_en = t; p.optima_pend = tot; p.corte_post_optima = 0; p.optima_lote = nombre; }
+  A.ultLote = {nombre, etq};
+  toast(`✓ ${fmtN(etq.length)} piezas exportadas · ${nombre}`);
+  renderArtica();
+}
+function artEtqLote(i){
+  const g = (A._env || [])[i]; if(!g) return;
+  const etq = [...g.piezas].sort((a, b) => nat(a.op, b.op) || a.linea - b.linea).flatMap(p => { const n = artEnPlan(p), h = artHechos(p, 'corte'); return Array.from({length: n}, (_, k) => ({p, n: h + k + 1})); });
+  if(!etq.length) return toast('Este lote ya está cortado', true);
+  artEtqPDF(etq, `Etiquetas_${g.k}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.pdf');
+}
+async function artDevolverLote(i){
+  const g = (A._env || [])[i]; if(!g) return;
+  if(!confirm(`¿Devolver "${g.k}" a la lista de exportar? Úsalo si el archivo no se cargó en OPTIMA o se va a mandar de nuevo.`)) return;
+  try{ await API.artOptimaDevolver(g.piezas.map(p => p.id)); for(const p of g.piezas){ p.optima_en = null; p.optima_pend = null; p.optima_lote = null; p.corte_post_optima = 0; } toast('✓ Devuelto a la lista'); renderArtica(); }
+  catch(e){ toast(errMsg(e), true); }
 }
 // 3. Plan de OPTIMA: cada fila trae referencia y/o medidas en el orden de corte; se expande por cantidad
 async function artLeerPlan(f){
@@ -1577,7 +1642,7 @@ async function artEtqPDF(lista, nombre){
 function artImprimirEtq(){
   let l;
   if(A.plan) l = A.plan.etq;
-  else l = A.piezas.filter(p => A.ops.has(p.op)).sort((a, b) => nat(a.op, b.op) || a.linea - b.linea).flatMap(p => Array.from({length: p.cant}, (_, k) => ({p, n: k + 1})));
+  else l = A.ultLote ? A.ultLote.etq : [];
   if(!l.length) return toast('No hay etiquetas para imprimir', true);
   artEtqPDF(l, `Etiquetas_Artica_${today()}.pdf`);
 }
@@ -5393,18 +5458,20 @@ const mselTxt = k => { if(!S.f[k]) S.f[k] = new Set(); const sz = S.f[k].size, n
 function mselAbrir(k){
   const val = k === 'pisos' ? (i => i.piso || '') : k === 'sis' ? sistemaDe : k === 'ser' ? serieDe : k === 'its' ? itemDe : (i => i.op || ''), fe = FILTROS.find(f => f[0] === S.f.estado)[2];
   if(!S.f[k]) S.f[k] = new Set();
-  const cnt = new Map(); for(const it of S.items) if(fe(it)){ const v = val(it); if(v) cnt.set(v, (cnt.get(v) || 0) + 1); }
-  const vals = [...new Set(S.items.map(val).filter(Boolean))].sort(nat);
+  // Conteo con TODOS los filtros activos (estado, sistema, OP, ítem, búsqueda…) menos el que se está eligiendo
+  const cnt = new Map(); { const guard = S.f[k]; S.f[k] = new Set();
+    try{ for(const it of S.items) if(fe(it) && baseMatch(it)){ const v = val(it); if(v) cnt.set(v, (cnt.get(v) || 0) + 1); } } finally { S.f[k] = guard; } }
+  const vals = [...new Set(S.items.map(val).filter(Boolean))].sort((a, b) => (cnt.get(b) ? 1 : 0) - (cnt.get(a) ? 1 : 0) || nat(a, b));   // con ítems primero
   const sel = window._msel = new Set(S.f[k]);
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const vis = "[...document.querySelectorAll('.mselC')].filter(c => c.closest('label').style.display !== 'none')";
   const body = `${vals.length > 8 ? `<input id="mselQ" placeholder="Buscar… (ej. V-1, PV, 6235)" autocomplete="off" autocapitalize="characters" oninput="const q = this.value.trim().toUpperCase(); document.querySelectorAll('.mselC').forEach(c => { c.closest('label').style.display = !q || c.value.toUpperCase().includes(q) ? '' : 'none'; })">` : ''}
     <div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn sm" onclick="${vis}.forEach(c => { c.checked = true; _msel.add(c.value); })">Todos</button>
       <button class="btn sm" onclick="${vis}.forEach(c => { c.checked = false; _msel.delete(c.value); })">Ninguno</button></div>
-    <div style="max-height:52vh;overflow:auto;flex:none">${vals.map(v => `<label style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">
+    <div style="max-height:52vh;overflow:auto;flex:none">${vals.map(v => `<label style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px;${cnt.get(v) ? '' : 'opacity:.4'}">
       <input type="checkbox" class="mselC" value="${esc(v)}" ${ck} ${sel.has(v) ? 'checked' : ''} onchange="this.checked ? _msel.add(this.value) : _msel.delete(this.value)">
       <span style="flex:1">${k === 'ops' ? 'OP ' : ''}${esc(v)}</span><small style="opacity:.7">${fmtN(cnt.get(v) || 0)}</small></label>`).join('')}</div>`;
-  openSheet(k === 'pisos' ? 'Filtrar pisos' : k === 'sis' ? 'Filtrar sistemas' : k === 'ser' ? 'Filtrar series' : k === 'its' ? 'Filtrar ítems' : 'Filtrar OP', 'Marca uno o varios · el número es cuántos ítems hay en el estado elegido', body, 'Aplicar', async () => {
+  openSheet(k === 'pisos' ? 'Filtrar pisos' : k === 'sis' ? 'Filtrar sistemas' : k === 'ser' ? 'Filtrar series' : k === 'its' ? 'Filtrar ítems' : 'Filtrar OP', 'Marca uno o varios · el número es cuántos ítems hay con el estado y los demás filtros que tienes puestos', body, 'Aplicar', async () => {
     S.f[k] = new Set(sel); S.limit = 300;
     $('#fPiso').innerHTML = mselTxt('pisos'); $('#fOp').innerHTML = mselTxt('ops'); if($('#fSis')) $('#fSis').innerHTML = mselTxt('sis'); if($('#fSer')) $('#fSer').innerHTML = mselTxt('ser'); if($('#fIt')) $('#fIt').innerHTML = mselTxt('its');
     updOrdenBox(); renderChips(); renderList();
