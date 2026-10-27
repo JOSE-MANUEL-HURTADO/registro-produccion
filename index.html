@@ -533,7 +533,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.19';
+const APP_VERSION = '7.20';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -792,6 +792,10 @@ const API = {
   async obrasAlias(){ const {data,error} = await this.sb.from('obras_alias').select('alias,obra'); if(error) throw error; return data || []; },
   async pushGuardar(sub){ const j = sub.toJSON(); const {error} = await this.sb.from('push_subs').upsert({endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, dispositivo: navigator.userAgent.slice(0,200)}); if(error) throw error; },
   async pushQuitar(endpoint){ const {error} = await this.sb.from('push_subs').delete().eq('endpoint', endpoint); if(error) throw error; },
+  // Faltantes de material en corte (SQL 68)
+  async faltantes(obra){ const {data,error} = await this.sb.from('faltantes').select('*').eq('obra', obra).order('creada', {ascending:false}); if(error) throw error; return data || []; },
+  async faltanteCrear(rows){ const {data,error} = await this.sb.from('faltantes').insert(rows).select('*'); if(error) throw error; return data || []; },
+  async faltanteResolver(id){ const {error} = await this.sb.from('faltantes').update({resuelta: new Date().toISOString(), resuelta_por: (S.perfil && S.perfil.nombre) || 'App'}).eq('id', id); if(error) throw error; },
   async obraAliasBorrar(alias){ const {error} = await this.sb.from('obras_alias').delete().eq('alias', alias); if(error) throw error; },
   async obraAliasGuardar(alias, obra){ const {error} = await this.sb.from('obras_alias').upsert({alias, obra}); if(error) throw error; },
   // Buscar OP en toda la base: "6251-7", "6251" (todas sus sub-OP), "006251-7", "6251-7.2" (OP de instalación)
@@ -826,6 +830,8 @@ const API = {
       if(error) throw error;
       out = out.concat(data||[]);
     }
+    // Corte parcial (+): preguntar qué perfil (HSP) faltó
+    if(patch && patch.cortado === '+' && out.length) setTimeout(() => faltanteSheet(out), 350);
     return out;
   },
   exportar(){ return this.all(o => this.sb.from('base_exportable').select('*',o)); },
@@ -1700,6 +1706,70 @@ async function artVidriosItem(op){
   try{ const r = await API.artListos([op]); return r[0] || null; }catch(e){ return null; }
 }
 
+// ── Faltantes de material en corte: al marcar el corte parcial (+) se elige el perfil HSP que no alcanzó ──
+const faltDe = id => (S.falt || []).filter(f => !f.resuelta && (f.item_ids || []).map(Number).includes(Number(id)));
+async function cargarFaltantes(obra){ try{ S.falt = await API.faltantes(obra); }catch(e){ S.falt = null; } }
+const PERF = new Map();   // OP → perfiles HSP leídos de la orden PDF
+async function perfilesDeOp(op){
+  if(PERF.has(op)) return PERF.get(op);
+  const num = String(op).split('-')[0];
+  try{
+    await qrLibsPDF();
+    const b = await API.ordenBajar(num);
+    const r = await leerOPsPDF(new Uint8Array(await b.arrayBuffer()), num + '.pdf');
+    for(const o of r.ops){
+      const m = new Map(); for(const x of (o.perfiles || [])){ const k = x.ref + '|' + (x.medida || ''); if(!m.has(k)) m.set(k, x); }
+      PERF.set(o.op, [...m.values()].sort((a, b) => nat(a.ref, b.ref) || (a.medida || 0) - (b.medida || 0)));
+    }
+  }catch(e){ console.warn('perfiles', e); }
+  if(!PERF.has(op)) PERF.set(op, []);
+  return PERF.get(op);
+}
+async function faltanteSheet(rows){
+  if(!rows || !rows.length || !(puedeRegistrar() || esPlanta())) return;
+  const porOp = [...grp(rows.filter(r => r.op), r => r.op).entries()];
+  if(!porOp.length) return;
+  const [op, l] = porOp[0];
+  const resto = porOp.slice(1).flatMap(x => x[1]);
+  const sub = l.map(i => i.op_instalacion).filter(Boolean);
+  openSheet('Corte parcial · ¿qué material faltó?', `OP ${esc(op)}${sub.length ? ' · ' + esc(sub.length > 6 ? sub.length + ' sub-OP' : sub.join(', ')) : ''}`,
+    `<div id="faltBody"><div class="loading"><div class="spin"></div>Leyendo los perfiles de la orden ${esc(op)}…</div></div>`, 'Registrar faltante', async () => {
+      const sel = [...document.querySelectorAll('.faltCk:checked')].map(c => window._perf[+c.value]);
+      const otro = ($('#faltOtro') || {}).value ? $('#faltOtro').value.trim().toUpperCase() : '';
+      if(otro) sel.push({ref: otro, desc: null, cant: null, medida: null});
+      if(!sel.length){ toast('Elige el perfil que faltó (o toca "No faltó material")', true); return false; }
+      const nota = (($('#faltNota') || {}).value || '').trim() || null;
+      try{
+        const nuevos = await API.faltanteCrear(sel.map(x => ({obra: l[0].obra, op, item_ids: l.map(i => i.id), op_inst: sub, proceso: 'corte', ref: x.ref, descripcion: x.desc, cant: x.cant, medida: x.medida, nota, quien: (S.perfil && S.perfil.nombre) || null})));
+        if(S.falt && S.obra === l[0].obra) S.falt = nuevos.concat(S.falt);
+        toast(`✓ Faltante registrado: ${sel.map(x => x.ref).join(', ')} · OP ${op}`);
+        faltRefrescar();
+      }catch(e){ toast(/faltantes|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar los faltantes en la base (SQL 68)' : errMsg(e), true); return false; }
+      if(resto.length) setTimeout(() => faltanteSheet(resto), 300);
+    });
+  const cancelar = document.querySelector('#layer .sh-foot .btn'); if(cancelar) cancelar.textContent = 'No faltó material';
+  const per = await perfilesDeOp(op); window._perf = per;
+  const box = $('#faltBody'); if(!box) return;
+  box.innerHTML = `${per.length ? `<div class="sc-note" style="margin-bottom:6px">Marca el perfil o los perfiles que no alcanzaron. Salen de la orden de producción de la OP ${esc(op)}.</div>
+      <div style="max-height:42vh;overflow:auto;flex:none">${per.map((x, k) => `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px">
+        <input type="checkbox" class="faltCk" value="${k}"><span style="flex:1"><b>${esc(x.ref)}</b> ${esc(x.desc || '')}</span><span class="mono" style="font-size:12px;color:var(--text2)">${x.cant != null ? fmtN(x.cant) + ' und' : ''}${x.medida ? ' × ' + fmtN(x.medida) + ' mm' : ''}</span></label>`).join('')}</div>`
+      : `<div class="warn">No encontré los perfiles HSP en la orden PDF de la OP ${esc(op)} (puede que la orden no esté cargada). Escribe la referencia abajo.</div>`}
+    <div class="fgrid" style="margin-top:10px"><div class="field"><span class="lbl">Otro perfil (si no está en la lista)</span><input id="faltOtro" placeholder="Ej. HSP045" autocapitalize="characters" autocomplete="off"></div>
+      <div class="field"><span class="lbl">Nota (opcional)</span><input id="faltNota" placeholder="Ej. faltaron 2 tiras de 6 m"></div></div>`;
+}
+function faltDetHTML(it){
+  const l = (S.falt || []).filter(f => (f.item_ids || []).map(Number).includes(Number(it.id)));
+  if(!l.length) return '';
+  return `<div class="d-sec"><div class="lbl" style="color:var(--danger)">Faltante de material</div>${l.map(f => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;${f.resuelta ? 'opacity:.55' : ''}">
+      <span style="flex:1"><b>${esc(f.ref)}</b> ${esc(f.descripcion || '')}${f.cant != null ? ` · ${fmtN(f.cant)} und` : ''}${f.medida ? ` × ${fmtN(f.medida)} mm` : ''}${f.nota ? `<br><small>${esc(f.nota)}</small>` : ''}<br><small>${esc(f.quien || '')} · ${new Date(f.creada).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})}${f.resuelta ? ' · resuelto' + (f.resuelta_por ? ' (' + esc(f.resuelta_por) + ')' : '') : ''}</small></span>
+      ${!f.resuelta && (puedeRegistrar() || esPlanta()) ? `<button class="btn sm ghost" onclick="faltResolver(${f.id})">Resuelto</button>` : ''}</div>`).join('')}</div>`;
+}
+function faltRefrescar(){ if(S.view !== 'obra') return; try{ renderList(); }catch(e){} try{ if(S.detailId) renderDetail(); }catch(e){} }
+async function faltResolver(id){
+  try{ await API.faltanteResolver(id); const f = (S.falt || []).find(x => x.id === id); if(f) f.resuelta = new Date().toISOString(); toast('✓ Faltante resuelto'); faltRefrescar(); }
+  catch(e){ toast(errMsg(e), true); }
+}
+
 // ── Avisos en la app para la asistente (los crea la base cuando el director arma despachos, programaciones o líneas) ──
 const AV = {l: [], n: 0};
 async function avisosIniciar(){
@@ -2481,7 +2551,7 @@ async function openObra(name, fromPop, anio, pf){
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Obras</button>
     <div class="obra-title"><div class="h1">${esc(name)}</div></div><div class="loading"><div class="spin"></div>Cargando ítems</div>`);
   window.scrollTo(0,0);
-  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); await cargarNovedades(name); }
+  try{ const [it, ac] = await Promise.all([API.obra(name), API.actas(name).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); await cargarNovedades(name); await cargarFaltantes(name); }
   catch(e){ toast('Error al cargar la obra: '+e.message, true); return; }
   if(S.view !== 'obra' || S.obra !== name) return;
   S.items.sort((a,b) => nat(a.op_instalacion,b.op_instalacion) || nat(a.item,b.item) || a.id-b.id);
@@ -2617,6 +2687,7 @@ function rowHTML(it){
   const st = stageOf(it);
   let sub = it.instalado ? `<span class="subtag ok">Inst. ${fmtD(it.fecha_instalacion)}${it.acta_id ? ' · Acta ' + esc(actaNum(it.acta_id)) + (it.recepcion_id ? ' ✓ recibido' : ' · entregado, sin firma') : ''}</span>`
             : it.despachado ? `<span class="subtag ${S.remRec && S.remRec.has(it.remision) ? 'ok' : ''}">Rem. ${esc(it.remision||'—')} · ${fmtD(it.fecha_despacho)}${S.remRec && S.remRec.has(it.remision) ? ' · recibida ✓' : ''}</span>` : '';
+  { const fl = faltDe(it.id); if(fl.length) sub += `<span class="subtag" style="color:var(--danger);border-color:var(--danger)" title="${esc(fl.map(f => f.ref + (f.descripcion ? ' ' + f.descripcion : '')).join(' · '))}">⚠ Falta ${esc(fl.map(f => f.ref).join(', '))}</span>`; }
   if(!it.instalado){ const nv = novDe(it.id).filter(novAbierta); if(nv.length) sub += `<span class="subtag" style="color:var(--danger);border-color:var(--danger)" title="${esc(nv[0].motivo)}">⚠ Novedad ${fmtD(String(nv[0].creada).slice(0,10))}</span>`; }
   if(veCobros() && it.despachado){
     const c = com(it);
@@ -3063,7 +3134,7 @@ async function liquidacionExcel(){
 async function recargarObra(){
   if(S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar en el ítem abierto. ¿Descartarlos?')) return;
   const keepSel = new Set(S.sel), keepDet = S.detailId;
-  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); await cargarNovedades(S.obra); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
+  try{ const [it, ac] = await Promise.all([API.obra(S.obra), API.actas(S.obra).catch(() => null)]); S.items = it; S.actas = ac; await loadComercial(); await cargarRemRec(); await cargarNovedades(S.obra); await cargarFaltantes(S.obra); S.items.sort((a,b)=>nat(a.op_instalacion,b.op_instalacion)||nat(a.item,b.item)||a.id-b.id); }
   catch(e){ return toast('Error: '+e.message, true); }
   S.sel = new Set([...keepSel].filter(id => S.items.some(i=>i.id===id)));
   S.detailId = S.items.some(i=>i.id===keepDet) ? keepDet : null;
@@ -3126,6 +3197,7 @@ function renderDetail(){
         ${it.notas_importacion ? `<div class="note">Nota del Excel original: ${esc(it.notas_importacion)}</div>` : ''}
       </div>
       <fieldset class="d-fs" ${puedeRegistrar() ? '' : 'disabled'}>
+      ${faltDetHTML(it)}
       <div class="d-sec"><div class="lbl">Procesos <span style="letter-spacing:.1em">X completo · + parcial</span></div>
         ${PROCS.map(([k,t]) => `<div class="proc-row"><span>${t}</span>${seg3(k)}</div>`).join('')}
       </div>
@@ -5810,7 +5882,7 @@ async function leerOPsPDF(data, nombre){
     const nm = one(/^N[uú]mero\s*:/i), m = nm && nm.s.match(/(\d{3,6})-(\d+)/);
     if(m){
       const op = m[1].replace(/^0+(?=\d)/, '') + '-' + m[2];
-      if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = nombre; actual.vidrios = []; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
+      if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = nombre; actual.vidrios = []; actual.perfiles = []; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
     }
     if(!actual) continue;
     // Nombre completo del vidrio (en el encabezado sale cortado): se busca en la lista de materiales
@@ -5829,7 +5901,13 @@ function vidriosPagina(it, o){
   const heads = [o.vidrioCorto, o.vidrio2Corto].filter(Boolean).map(norm);
   for(const f of filas){
     const s = f.t.sort((a, b) => a.x - b.x).map(t => t.s).join(' ').replace(/\s+/g, ' ').trim();
-    if(/^(HS[PA]\d|RECTA|RETIC)/i.test(s) || /^[A-Z]{2,}\d{3,}\b/.test(s)){ o.alum = true; continue; }
+    if(/^(HS[PA]\d|RECTA|RETIC)/i.test(s) || /^[A-Z]{2,}\d{3,}\b/.test(s)){
+      o.alum = true;
+      // Perfiles de aluminio (HSP…): referencia, descripción, cantidad y medida de corte
+      const mp = s.match(/^(HSP\d+[A-Z]?)\s+(.+?)\s+(\d{1,4})(?:\s+(\d{2,6}))?(?:\s|$)/i);
+      if(mp && o.perfiles) o.perfiles.push({ref: mp[1].toUpperCase(), desc: mp[2].trim(), cant: +mp[3], medida: mp[4] ? +mp[4] : null});
+      continue;
+    }
     const m = s.match(/^(.+?)\s+(\d{1,4})\s+(\d{2,5})\s+(\d{2,5})(?:\s|$)/); if(!m) continue;
     const ref = norm(m[1]);
     const esVid = heads.length ? heads.some(h => ref.startsWith(h) || h.startsWith(ref)) : /(LAM|TEMP|CRUDO|INCOL|BRONCE|GRIS|ESPEJO|REFLEC|VIDRIO|\bMM\b)/.test(ref);
