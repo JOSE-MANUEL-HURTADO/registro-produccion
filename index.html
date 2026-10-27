@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.21';
+const APP_VERSION = '7.22';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -4975,7 +4975,8 @@ const sistemaDe = it => { const s0 = String(it.sistema || '').trim();
   t = t.split(/\s*-\s*/)[0];                        // antes del primer guion (configuración, variante)
   t = t.replace(/([A-ZÁÉÍÓÚÑ]{2,})\.\S*/, '$1');      // ABSOLUTE.T → ABSOLUTE · ELI.053/… → ELI (E.GLASS se conserva)
   const w = []; for(const x of t.split(/\s+/)){ if(/[\d\/]/.test(x)) break; w.push(x); }   // SIENA F1.T → SIENA
-  return w.join(' ').trim() || 'SIN SISTEMA'; };
+  const abr = {LATI:'LATITUD', LAT:'LATITUD', LATITUDE:'LATITUD', FER:'FERRARA', GAL:'GALICIA', GALC:'GALICIA', ELI:'ELIPSE', ABSO:'ABSOLUTE', MAX:'MAXIMA', MAXI:'MAXIMA', IBI:'IBIZA', PER:'PERSIANA', ACUA:'DB'};
+  const r = w.join(' ').trim(); return abr[r] || r || 'SIN SISTEMA'; };
 // Diseño sin la configuración de naves (-XO, -OX…): SIENA F1.T -XO y -OX quedan juntos
 const disBase = it => String(it.diseno || '').toUpperCase().replace(/\.\s+/g, '.').replace(/\s*-\s*[XO\/\s]+$/, '').replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
 // Cuerpos = cantidad de X y O de la configuración del diseño (-XO = 2, -OXXO = 4, -XO//O = 3). Sin configuración: al final
@@ -6054,6 +6055,13 @@ function dividirUbicacion(ub, cant){
   ub = (ub || '').trim();
   const partes = ubicPartes(ub);
   if(partes.length && partes.length === cant) return partes.map(p => ({ubicacion: p.lugar + ' ' + p.cod, piso: 'PISO ' + Math.floor(p.cod / 100)}));
+  // Locales (primer piso): "BAÑO LOCAL 1 BAÑO PPAL.201-303… BAÑO ALC.1 302-402" → el local es una unidad más, en el PISO 1
+  const reLoc = /((?:[A-ZÁÉÍÓÚÑ]+\.?\s+)?LOCAL(?:ES)?\s*\d{1,2})(?=\s|$|[,;])/gi, locs = [...ub.matchAll(reLoc)].map(m => m[1].trim());
+  if(locs.length){
+    const resto = ub.replace(reLoc, ' ').replace(/\s+/g, ' ').trim(), pr = ubicPartes(resto);
+    if(pr.length && locs.length + pr.length === cant)
+      return locs.map(l => ({ubicacion: l.toUpperCase(), piso: 'PISO 1'})).concat(pr.map(p => ({ubicacion: p.lugar + ' ' + p.cod, piso: 'PISO ' + Math.floor(p.cod / 100)})));
+  }
   const pisos = pisosDeUbic(ub);
   if(pisos.length > 1 && pisos.length === cant){
     const base = ub.replace(/PISO\s*[#.\-]?\s*\d+(\s*[-–,\/y]\s*PISO\s*[#.\-]?\s*\d+)+/i, '').replace(/\s+/g, ' ').trim();
