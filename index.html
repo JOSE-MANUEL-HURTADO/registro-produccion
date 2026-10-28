@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.33';
+const APP_VERSION = '7.34';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -6225,23 +6225,24 @@ function artOPHeader(it){
   const ff = fila(/\bFECHA\b/i).replace(/^.*?\bFECHA\s*:?\s*/i, '').replace(/\s+ENTREGA\b.*$/i, '');
   return {op: artNumOP(m[1]), cliente: cli || null, direccion: dir || null, fecha: fechaISO(ff) || fechaISO(txt)};
 }
-// Formato de OP de Ártica en Excel (plantilla "ARTICA-OP v1"): se lee celda por celda, sin adivinar
+// Formato de OP de Ártica en Excel (plantilla "ARTICA-OP v1/v2"): se lee celda por celda, sin adivinar
 const artTipoTxt = (tipo, cal, col) => { cal = String(cal || '').trim(); return [String(tipo || '').trim(), cal ? cal + (/\+/.test(cal) ? '' : ' MM') : '', String(col || '').trim()].filter(Boolean).join(' ').toUpperCase(); };
-function artLineaFmt(o, x){   // x = {item, cant, tipo, cal, col, canto, ancho, alto, forr, obs}
+function artLineaFmt(o, x){   // x = {item, cant, tipo, cal, col, canto, ancho, alto, mec, forr, obs}
   const num = v => typeof v === 'number' ? v : pdfNum(String(v ?? '').replace(/\.(?=\d{1,2}$)/, ','));
   const mm = v => !v ? 0 : Math.round(v < 20 ? v * 1000 : v);   // por si alguien escribe metros (0,780)
   const cant = parseInt(x.cant), ancho = mm(num(x.ancho)), alto = mm(num(x.alto));
   if(!cant || !x.tipo || !ancho || !alto) return;
   const canto = String(x.canto || '').toUpperCase().trim();
   o.vidrios.push({item: String(x.item || '').trim() || null, tipo: artTipoTxt(x.tipo, x.cal, x.col), cant, ancho, alto,
-    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : null, forrado: /^S/i.test(String(x.forr || '').trim()),
+    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : null, forrado: /^S/i.test(String(x.forr || '').trim()), mecanizado: /^S/i.test(String(x.mec || '').trim()),
     obs: [canto && !/CANTO\s+A\s+CANTO/.test(canto) ? 'CANTO ' + canto.replace(/^CANTO\s+/, '') : '', String(x.obs || '').trim(), o.obs || ''].filter(Boolean).join(' · ') || null});
 }
 async function leerOPArticaXlsx(file){
   if(!window.XLSX) await loadScript(XLSX_URL);
   const wb = XLSX.read(await file.arrayBuffer(), {type: 'array', cellDates: true});
   const ws = wb.Sheets.OP || wb.Sheets[wb.SheetNames[0]];
-  if(!ws || !/ARTICA-OP/i.test(String((ws.P1 || {}).v || ''))) throw new Error(file.name + ': no es una OP de Ártica en el formato de la plantilla (falta la marca ARTICA-OP)');
+  const marca = String(((ws || {}).Q1 || (ws || {}).P1 || {}).v || ''), v2 = /v2/i.test(marca);
+  if(!ws || !/ARTICA-OP/i.test(marca)) throw new Error(file.name + ': no es una OP de Ártica en el formato de la plantilla (falta la marca ARTICA-OP)');
   const nom = {}; for(const n of ((wb.Workbook || {}).Names || [])) nom[n.Name] = String(n.Ref || '').replace(/^.*!/, '').replace(/\$/g, '');
   const val = (n, def) => { const c = ws[nom[n] || def]; return c ? (c.v instanceof Date ? c.v : String(c.v ?? '').trim()) : ''; };
   const fISO = fechaISO(val('OP_FECHA', 'G10'));
@@ -6253,7 +6254,9 @@ async function leerOPArticaXlsx(file){
   const rg = XLSX.utils.decode_range(nom.OP_LINEAS || 'B13:M36');
   for(let r = rg.s.r; r <= rg.e.r; r++){
     const g = c => { const x = ws[XLSX.utils.encode_cell({r, c: rg.s.c + c})]; return x ? x.v : ''; };
-    artLineaFmt(o, {item: g(1), cant: g(2), tipo: g(3), cal: g(4), col: g(5), canto: g(6), ancho: g(7), alto: g(8), forr: g(10), obs: g(11)});
+    // v2: … M² MECANIZADO FORRADO OBS · v1 (sin mecanizado): … M² FORRADO OBS
+    artLineaFmt(o, v2 ? {item: g(1), cant: g(2), tipo: g(3), cal: g(4), col: g(5), canto: g(6), ancho: g(7), alto: g(8), mec: g(10), forr: g(11), obs: g(12)}
+                      : {item: g(1), cant: g(2), tipo: g(3), cal: g(4), col: g(5), canto: g(6), ancho: g(7), alto: g(8), forr: g(10), obs: g(11)});
   }
   if(!o.vidrios.length) throw new Error(file.name + ': la OP no tiene medidas completas (cantidad, tipo, ancho y alto)');
   return [o];
@@ -6267,9 +6270,11 @@ function artOPLineas(it, o){
     if(/^OBSERVACIONES/i.test(f.s)){ obs = true; const r = f.s.replace(/^OBSERVACIONES(\s+GENERALES)?\s*:?\s*/i, ''); if(r) o.obs = [o.obs, r].filter(Boolean).join(' · '); continue; }
     if(/^(ELAB|REVIS)|RECIBE PRODUCCI|www\.artica/i.test(f.s)){ obs = false; continue; }
     if(obs){ o.obs = [o.obs, f.s].filter(Boolean).join(' · '); continue; }
-    // Formato nuevo (plantilla): # ÍTEM CANT TIPO CALIBRE COLOR CANTO ANCHO ALTO M² FORRADO [OBS]
-    const n = f.s.match(/^\d+\s+(\S+)\s+(\d{1,4})\s+(TEMPLADO|LAMINADO|CRUDO|ESPEJO|REFLECTIVO)\s+(\S+)\s+(.+?)\s+(PULIDO BRILLADO|PULIDO MATE|CANTO A CANTO)\s+(\d{2,5})\s+(\d{2,5})(?:\s+[\d.,]+)?(?:\s+(S[IÍ]|NO))?(?:\s+(.*))?$/i);
-    if(n){ o.fmtNuevo = true; artLineaFmt(o, {item: n[1], cant: n[2], tipo: n[3], cal: n[4], col: n[5], canto: n[6], ancho: n[7], alto: n[8], forr: n[9], obs: n[10]}); continue; }
+    // Formato nuevo (plantilla): # ÍTEM CANT TIPO CALIBRE COLOR CANTO ANCHO ALTO M² [MECANIZADO] FORRADO [OBS]
+    if(/\bMECANIZADO\b/i.test(f.s) && /\bFORRADO\b/i.test(f.s)) o.colMec = true;
+    const n = f.s.match(/^\d+\s+(\S+)\s+(\d{1,4})\s+(TEMPLADO|LAMINADO|CRUDO|ESPEJO|REFLECTIVO)\s+(\S+)\s+(.+?)\s+(PULIDO BRILLADO|PULIDO MATE|CANTO A CANTO)\s+(\d{2,5})\s+(\d{2,5})(?:\s+[\d.,]+)?(?:\s+(S[IÍ]|NO))?(?:\s+(S[IÍ]|NO))?(?:\s+(.*))?$/i);
+    if(n){ o.fmtNuevo = true; const dos = n[10] != null, mec = dos ? n[9] : o.colMec ? n[9] : null, forr = dos ? n[10] : o.colMec ? null : n[9];
+      artLineaFmt(o, {item: n[1], cant: n[2], tipo: n[3], cal: n[4], col: n[5], canto: n[6], ancho: n[7], alto: n[8], mec, forr, obs: n[11]}); continue; }
     const m = f.s.match(/^(\S+)\s+(\d{1,4})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/);
     if(!m || !/VIDRIO|TEMP|LAM|CRUDO|INCOL|BRONCE|GRIS|ESPEJO|REFLEC|\bMM\b/i.test(m[3])) continue;
     const ancho = mm(m[4]), alto = mm(m[5]); if(!ancho || !alto) continue;
@@ -6303,7 +6308,7 @@ function vidriosPagina(it, o){
 }
 // Filas para art_piezas (una por línea de vidrio de la OP)
 const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: v.item || o.item || null,
-  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, canto: v.canto || o.canto || null, obs: v.obs || o.obs || null, fecha: o.fecha || null, entrega: o.entrega || null})));
+  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, mecanizado: o.tercero ? !!v.mecanizado : null, canto: v.canto || o.canto || null, obs: v.obs || o.obs || null, fecha: o.fecha || null, entrega: o.entrega || null})));
 // Lee los datos de la primera página de una OP usando la posición de cada encabezado
 function ordenPagina(it, op){
   const cx = t => (t.x + t.x2) / 2;
