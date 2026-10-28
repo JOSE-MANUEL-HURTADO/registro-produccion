@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.32';
+const APP_VERSION = '7.33';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -6201,16 +6201,29 @@ async function leerOPsPDF(data, nombre){
 // Ojo: el número puede coincidir con una OP de Elíptica; se guardan aparte (tercero = true, SQL 74)
 const filasPDF = it => { const filas = []; for(const t of [...it].sort((a, b) => b.y - a.y || a.x - b.x)){ let f = filas.find(r => Math.abs(r.y - t.y) < 2.5); if(!f){ f = {y: t.y, t: []}; filas.push(f); } f.t.push(t); }
   return filas.map(f => ({y: f.y, s: f.t.sort((a, b) => a.x - b.x).map(t => t.s).join(' ').replace(/\s+/g, ' ').trim()})); };
+// N.º de OP de Ártica: "6585-1" o consecutivo propio ("00001", se deja como está)
+const artNumOP = v => { const t = String(v ?? '').trim(), m = t.match(/(\d{1,6})-(\d+)/); if(m) return m[1].replace(/^0+(?=\d)/, '') + '-' + m[2]; const n = t.match(/^\d{1,8}$/); return n ? t : null; };
+// Fechas: Date, 27/10/2026, 2026-10-27, "OCTUBRE 28 DE 2026", "28 de octubre de 2026"
+function fechaISO(v){
+  if(v instanceof Date && !isNaN(v)) return v.getFullYear() + '-' + pad(v.getMonth() + 1) + '-' + pad(v.getDate());
+  const t = String(v ?? '').trim().toLowerCase(); if(!t) return null;
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return m[1] + '-' + pad(+m[2]) + '-' + pad(+m[3]);
+  m = t.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); if(m) return m[3] + '-' + pad(+m[2]) + '-' + pad(+m[1]);
+  m = t.match(/([a-zñ]+)\s+(\d{1,2})\s*(?:de|,)?\s*(\d{4})/); if(m && MESES[m[1]]) return m[3] + '-' + pad(MESES[m[1]]) + '-' + pad(+m[2]);
+  m = t.match(/(\d{1,2})\s*(?:de)?\s+([a-zñ]+)\s*(?:de|del)?\s*(\d{4})/); if(m && MESES[m[2]]) return m[3] + '-' + pad(MESES[m[2]]) + '-' + pad(+m[1]);
+  return null;
+}
 function artOPHeader(it){
   const txt = it.map(t => t.s).join(' ');
-  const m = txt.match(/PRODUCCI[OÓ]N[^\d]{0,24}?(\d{3,6})-(\d+)/i);
-  if(!m || /N[uú]mero\s*:/i.test(txt)) return null;
+  if(!/ORDEN\s+DE\s*(PRODUCCI[OÓ]N)?/i.test(txt) || !/PRODUCCI[OÓ]N/i.test(txt) || /N[uú]mero\s*:/i.test(txt)) return null;
+  // Número: el que sigue a "PRODUCCIÓN" o a "N.º OP"
+  const m = txt.match(/PRODUCCI[OÓ]N\s+(?:N[°ºo.]*\s*(?:OP)?\s*)?(\d{1,6}(?:-\d+)?)\b/i) || txt.match(/N[°ºo.]+\s*OP\s+(\d{1,6}(?:-\d+)?)\b/i);
+  if(!m || !artNumOP(m[1])) return null;
   const filas = filasPDF(it), fila = re => (filas.find(f => re.test(f.s)) || {}).s || '';
   const cli = fila(/^CLIENTE\b/i).replace(/^CLIENTE\s*:?\s*/i, '').replace(/\s+NIT\b.*$/i, '').trim();
   const dir = fila(/^DIRECCI[OÓ]N\b/i).replace(/^DIRECCI[OÓ]N\s*:?\s*/i, '').replace(/\s+CIUDAD\b.*$/i, '').trim();
-  const f = txt.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  return {op: m[1].replace(/^0+(?=\d)/, '') + '-' + m[2], cliente: cli || null, direccion: dir || null,
-    fecha: f ? f[3] + '-' + pad(+f[2]) + '-' + pad(+f[1]) : null};
+  const ff = fila(/\bFECHA\b/i).replace(/^.*?\bFECHA\s*:?\s*/i, '').replace(/\s+ENTREGA\b.*$/i, '');
+  return {op: artNumOP(m[1]), cliente: cli || null, direccion: dir || null, fecha: fechaISO(ff) || fechaISO(txt)};
 }
 // Formato de OP de Ártica en Excel (plantilla "ARTICA-OP v1"): se lee celda por celda, sin adivinar
 const artTipoTxt = (tipo, cal, col) => { cal = String(cal || '').trim(); return [String(tipo || '').trim(), cal ? cal + (/\+/.test(cal) ? '' : ' MM') : '', String(col || '').trim()].filter(Boolean).join(' ').toUpperCase(); };
@@ -6231,11 +6244,11 @@ async function leerOPArticaXlsx(file){
   if(!ws || !/ARTICA-OP/i.test(String((ws.P1 || {}).v || ''))) throw new Error(file.name + ': no es una OP de Ártica en el formato de la plantilla (falta la marca ARTICA-OP)');
   const nom = {}; for(const n of ((wb.Workbook || {}).Names || [])) nom[n.Name] = String(n.Ref || '').replace(/^.*!/, '').replace(/\$/g, '');
   const val = (n, def) => { const c = ws[nom[n] || def]; return c ? (c.v instanceof Date ? c.v : String(c.v ?? '').trim()) : ''; };
-  const fecha = val('OP_FECHA', 'G10'), fISO = fecha instanceof Date ? fecha.getFullYear() + '-' + pad(fecha.getMonth() + 1) + '-' + pad(fecha.getDate()) : null;
-  const num = String(val('OP_NUM', 'K3')).match(/(\d{3,6})-(\d+)/);
-  if(!num) throw new Error(file.name + ': falta el N.º de OP (ej. 6585-1)');
-  const o = {op: num[1].replace(/^0+(?=\d)/, '') + '-' + num[2], cliente: val('OP_CLIENTE', 'D8') || null, direccion: val('OP_DIRECCION', 'D9') || null,
-    fecha: fISO, entrega: (e => e instanceof Date ? e.getFullYear() + '-' + pad(e.getMonth() + 1) + '-' + pad(e.getDate()) : null)(val('OP_ENTREGA', 'I10')), obs: val('OP_OBS', 'B40') || null, archivo: file.name, artica: true, tercero: true, vidrios: [], perfiles: []};
+  const fISO = fechaISO(val('OP_FECHA', 'G10'));
+  const num = artNumOP((ws[nom.OP_NUM || 'K3'] || {}).w || val('OP_NUM', 'K3'));
+  if(!num) throw new Error(file.name + ': falta el N.º de OP');
+  const o = {op: num, cliente: val('OP_CLIENTE', 'D8') || null, direccion: val('OP_DIRECCION', 'D9') || null,
+    fecha: fISO, entrega: fechaISO(val('OP_ENTREGA', 'I10')), obs: val('OP_OBS', 'B40') || null, archivo: file.name, artica: true, tercero: true, vidrios: [], perfiles: []};
   if(!o.cliente) throw new Error(file.name + ': falta el cliente');
   const rg = XLSX.utils.decode_range(nom.OP_LINEAS || 'B13:M36');
   for(let r = rg.s.r; r <= rg.e.r; r++){
@@ -6248,7 +6261,9 @@ async function leerOPArticaXlsx(file){
 function artOPLineas(it, o){
   const mm = v => { const n = pdfNum(v); return n == null ? null : Math.round(n < 20 ? n * 1000 : n); };   // metros (0,780) → mm; si ya viene en mm se deja
   let obs = false;
-  for(const f of filasPDF(it)){
+  const fs = filasPDF(it), elab = ((fs.map(f => f.s.match(/ELABOR[OÓ]\s*:?\s+([^\d]+)$/i)).find(Boolean) || [])[1] || '').trim().toUpperCase();
+  for(const f of fs){
+    if(obs && elab && f.s.trim().toUpperCase() === elab) continue;   // el nombre en la firma de "Elaboró" no es observación
     if(/^OBSERVACIONES/i.test(f.s)){ obs = true; const r = f.s.replace(/^OBSERVACIONES(\s+GENERALES)?\s*:?\s*/i, ''); if(r) o.obs = [o.obs, r].filter(Boolean).join(' · '); continue; }
     if(/^(ELAB|REVIS)|RECIBE PRODUCCI|www\.artica/i.test(f.s)){ obs = false; continue; }
     if(obs){ o.obs = [o.obs, f.s].filter(Boolean).join(' · '); continue; }
