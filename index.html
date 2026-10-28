@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.24';
+const APP_VERSION = '7.25';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -585,6 +585,10 @@ const yearOf = it => {
   const y = it.dia_inicio ? it.dia_inicio.slice(0,4) : ''; return okYear(y) ? y : 'S/F';
 };
 const yearsTxt = set => { const ys = [...set].filter(y => y !== 'S/F').sort(); if(!ys.length) return ''; return ys.length === 1 ? ys[0] : ys[0]+'–'+ys[ys.length-1]; };
+// En espera por novedad de ensamble (SQL 72): sigue en ensamble pero parado
+const enEspera = it => !!it.ens_novedad_id && !it.dia_final && !it.despachado;
+const normEns = x => String(x || '').toUpperCase().replace(/\s+/g, ' ').trim();
+const NOV_ENS = ['Rotura de vidrio', 'Falta material', 'Error de fabricación o medida', 'Otro'];
 const stageOf = it => it.instalado ? 'INSTALADO' : (it.despachado ? 'DESPACHADO' : (it.status||'EN COLA'));
 // ── Peso: m² × (calibre del vidrio + 1 mm por los demás componentes) × 2,5 kg por mm·m² ──
 // Laminado 3+3 = 6 mm; templado / crudo = su calibre. El +1 mm cubre aluminio, herrajes, empaques…
@@ -763,6 +767,11 @@ const API = {
   async novedades(obra){ const {data,error} = await this.sb.from('novedades').select('*').eq('obra', obra).order('creada', {ascending:false}); if(error) throw error; return data || []; },
   async novedadCrear(items, motivo, detalle, fotos, piso, instalador){ const {data,error} = await this.sb.rpc('novedad_crear', {p_items: items, p_motivo: motivo, p_detalle: detalle || null, p_fotos: fotos || [], p_piso: piso || null, p_instalador: instalador || null}); if(error) throw error; return data; },
   async novedadesEnviar(){ const {error} = await this.sb.rpc('novedades_enviar_correo'); if(error) throw error; },
+  // Novedades de ensamble: ítem en espera (SQL 72)
+  async ensNovedadCrear(ids, motivo, detalle){ const {data,error} = await this.sb.rpc('ens_novedad_crear', {p_items: ids, p_motivo: motivo, p_detalle: detalle || null}); if(error) throw error; return data; },
+  async ensReanudar(ids, nota){ const {data,error} = await this.sb.rpc('ens_reanudar', {p_items: ids, p_nota: nota || null}); if(error) throw error; return data || []; },
+  async ensNovedades(ids){ if(!ids.length) return []; const {data,error} = await this.sb.from('novedades_ensamble').select('*').in('id', ids); if(error) throw error; return data || []; },
+  async ensOpsAbiertas(ens, op, excl){ const {data,error} = await this.sb.rpc('ens_ops_abiertas', {p_ens: ens, p_op: op, p_excluir: excl || []}); if(error) throw error; return data; },
   async novedadResolver(id, nota){ const {data,error} = await this.sb.rpc('novedad_resolver', {p_id: id, p_nota: nota || null}); if(error) throw error; return data; },
   async novedadFotoSubir(ruta, blob){ const {error} = await this.sb.storage.from('novedades').upload(ruta, blob, {contentType:'image/jpeg', upsert:false}); if(error) throw error; },
   async novedadFotoUrl(ruta){ const {data,error} = await API.sb.storage.from('novedades').createSignedUrl(ruta, 3600); if(error) throw error; return data.signedUrl; },
@@ -2701,6 +2710,7 @@ const FILTROS = [
   ['PEND','Pendientes', it => isPend(it), false, true],   // ya no se muestra como botón
   ['EN COLA','En cola', it => stageOf(it)==='EN COLA'],
   ['PRODUCCIÓN','Producción', it => stageOf(it)==='PRODUCCIÓN'],
+  ['ESPERA','⏸ En espera', it => enEspera(it)],
   ['ENSAMBLADO','Ensamblado', it => stageOf(it)==='ENSAMBLADO'],
   ['DESPACHOS','Despachados', it => it.despachado],
   ['DESPACHADO','Por instalar', it => it.despachado && !it.instalado],
@@ -2809,7 +2819,7 @@ function rowHTML(it){
     <div class="c-dis"><div>${esc(it.diseno||'')}</div><span>${fmtN(it.ancho)} × ${fmtN(it.alto)}${pesoItem(it) != null ? ' · ' + fmtKg(pesoItem(it)) : ''}</span></div>
     <div class="c-proc">${procPills(it)}</div>
     <div class="c-ens">${it.ensamblador ? esc(it.ensamblador) : '<span>Sin ensamblador</span>'}</div>
-    <div class="c-st"><span class="tag"><i style="background:${STAGES[st].c}"></i>${STAGES[st].t}</span>${sub}</div>
+    <div class="c-st"><span class="tag"><i style="background:${STAGES[st].c}"></i>${STAGES[st].t}</span>${enEspera(it) ? '<span class="tag" style="color:var(--danger);border-color:var(--danger)">⏸ En espera</span>' : ''}${sub}</div>
   </div>`;
 }
 
@@ -2858,6 +2868,7 @@ function renderSelbar(){
       <button class="btn sm" onclick="sheetProcesos()">Procesos</button>
       <button class="btn sm" onclick="sheetEnsamblador()">Ensamblador</button>
       <button class="btn sm" onclick="sheetTerminado()">Ensamble terminado</button>
+      <button class="btn sm" onclick="ensNovSheet(selItems())">⏸ Novedad ensamble</button>
       <button class="btn sm" onclick="ordenDespacho()">Orden de despacho</button>
       ${isGerente() ? `<button class="btn sm" onclick="sheetDespacho()">Despacho manual</button>` : ''}
       <button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : registraInst() ? `<button class="btn sm" onclick="sheetInstalacion()">Instalación</button>` : ''}
@@ -3289,7 +3300,7 @@ function renderDetail(){
   box.innerHTML = `<div class="detail">
     <div class="d-head">
       <div><div class="d-title">${esc(it.item||'—')}</div><div class="d-sub">${esc(it.ubicacion||'')} · <span class="mono">${esc(it.op_instalacion||'')}</span></div>
-        <div style="margin-top:8px"><span class="tag"><i style="background:${STAGES[st].c}"></i>${STAGES[st].t}</span></div></div>
+        <div style="margin-top:8px"><span class="tag"><i style="background:${STAGES[st].c}"></i>${STAGES[st].t}</span>${enEspera(it) ? ' <span class="tag" style="color:var(--danger);border-color:var(--danger)">⏸ En espera por novedad</span>' : ''}</div></div>
       <button class="icon-btn" onclick="closeDetail()" title="Cerrar">${ICON.close}</button>
     </div>
     <div class="d-body">
@@ -3338,6 +3349,7 @@ function renderDetail(){
           <div class="field"><span class="lbl">Instalador</span>${personaField('pfInst', d.instalador, 'instalador', 'Elegir')}</div>
         </div>` : ''}
         ${it.acta_id ? `<div class="d-meta">En el <b>acta de entrega N.º ${esc(actaNum(it.acta_id))}</b>${it.entregado_en ? ` · entregado en obra ${fmtD(String(it.entregado_en).slice(0,10))}${it.entregado_por ? ' por ' + esc(it.entregado_por) : ''}` : ''}${it.recepcion_id ? ' · <b>recibido con firma</b>' : ''}</div>` : ''}
+        ${ensNovDetHTML(it)}
         ${(() => { const ns = novDe(it.id); return ns.length || (puedeNov() && !it.instalado) ? `<div class="d-sec" style="padding:0;border:0;margin-top:12px"><div class="lbl">Novedades</div>${ns.map(n => novCard(n, false)).join('')}${puedeNov() && !it.instalado ? `<button class="btn sm" type="button" onclick="novNueva([byId(${it.id})], null, true)">⚠ Registrar novedad (no se pudo instalar)</button>` : ''}</div>` : ''; })()}
         ${it.actualizado_en ? `<div class="d-meta">Última modificación: ${new Date(it.actualizado_en).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})}</div>` : ''}
       </div>
@@ -3558,6 +3570,10 @@ function sheetEnsamblador(){
     const ens = pfVal('gEns'), dia = $('#gDia').value, hora = $('#gHora').value;
     if(!ens){ toast('Elige el ensamblador', true); return false; }
     if(!dia){ toast('Falta el día de inicio', true); return false; }
+    { const nuevos = items.filter(i => !i.dia_inicio || normEns(i.ensamblador) !== normEns(ens)), ops = [...new Set(nuevos.map(i => i.op))];
+      if(ops.length > 1 && !isGerente()){ toast('Un ensamblador trabaja una OP a la vez: selecciona ítems de una sola OP', true); return false; }
+      if(ops.length > 1 && !confirm(`Vas a iniciar ${ops.length} OP a la vez para ${ens} (${ops.join(', ')}). ¿Continuar?`)) return false;
+      if(ops.length && await ensChkUnaOp(ens, ops[0], items.map(i => i.id)) === false) return false; }
     let l = items;
     if(noListos.length){
       if(isGerente()){ if(!confirm(`${noListos.length} ítem(s) no tienen completos cortado, troquelado, mecanizado y programado.\n\n¿Iniciar el ensamble de todas formas?`)) return false; }
@@ -3573,6 +3589,57 @@ async function quitarEnsamble(){
   if(!l.length) return toast('Ninguno de los ítems seleccionados tiene ensamble para anular (o ya están despachados)', true);
   if(!confirm(`Se quitará el ensamblador y las fechas de ensamble de ${l.length} ítem${l.length===1?'':'s'}. Vuelven a En cola. ¿Continuar?`)) return;
   try{ await applyGroup(l, () => ({ensamblador:null, dia_inicio:null, hora_inicio:null, dia_final:null, hora_final:null})); closeSheet(); }
+  catch(e){ toast(errMsg(e), true); }
+}
+
+// ── Novedades de ensamble (SQL 72): el ítem queda EN ESPERA y el ensamblador puede iniciar otra OP ──
+// Una OP a la vez: false = no se puede (o el director no confirmó)
+async function ensChkUnaOp(ens, op, ids){
+  let v; try{ v = await API.ensOpsAbiertas(ens, op, ids); }catch(e){ return true; }   // sin SQL 72: la base no revisa
+  if(!v) return true;
+  const msg = `${ens} tiene sin terminar la OP ${v}. Debe terminarla, o reportarla con novedad (en espera), antes de iniciar la OP ${op}.`;
+  if(isGerente()) return confirm(msg + '\n\nComo director puedes iniciarla de todas formas. ¿Continuar?');
+  toast(msg, true); return false;
+}
+const ENSNOV = {};
+async function ensNovCargar(ids){
+  const f = [...new Set(ids)].filter(id => id && !(id in ENSNOV)); if(!f.length) return;
+  try{ for(const n of await API.ensNovedades(f)) ENSNOV[n.id] = n; }catch(e){}
+  if(S.detailId && f.includes((byId(S.detailId) || {}).ens_novedad_id)) renderDetail();
+}
+function ensNovDetHTML(it){
+  if(!enEspera(it)) return '';
+  const n = ENSNOV[it.ens_novedad_id]; if(!n) setTimeout(() => ensNovCargar([it.ens_novedad_id]), 0);
+  return `<div class="warn" style="margin-top:12px"><b>⏸ En espera por novedad de ensamble</b>${n ? `<br>${esc(n.motivo)}${n.detalle ? ' · ' + esc(n.detalle) : ''}<br><small>${fechaHora(n.creada)}${n.quien ? ' · ' + esc(n.quien) : ''}${n.ensamblador ? ' · ensamblador ' + esc(n.ensamblador) : ''}</small>` : ''}
+    ${puedeRegistrar() ? `<div style="margin-top:8px"><button class="btn sm primary" type="button" onclick="ensReanudarUI([${it.id}])">▶ Reanudar ensamble</button></div>` : ''}</div>`;
+}
+function ensNovSheet(items){
+  const esp = items.filter(enEspera), ok = items.filter(it => it.ensamblador && it.dia_inicio && !it.dia_final && !it.despachado && !enEspera(it));
+  if(!ok.length && !esp.length) return toast('Ninguno de los ítems seleccionados está en ensamble (iniciado y sin terminar)', true);
+  window._nm = null;
+  const body = `${ok.length ? `<div class="summary"><b>${fmtN(ok.length)}</b> ítem${ok.length === 1 ? '' : 's'} en ensamble quedarán <b>en espera</b>: siguen abiertos y el ensamblador puede iniciar otra OP.</div>
+    <div class="field" style="margin-top:8px"><span class="lbl">Motivo</span><div class="seg" id="nmSeg">${NOV_ENS.map(m => `<button data-v="${esc(m)}">${esc(m)}</button>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Detalle</span><input id="nmDet" placeholder="Ej. se partió el vidrio de la hoja izquierda"></div>` : ''}
+    ${esp.length ? `<div class="anular" style="margin-top:10px"><div><b>${fmtN(esp.length)}</b> ya ${esp.length === 1 ? 'está' : 'están'} en espera. ¿Ya se solucionó?</div><button class="btn sm" onclick="ensReanudarUI([${esp.map(i => i.id).join(',')}])">▶ Reanudar</button></div>` : ''}`;
+  openSheet('⏸ Novedad de ensamble', subSel(items.length), body, ok.length ? `Poner en espera ${fmtN(ok.length)}` : 'Listo', async () => {
+    if(!ok.length) return;
+    const mot = window._nm, det = $('#nmDet').value.trim();
+    if(!mot){ toast('Elige el motivo', true); return false; }
+    if(mot === 'Otro' && !det){ toast('Escribe el detalle', true); return false; }
+    try{ const r = await API.ensNovedadCrear(ok.map(i => i.id), mot, det); ENSNOV[r.id] = r;
+      for(const it of ok){ it.ens_novedad_id = r.id; } toast(`⏸ ${fmtN(ok.length)} en espera · ${mot}`); renderList(); if(S.detailId) renderDetail(); }
+    catch(e){ toast(/ens_novedad|function/.test(errMsg(e)) ? 'Falta correr el SQL 72 en Supabase (' + errMsg(e) + ')' : errMsg(e), true); return false; }
+  });
+  const seg = $('#nmSeg'); if(seg) seg.addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); window._nm = b.dataset.v; });
+}
+async function ensReanudarUI(ids){
+  const l = ids.map(byId).filter(Boolean).filter(enEspera); if(!l.length) return;
+  if(await ensChkUnaOp(l[0].ensamblador, l[0].op, ids) === false) return;
+  const nota = prompt('¿Qué se hizo? (opcional, ej. llegó el vidrio nuevo)', '');
+  if(nota === null) return;
+  try{ const rows = await API.ensReanudar(ids, nota); mergeRows(rows); for(const it of l) it.ens_novedad_id = null;
+    closeSheet(); toast('▶ Ensamble reanudado'); renderList(); if(S.detailId) renderDetail(); }
   catch(e){ toast(errMsg(e), true); }
 }
 
@@ -3649,6 +3716,7 @@ const SC_EST = [
   ...PROCS.map(([k,t]) => ({k, t, proc:true})),
   {k:'ini',  t:'Inicio ensamble'},
   {k:'fin',  t:'Ensamble terminado'},
+  {k:'nov',  t:'⏸ Novedad ensamble'},
   {k:'desp', t:'Despacho'},
   {k:'inst', t:'Instalación'},
   {k:'entr', t:'Entrega a obra'}
@@ -3659,7 +3727,7 @@ const SC_CAMPO = {
   entrega:   [{k:'entr', t:'Entrega a obra'}, {k:'inst', t:'Instalación'}],   // entrega a obra también instala (SQL 64)
   recibe:    [{k:'rec', t:'Recibir en obra'}]
 };
-const SC_PLANTA = () => SC_EST.filter(e => (e.proc && e.k !== 'programado') || ['ini','fin','desp'].includes(e.k));   // sin programar, instalar ni entregar
+const SC_PLANTA = () => SC_EST.filter(e => (e.proc && e.k !== 'programado') || ['ini','fin','nov','desp'].includes(e.k));   // sin programar, instalar ni entregar
 const scEstaciones = () => puedeRegistrar() ? SC_EST : esPlanta() ? SC_PLANTA() : esInstalador() ? SC_EST.filter(e => e.k === 'inst') : esCampo() ? SC_CAMPO[S.perfil.rol] : [];   // gerente, asistente y usuarios de campo
 const scEst = () => scEstaciones().find(e => e.k === SC.est) || scEstaciones()[0];
 const qrTexto = op => 'ELP-OP:' + op;
@@ -3678,11 +3746,14 @@ function scParse(txt){
 // ¿Se puede registrar esta estación en el ítem? null = sí; texto = por qué no
 function scMotivo(it, e){
   if(e.proc){ if(it[e.k] === 'X') return 'ya completo'; if(SC.parcial && it[e.k] === '+') return 'ya parcial'; return null; }
-  if(e.k === 'ini'){ if(it.despachado) return 'ya despachado'; if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
+  if(e.k === 'ini'){ if(it.despachado) return 'ya despachado';
+    if(enEspera(it)) return SC.ens && normEns(SC.ens) !== normEns(it.ensamblador) ? 'en espera · ' + it.ensamblador : null;   // reanudar
+    if(it.ensamblador) return 'en ensamble · ' + it.ensamblador;
     const f = faltaProc(it); if(f.length && !isGerente()) return 'falta ' + f.join(', ');
     if(!SC.ens && !it.ens_asignado) return 'sin ensamblador (elígelo arriba)';
     if(SC.ens && it.ens_asignado && it.ens_asignado !== SC.ens) return 'línea de ' + it.ens_asignado; return null; }
   if(e.k === 'fin'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final) return 'ya terminado'; return null; }
+  if(e.k === 'nov'){ if(!it.ensamblador || !it.dia_inicio) return 'ensamble sin iniciar'; if(it.dia_final || it.despachado) return 'ya terminado'; if(enEspera(it)) return 'ya en espera'; return null; }
   if(e.k === 'desp'){ if(it.despachado) return 'ya despachado'; if(!estaEnsamblado(it)) return 'sin ensamblar'; if(!SC.od) return 'sin orden de despacho'; if(!SC.od.items.includes(it.id) && !((SC.od._pend || {})[it.op] || []).length) return 'su OP no está pendiente en la orden de despacho'; return null; }
   if(e.k === 'entr'){ if(!it.instalado) return 'sin instalar'; if(it.acta_id) return it.recepcion_id ? 'ya recibido' : 'ya entregado'; return null; }
   if(e.k === 'inst'){ if(it.instalado) return 'ya instalado'; if(!it.despachado) return 'sin despachar';
@@ -3752,6 +3823,9 @@ function renderScanParams(){
   if(e.proc) h = `<label class="switch"><span>Registrar como <b>parcial (+)</b> en lugar de completo (X)</span><button class="tgl ${SC.parcial?'on':''}" onclick="SC.parcial=!SC.parcial; this.classList.toggle('on')"></button></label>`;
   if(e.k === 'ini') h = `<div class="field"><span class="lbl">Ensamblador</span>${personaField('scEns', SC.ens, '', 'El asignado en la programación')}</div><div class="sc-note">Fecha y hora de inicio: el momento del escaneo. Si no eliges ensamblador, se usa el que tiene asignado el ítem en la programación.</div>`;
   if(e.k === 'fin') h = `<div class="sc-note">Fecha y hora final: el momento del escaneo.</div>`;
+  if(e.k === 'nov') h = `<div class="field"><span class="lbl">Motivo</span><div class="seg" id="scNovMot">${NOV_ENS.map(m => `<button class="${SC.novMot === m ? 'on' : ''}" onclick="SC.novMot='${m}'; renderScanParams()">${m}</button>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Detalle${SC.novMot === 'Otro' ? ' (obligatorio)' : ''}</span><input id="scNovDet" value="${esc(SC.novDet || '')}" placeholder="Ej. se partió el vidrio de la hoja izquierda" oninput="SC.novDet=this.value"></div>
+    <div class="sc-note">Lo que escanees queda <b>en espera</b>: sigue abierto en ensamble y el ensamblador puede iniciar otra OP. Para seguir, escanea otra vez <b>Inicio ensamble</b> (reanuda).</div>`;
   if(e.k === 'desp') h = `${SC.od ? `<div class="summary" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px"><span style="flex:1"><b>Orden de despacho N.º ${SC.od.id}</b> · ${esc(SC.od.obra || '')}</span>
         <button class="btn sm" onclick="odSoltar()">Cambiar</button></div><div id="odProg" style="font-size:13px;margin-top:6px">Cargando lo que falta…</div></div>`
       : `<div class="field"><span class="lbl">Orden de despacho</span><div style="display:flex;gap:6px"><select id="scOd" style="flex:1"><option value="">Escanea el QR de la orden o elígela…</option></select></div></div>
@@ -3856,6 +3930,8 @@ async function scCodigo(txt, manual){
   const e = scEst();
   if(e.k === 'ini' && !SC.ens){ scBeep(false); return toast('Primero elige el ensamblador: la etiqueta se acomoda a su línea de ensamble', true); }
   if(e.k === 'inst' && !SC.inst){ scBeep(false); return toast('Primero elige el instalador', true); }
+  if(e.k === 'nov' && !SC.novMot){ scBeep(false); return toast('Primero elige el motivo de la novedad', true); }
+  if(e.k === 'nov' && SC.novMot === 'Otro' && !String(SC.novDet || '').trim()){ scBeep(false); const d = $('#scNovDet'); if(d) d.focus(); return toast('Escribe el detalle de la novedad', true); }
   if(e.k === 'inst' && !SC.instPiso){ scBeep(false); const o = $('#scIPiso'); if(o) o.focus(); return toast('Primero elige el piso donde estás instalando', true); }
   if(e.k === 'desp' && !SC.od){ scBeep(false); toast('Primero escanea el QR de la orden de despacho o elígela de la lista', true); const o = $('#scOd'); if(o) o.focus(); return; }
   if(e.k === 'desp' && !SC.rem){ scBeep(false); toast('Primero escribe la remisión', true); const r = $('#scRem'); if(r) r.focus(); return; }
@@ -3906,7 +3982,9 @@ async function scCodigo(txt, manual){
       }
       const m = scMotivo(it, e);
       if(m){ scBeep(false); toast(`${p.sub}: ${m}`, true); return; }
+      const reanuda = e.k === 'ini' && enEspera(it);
       if(await scAplicar([it], items.length, e) === false) return;
+      if(reanuda){ scBeep(true); toast(`▶ ${p.sub} · ensamble reanudado`); return; }
       if(e.k === 'ini' && it.op) artVidriosItem(it.op).then(r => { if(r) setTimeout(() => toast(`Vidrios Ártica ${it.op}: ${fmtN(r.listos)} de ${fmtN(r.total)} listos`), 1800); });
       scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num + (it.piso ? ' · ' + pisoLbl(it.piso) : '') + (it.ubicacion ? ' · ' + lugarCorto(it.ubicacion) : '') : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
@@ -4008,6 +4086,27 @@ async function scAplicar(l, tot, e){
     SC.acta = {id: ac.acta_id, num: ac.num, obra: ac.obra};
     SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: e.t + ' → acta ' + ac.num, n: l.length, tot: l.length === 1 ? 1 : tot, obra: l[0].obra, prev: [], entr: ids, acta: ac.acta_id});
     renderScanLog(); renderScanParams(); return;
+  }
+  if(e.k === 'nov'){
+    const r = await API.ensNovedadCrear(l.map(it => it.id), SC.novMot, SC.novDet);
+    for(const it of l){ it.ens_novedad_id = r.id; const x = S.items && S.items.find(y => y.id === it.id); if(x) x.ens_novedad_id = r.id; }
+    SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: '⏸ En espera · ' + SC.novMot, n: l.length, tot, obra: l[0].obra});
+    SC.novDet = ''; renderScanLog(); renderScanParams(); return;
+  }
+  if(e.k === 'ini'){
+    // Reanudar lo que estaba en espera por novedad
+    const esp = l.filter(enEspera); l = l.filter(it => !enEspera(it));
+    if(esp.length){
+      if(await ensChkUnaOp(esp[0].ensamblador, esp[0].op, esp.map(i => i.id)) === false) return false;
+      const rows = await API.ensReanudar(esp.map(i => i.id), null); mergeRows(rows);
+      for(const it of esp){ it.ens_novedad_id = null; }
+      SC.log.unshift({hora: nowTime(), op: esp.length === 1 ? esp[0].op_instalacion : (esp[0].op || ''), est: '▶ Reanudado', n: esp.length, tot, obra: esp[0].obra});
+      renderScanLog();
+      if(!l.length) return;
+    }
+    // Una OP a la vez por ensamblador
+    const ens = SC.ens || l[0].ens_asignado;
+    if(ens && await ensChkUnaOp(ens, l[0].op, l.map(i => i.id)) === false) return false;
   }
   if(e.k === 'ini' && isGerente()){
     const f = l.filter(it => faltaProc(it).length);
@@ -4880,9 +4979,9 @@ function renderProgBox(recargar){
   const fecha = id => (PG.lista.find(p => p.id === id) || {}).fecha_req || '9999';
   h += `<div class="section-t" style="margin-top:18px">Líneas de ensamble</div>`;
   h += lineas.length ? `<div class="pl-grid">${lineas.map(([ens, l]) => {
-    const pend = l.filter(i => !i.dia_inicio), curso = l.filter(i => i.dia_inicio);
+    const pend = l.filter(i => !i.dia_inicio), curso = l.filter(i => i.dia_inicio), espL = l.filter(enEspera);
     const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => ordLinea(a) - ordLinea(b) || nat(fecha(a[0].programacion_id), fecha(b[0].programacion_id)) || nat(a[0].op, b[0].op));
-    return `<div class="pl-card"><div class="pl-head"><span class="n">${esc(ens)}</span><span class="m"><b>${fmtN(pend.length)}</b> por iniciar · ${fmtN(curso.length)} en curso</span></div>
+    return `<div class="pl-card"><div class="pl-head"><span class="n">${esc(ens)}</span><span class="m"><b>${fmtN(pend.length)}</b> por iniciar · ${fmtN(curso.length - espL.length)} en curso${espL.length ? ` · <b style="color:var(--danger)">⏸ ${fmtN(espL.length)} en espera</b>` : ''}</span></div>
       ${filas.map(f => { const i0 = f[0], pi = f.filter(i => !i.dia_inicio).length, ok = f.filter(i => !i.dia_inicio && listoEns(i)).length;
         return `<button class="pl-row" onclick="openObra(decodeURIComponent('${encQ(i0.obra)}'), false, '', {estado:'TODOS', op:decodeURIComponent('${encQ(i0.op)}'), q:''})"><span class="o">${esc(i0.obra)} · <em>OP ${esc(i0.op)}</em></span><span class="k">${fmtN(f.length)}</span>
           <span class="d">N.º ${i0.programacion_id} · para ${fmtD(fecha(i0.programacion_id))} · ${pi ? `${fmtN(pi)} por iniciar (${fmtN(ok)} con procesos listos)` : 'todas iniciadas'}</span></button>`; }).join('')}
