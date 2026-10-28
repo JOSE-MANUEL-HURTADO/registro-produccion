@@ -1,5 +1,5 @@
 // ELÍPTICA · Edge Function "resumen_novedades"
-// También envía al instante el correo de faltantes de material en corte (body {tipo:"faltante"}) a compras e inventario.
+// También envía cada 2 horas (pg_cron, body {tipo:"faltante"}) UN correo con los faltantes de material en corte nuevos a compras e inventario.
 // Al final de la jornada (6:00 p. m., la llama la base con pg_cron) envía a cobros UN correo por obra
 // con el PDF de las novedades de instalación del día (fecha y hora del servidor, motivo, ítems y fotos).
 // Secretos necesarios (Edge Functions → Secrets): GMAIL_USER y GMAIL_APP_PASSWORD.
@@ -92,32 +92,32 @@ async function correoFaltantes(ids: number[] | null, usuario: string, clave: str
   const lista = (t: unknown) => String(t || "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
   const para = lista(cf?.correos_faltantes), cc = lista(cf?.correos_faltantes_cc);
   if (!para.length) return { enviados: 0, error: "sin destinatarios" };
-  // Los indicados, y lo que haya quedado sin enviar de los últimos 3 días
+  // Todo lo que no se ha enviado (de los últimos 7 días)
   const { data: fs, error } = await db.from("faltantes").select("*").is("correo_en", null)
-    .gte("creada", new Date(Date.now() - 3 * 864e5).toISOString()).order("creada");
+    .gte("creada", new Date(Date.now() - 7 * 864e5).toISOString()).order("creada");
   if (error) throw error;
   const l = (fs || []) as Falt[];   // incluye los recién registrados (ids) y lo que no se pudo enviar antes
   if (!l.length) return { enviados: 0 };
+  // UN solo correo con todo lo nuevo (por obra y OP) y, al final, lo que sigue abierto de envíos anteriores
+  const { data: ab } = await db.from("faltantes").select("*").is("resuelta", null).not("correo_en", "is", null).order("creada");
+  const abiertos = ((ab || []) as Falt[]).filter((f) => !l.some((x) => x.id === f.id));
+  const tabla = (fs: Falt[]) => {
+    const g = new Map<string, Falt[]>();
+    for (const f of fs) { const k = (f.obra || "") + "|" + f.op; if (!g.has(k)) g.set(k, []); g.get(k)!.push(f); }
+    return [...g.values()].map((x) => { const f0 = x[0], subs = [...new Set(x.flatMap((f) => f.op_inst || []))];
+      return `<h3 style="font-family:Arial,sans-serif;font-size:14px;margin:18px 0 6px">${e(f0.obra || "")} · OP ${e(f0.op)}${subs.length ? ` <span style="font-weight:normal;color:#555">· unidades ${e(subs.join(", "))}</span>` : ""}</h3>
+        <table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px"><tr style="background:#1e1f20;color:#fff"><th style="padding:6px 10px;text-align:left">Perfil</th><th style="padding:6px 10px;text-align:left">Descripción</th><th style="padding:6px 10px">Cantidad faltante</th><th style="padding:6px 10px">Medida de corte</th><th style="padding:6px 10px;text-align:left">Reportó</th><th style="padding:6px 10px;text-align:left">Nota</th></tr>
+        ${x.map((f) => `<tr><td style="padding:6px 10px;border:1px solid #ccc"><b>${e(f.ref)}</b></td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.descripcion || "")}</td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right"><b>${n0(f.cant)}</b></td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right">${f.medida ? n0(f.medida) + " mm" : ""}</td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.quien || "")} · ${fh(f.creada)}</td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.nota || "")}</td></tr>`).join("")}</table>`; }).join("");
+  };
+  const obras = [...new Set(l.map((f) => f.obra || ""))].filter(Boolean);
+  const html = `<p style="font-family:Arial,sans-serif">Faltantes de material registrados en corte (<b>${l.length}</b> nuevo${l.length === 1 ? "" : "s"}):</p>${tabla(l)}
+    ${abiertos.length ? `<p style="font-family:Arial,sans-serif;margin-top:24px;color:#555">Siguen abiertos de reportes anteriores (${abiertos.length}):</p>${tabla(abiertos)}` : ""}
+    <p style="font-family:Arial,sans-serif;color:#555;margin-top:20px">Elíptica Cerramientos Translúcidos · Registro de producción · se envía cada 2 horas cuando hay faltantes nuevos</p>`;
   const smtp = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: usuario, pass: clave } });
-  const grupos = new Map<string, Falt[]>();
-  for (const f of l) { const k = (f.obra || "") + "|" + f.op + "|" + f.creada.slice(0, 16); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k)!.push(f); }
-  let n = 0;
-  for (const g of grupos.values()) {
-    const f0 = g[0], subs = [...new Set(g.flatMap((f) => f.op_inst || []))];
-    const filas = g.map((f) => `<tr><td style="padding:6px 10px;border:1px solid #ccc"><b>${e(f.ref)}</b></td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.descripcion || "")}</td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right"><b>${n0(f.cant)}</b></td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right">${f.medida ? n0(f.medida) + " mm" : ""}</td></tr>`).join("");
-    const html = `<p>Se registró un <b>faltante de material en corte</b>:</p>
-      <p><b>Obra:</b> ${e(f0.obra || "")}<br><b>OP:</b> ${e(f0.op)}${subs.length ? ` · unidades afectadas: ${e(subs.join(", "))}` : ""}<br><b>Reportó:</b> ${e(f0.quien || "")} · ${fh(f0.creada)}</p>
-      <table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px"><tr style="background:#1e1f20;color:#fff"><th style="padding:6px 10px;text-align:left">Perfil</th><th style="padding:6px 10px;text-align:left">Descripción</th><th style="padding:6px 10px">Cantidad faltante</th><th style="padding:6px 10px">Medida de corte</th></tr>${filas}</table>
-      ${g.some((f) => f.nota) ? `<p><b>Nota:</b> ${e(g.map((f) => f.nota).filter(Boolean).join(" · "))}</p>` : ""}
-      <p>Elíptica Cerramientos Translúcidos · Registro de producción</p>`;
-    try {
-      await smtp.sendMail({ from: `"Elíptica · Faltante de material" <${usuario}>`, to: para.join(", "), ...(cc.length ? { cc: cc.join(", ") } : {}),
-        subject: `Faltante de material · ${f0.obra || ""} · OP ${f0.op} · ${g.map((f) => f.ref).join(", ")}`, html });
-      await db.from("faltantes").update({ correo_en: new Date().toISOString() }).in("id", g.map((f) => f.id));
-      n++;
-    } catch (err) { console.error("faltante", err); }
-  }
-  return { enviados: n };
+  await smtp.sendMail({ from: `"Elíptica · Faltantes de material" <${usuario}>`, to: para.join(", "), ...(cc.length ? { cc: cc.join(", ") } : {}),
+    subject: `Faltantes de material en corte · ${l.length} nuevo${l.length === 1 ? "" : "s"}${obras.length ? " · " + obras.join(", ") : ""}`, html });
+  await db.from("faltantes").update({ correo_en: new Date().toISOString() }).in("id", l.map((f) => f.id));
+  return { enviados: 1, faltantes: l.length };
 }
 
 Deno.serve(async (req) => {
