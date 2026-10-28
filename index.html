@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.30';
+const APP_VERSION = '7.31';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -941,7 +941,7 @@ const S = {
   sel:new Set(), detailId:null, draft:null, live:false, com:new Map()
 };
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
-const rolTxt = r => r === 'gerente' ? 'Director de operaciones' : (r || '');   // el rol "gerente" se muestra con el cargo real
+const rolTxt = r => r === 'gerente' ? 'Director de operaciones' : r === 'artica_ops' ? 'Ártica · OP y OPTIMA' : r === 'artica' ? 'Ártica · operario' : (r || '');   // el rol "gerente" se muestra con el cargo real
 const rolEs = (...r) => !!S.perfil && r.includes(S.perfil.rol);
 const puedeRegistrar = () => rolEs('gerente','asistente');   // procesos, ensamble, despacho, instalación
 const veCobros = () => rolEs('gerente','cobros','consulta');  // ve las marcas de cobro
@@ -1046,6 +1046,7 @@ async function afterLogin(ses){
     return renderLogin('Tu usuario no tiene un rol asignado. Pídele al director de operaciones que lo active.');
   }
   if(esOperarioArtica()) return goArticaOperario();
+  if(esArticaOps()){ window.addEventListener('popstate', onPop); A.tab = 'etq'; return goArtica(); }
   if(soloScan()){
     window.addEventListener('popstate', onPop);
     history.replaceState({v:'scan'}, '');
@@ -1303,8 +1304,9 @@ const ART_NOM = Object.fromEntries(ART_EST);
 const ART_AB = {corte:'C', pulido:'P', mecanizado:'M', templado:'T', lavado:'L', forrado:'F'};
 const veArtica = () => rolEs('gerente','asistente','consulta');
 const esOperarioArtica = () => rolEs('artica');
+const esArticaOps = () => rolEs('artica_ops');   // carga OP de clientes de Ártica, OPTIMA y etiquetas; no ve Elíptica (SQL 75)
 const artEscaneaTodo = () => rolEs('gerente','asistente');   // todas las estaciones de Ártica (SQL 73)
-const artImprime = () => isGerente();          // transición: solo el gerente imprime etiquetas
+const artImprime = () => isGerente() || esArticaOps();
 const A = {tab:'avance', obra:null, piezas:null, err:null, q:'', filtro:'pend', abierta:null, rend:null, rendDias:7, plan:null, ops:null, prefijos:null};
 function empresa(){ try{ return localStorage.getItem('empresa') === 'artica' ? 'artica' : 'eliptica'; }catch(e){ return 'eliptica'; } }
 function aplicarEmpresa(){ document.body.classList.toggle('artica', esOperarioArtica() || (veArtica() && S.view === 'artica')); }
@@ -1329,7 +1331,7 @@ function artPaso(p){ for(const e of p.ruta) if(artHechos(p, e) < p.cant) return 
 
 // ── Datos ──
 Object.assign(API, {
-  async artAvance(){ const out = []; for(let off = 0; ; off += 1000){ const {data,error} = await this.sb.from('art_avance').select('*').order('op').order('linea').range(off, off + 999); if(error) throw error; out.push(...(data || [])); if(!data || data.length < 1000) break; } return out; },
+  async artAvance(todo){ const out = []; for(let off = 0; ; off += 1000){ let qy = this.sb.from('art_avance').select('*'); if(!todo) qy = qy.or('historica.eq.false,rotas.gt.0,optima_en.not.is.null'); const {data,error} = await qy.order('op').order('linea').range(off, off + 999); if(error) throw error; out.push(...(data || [])); if(!data || data.length < 1000) break; } return out; },
   async artRegistros(desde){ const out = []; for(let off = 0; ; off += 1000){ const {data,error} = await this.sb.from('art_registros').select('estacion,creado,quien').gte('creado', desde).order('id').range(off, off + 999); if(error) throw error; out.push(...(data || [])); if(!data || data.length < 1000) break; } return out; },
   async artEscanear(cod, est){ const {data,error} = await this.sb.rpc('art_escanear', {p_codigo: cod, p_estacion: est}); if(error) throw error; return data; },
   async artDeshacer(est){ const {data,error} = await this.sb.rpc('art_deshacer', {p_estacion: est}); if(error) throw error; return data; },
@@ -1355,19 +1357,20 @@ const artFaltaSQL = e => /art_|schema cache|PGRST20/i.test(errMsg(e)) ? 'Falta c
 
 // ════════════════ Vista del gerente / asistente ════════════════
 function goArtica(){
-  if(!veArtica()) return;
+  if(!veArtica() && !esArticaOps()) return;
   S.view = 'artica'; aplicarEmpresa();
   history.replaceState({v:'artica'}, '');
   if(!A.piezas) artCargar(); else renderArtica();
 }
 async function artCargar(){
   A.err = null; renderArtica();
-  try{ A.piezas = await API.artAvance(); }catch(e){ A.piezas = []; A.err = artFaltaSQL(e); }
+  try{ A.piezas = await API.artAvance(A.todo); }catch(e){ A.piezas = []; A.err = artFaltaSQL(e); }
   if(S.view === 'artica') renderArtica();
 }
 function artTab(t){ A.tab = t; if(t === 'rend') A.rend = null; renderArtica(); }
 function renderArtica(){
-  const t = A.tab, tabs = [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
+  if(esArticaOps()) A.tab = 'etq';
+  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
   let body;
   if(!A.piezas && !A.err) body = '<div class="loading"><div class="spin"></div>Cargando Ártica</div>';
   else if(A.err) body = `<div class="warn">${esc(A.err)}</div>`;
@@ -1391,7 +1394,8 @@ function artOrigen(v){ A.origen = v; A.obra = null; try{ localStorage.setItem('a
 function artAvanceHTML(){
   if(!A.origen){ try{ A.origen = localStorage.getItem('art_origen') || 'todas'; }catch(e){ A.origen = 'todas'; } }
   const base = A.piezas.filter(p => A.origen === 'todas' || (A.origen === 'cli' ? p.tercero : !p.tercero));
-  const seg = `<div class="art-seg">${[['todas','Todo'],['eli','Elíptica'],['cli','Clientes']].map(([k, n]) => `<button class="${A.origen === k ? 'on' : ''}" onclick="artOrigen('${k}')">${n} <b>${fmtN(A.piezas.filter(p => k === 'todas' || (k === 'cli' ? p.tercero : !p.tercero)).filter(p => artListas(p) < p.cant).reduce((s, p) => s + p.cant - artListas(p), 0))}</b></button>`).join('')}</div>`;
+  const verTodo = A.todo ? '' : `<div style="margin:-4px 0 10px"><button class="btn sm ghost" onclick="A.todo=true;A.piezas=null;artCargar()">Ver también lo terminado antes de la app</button></div>`;
+  const seg = verTodo + `<div class="art-seg">${[['todas','Todo'],['eli','Elíptica'],['cli','Clientes']].map(([k, n]) => `<button class="${A.origen === k ? 'on' : ''}" onclick="artOrigen('${k}')">${n} <b>${fmtN(A.piezas.filter(p => k === 'todas' || (k === 'cli' ? p.tercero : !p.tercero)).filter(p => artListas(p) < p.cant).reduce((s, p) => s + p.cant - artListas(p), 0))}</b></button>`).join('')}</div>`;
   const q = A.q.trim().toUpperCase().replace(/\s/g, '');
   const qn = normH(A.q).replace(/\s/g, '');
   const coincide = p => !q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && normH(v).replace(/\s/g, '').includes(qn));
@@ -1501,8 +1505,9 @@ function artEtqHTML(){
   if(!A.ops) A.ops = new Set();
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
   const plan = A.plan;
-  return `<div class="cstep"><b>1</b><div><div class="cs-t">Vidrios de las OP</div><div class="cs-d">Al cargar el PDF de las OP en Elíptica, sus líneas de vidrio entran solas a Ártica. Para las OP que ya estaban cargadas, léelas una vez de las órdenes PDF guardadas.</div>
-      <button class="btn sm" onclick="artLeerExistentes()">Leer vidrios de las ${fmtN(S.ordenes ? S.ordenes.size : 0)} órdenes PDF guardadas</button></div></div>
+  return `<div class="cstep"><b>1</b><div><div class="cs-t">${esArticaOps() ? 'Cargar OP de clientes' : 'Vidrios de las OP'}</div><div class="cs-d">Las <b>OP de clientes de Ártica</b> se cargan aquí (PDF o el Excel de la plantilla de OP de Ártica).${esArticaOps() ? '' : ' Las OP de Elíptica entran solas al cargarlas en Elíptica.'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn sm primary" style="cursor:pointer">${ICON.pdf} Cargar OP de clientes (PDF o Excel)<input type="file" accept="application/pdf,.pdf,.xlsx" multiple style="display:none" onchange="artSubirOPs([...this.files]); this.value=''"></label>
+      ${isGerente() ? `<button class="btn sm" onclick="artLeerExistentes()">Leer vidrios de las ${fmtN(S.ordenes ? S.ordenes.size : 0)} órdenes PDF guardadas</button>` : ''}</div></div></div>
     ${artOptimaHTML()}
     <div class="cstep"><b>3</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ordenadas por la posición de OPTIMA (el número grande). También puedes imprimir cada lote desde "Enviados a OPTIMA". Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" id="artEtqBtn" onclick="artImprimirEtq()" ${plan || A.ultLote ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : A.ultLote ? `Imprimir etiquetas del último lote (${fmtN(A.ultLote.etq.length)})` : 'Exporta un lote primero'}</button>
@@ -1529,6 +1534,30 @@ async function artLeerExistentes(){
   try{ const n = await API.artCargar(filas); toast(`✓ ${fmtN(n)} líneas de vidrio cargadas en Ártica${err.length ? ` · ${err.length} órdenes no se pudieron leer` : ''}`); }
   catch(e){ toast(artFaltaSQL(e), true); }
   A.piezas = null; artCargar();
+}
+// OP de clientes de Ártica (PDF de Ártica, Excel de la plantilla o PDF de vidrio solo): se cargan desde Ártica
+async function artSubirOPs(files){
+  if(!files.length) return;
+  toast('Leyendo ' + (files.length === 1 ? files[0].name : files.length + ' archivos') + '…');
+  const ops = [], eli = [], errs = [];
+  try{ await qrLibsPDF(); }catch(e){ return toast(errMsg(e), true); }
+  for(const f of files){
+    try{
+      const l = /\.xlsx?$/i.test(f.name) ? await leerOPArticaXlsx(f) : (await leerOPsPDF(new Uint8Array(await f.arrayBuffer()), f.name)).ops;
+      for(const o of l){ if(!(o.tercero && (o.vidrios || []).length)) eli.push(o.op); else if(!ops.some(x => x.op === o.op)) ops.push(o); }   // la misma OP en Excel y PDF: una sola vez
+      if(!l.length) errs.push(f.name + ': no encontré una OP');
+    }catch(e){ errs.push(errMsg(e)); }
+  }
+  const rows = artFilasDeOps(ops);
+  const body = `${ops.length ? `<div class="summary"><b>${fmtN(ops.length)} OP</b> · ${fmtN(rows.length)} medidas · ${fmtN(rows.reduce((a, r) => a + r.cant, 0))} piezas</div>
+      <div style="margin-top:8px">${ops.map(o => `<div class="art-lote"><div><b>OP ${esc(o.op)} · ${esc(o.cliente || '')}</b><span>${o.fecha ? 'OP del ' + fmtD(o.fecha) + ' · ' : ''}${o.entrega ? 'entrega ' + fmtD(o.entrega) + ' · ' : ''}${fmtN(o.vidrios.length)} medidas · ${fmtN(o.vidrios.reduce((a, v) => a + v.cant, 0))} piezas</span></div></div>`).join('')}</div>` : ''}
+    ${eli.length ? `<div class="warn">No se cargan aquí (son OP de Elíptica): ${esc(eli.join(', '))}</div>` : ''}
+    ${errs.length ? `<div class="warn">${errs.map(esc).join('<br>')}</div>` : ''}`;
+  openSheet('Cargar OP de clientes', 'Ártica', body, ops.length ? `Cargar ${fmtN(ops.length)} OP` : 'Cerrar', async () => {
+    if(!ops.length) return;
+    try{ const n = await API.artCargar(rows); toast(`✓ ${fmtN(ops.length)} OP · ${fmtN(n)} medidas cargadas`); A.piezas = null; artCargar(); }
+    catch(e){ toast(artFaltaSQL(e), true); return false; }
+  });
 }
 // Carga solo vidrios (OP de terceros) desde la revisión del PDF
 async function artCargarVidrios(rows, desdeCarga){
@@ -1559,14 +1588,20 @@ function artLotes(){
   for(const p of A.piezas){ const n = artPorEnviar(p); if(!n) continue;
     const c = vidrioCar(p.tipo), obra = artObra(p), k = obra + '|' + c.txt;
     if(!m.has(k)) m.set(k, {k, obra, car: c, piezas: [], n: 0, ops: new Set(), cliente: !!p.tercero});
-    const g = m.get(k); g.piezas.push(p); g.n += n; g.ops.add(p.op); }
+    const g = m.get(k); g.piezas.push(p); g.n += n; g.ops.add(p.op);
+    if(p.fecha_op && (!g.fecha || p.fecha_op < g.fecha)) g.fecha = p.fecha_op;
+    if(p.fecha_entrega && (!g.entrega || p.fecha_entrega < g.entrega)) g.entrega = p.fecha_entrega; }
   return [...m.values()].sort((a, b) => nat(a.obra, b.obra) || a.car.txt.localeCompare(b.car.txt));
 }
 function artOptimaHTML(){
   if(!window.XLSX) loadScript(XLSX_URL).catch(() => {});   // listo antes del toque de descarga (Safari)
   const lotes = artLotes(); A._lotes = lotes;
   // Un grupo por vidrio igual (tipo + calibre + color): OPTIMA puede optimizar juntas varias obras y clientes
-  const vids = [...grp(lotes, l => l.car.txt).values()].map(ls => ({car: ls[0].car, lotes: ls})).sort((a, b) => a.car.txt.localeCompare(b.car.txt)); A._vid = vids;
+  // Lo más antiguo primero (fecha de la OP) para priorizar el corte
+  const fk = l => l.fecha || '9999';
+  const vids = [...grp(lotes, l => l.car.txt).values()].map(ls => ({car: ls[0].car, lotes: ls.sort((a, b) => fk(a).localeCompare(fk(b)) || nat(a.obra, b.obra)), fecha: ls.map(fk).sort()[0]}))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.car.txt.localeCompare(b.car.txt)); A._vid = vids;
+  const dias = f => { if(!f) return ''; const d = Math.round((new Date(today() + 'T12:00:00') - new Date(f + 'T12:00:00')) / 864e5); return `OP del ${fmtD(f)}${d > 0 ? ` · <b${d > 7 ? ' style="color:var(--danger)"' : ''}>hace ${d} día${d === 1 ? '' : 's'}</b>` : ' · hoy'}`; };
   const off = A.optOff || (A.optOff = new Set());
   const env = new Map(); for(const p of A.piezas){ const n = artEnPlan(p); if(!n) continue; const k = p.optima_lote || 'Sin nombre'; if(!env.has(k)) env.set(k, {k, piezas: [], n: 0, en: p.optima_en}); const g = env.get(k); g.piezas.push(p); g.n += n; if(p.optima_en > g.en) g.en = p.optima_en; }
   const enviados = [...env.values()].sort((a, b) => String(b.en).localeCompare(String(a.en))); A._env = enviados;
@@ -1576,7 +1611,7 @@ function artOptimaHTML(){
       ${vids.length ? vids.map((v, vi) => { const sel = v.lotes.filter(l => !off.has(l.k)), n = sel.reduce((a, l) => a + l.n, 0);
         return `<div class="art-lote-obra">${esc(v.car.tipo)} · ${esc(v.car.cal)} · ${esc(v.car.col)}</div>
         ${v.lotes.map(l => `<label class="art-lote" style="cursor:pointer;justify-content:flex-start;gap:10px"><input type="checkbox" ${ck} ${off.has(l.k) ? '' : 'checked'} onchange="artOptSel(decodeURIComponent('${encQ(l.k)}'), this.checked)">
-          <div><b>${esc(l.obra)}</b>${l.cliente ? ' <span class="badge-new">Cliente</span>' : ''}<span>${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div></label>`).join('')}
+          <div><b>${esc(l.obra)}</b>${l.cliente ? ' <span class="badge-new">Cliente</span>' : ''}<span>${l.fecha ? dias(l.fecha) + ' · ' : ''}${l.entrega ? 'entrega ' + fmtD(l.entrega) + ' · ' : ''}${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div></label>`).join('')}
         <div style="display:flex;justify-content:flex-end;margin:6px 0 14px"><button class="btn sm primary" ${n ? '' : 'disabled'} onclick="artExportarVid(${vi})">${ICON.down} Excel · ${fmtN(n)} piezas${sel.length > 1 ? ' · ' + sel.length + ' obras/clientes' : ''}</button></div>`; }).join('')
         : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
       ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
@@ -1587,9 +1622,9 @@ function artOptSel(k, on){ const o = A.optOff || (A.optOff = new Set()); on ? o.
 // Excel para digitar en OPTIMA: POS, CANT, MED X (ancho), MED Y (alto), CLIENTE (ítem), PEDIDO, NOTAS
 const artPed = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return m ? m[1].padStart(6, '0') + '-' + m[2] : op; };   // como lo digitan en OPTIMA: 006295-1
 function artExcelBlob(ps, cantDe){
-  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','MEDIDA OP','OBRA / CLIENTE','VIDRIO']].concat(ps.map(p => { const c = artCorte(p);
-    return [p._pos || p.optima_pos, cantDe(p), c.ancho, c.alto, p.item || '', artPed(p.op), artNotas(p), p.ancho + ' x ' + p.alto, artObra(p), p.tipo]; }));
-  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 34].map(w => ({wch: w}));
+  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','MEDIDA OP','OBRA / CLIENTE','VIDRIO','FECHA OP']].concat(ps.map(p => { const c = artCorte(p);
+    return [p._pos || p.optima_pos, cantDe(p), c.ancho, c.alto, p.item || '', artPed(p.op), artNotas(p), p.ancho + ' x ' + p.alto, artObra(p), p.tipo, p.fecha_op ? fmtD(p.fecha_op) : '']; }));
+  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 34, 11].map(w => ({wch: w}));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'OPTIMA');
   return new Blob([XLSX.write(wb, {bookType: 'xlsx', type: 'array'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -5587,7 +5622,7 @@ function renderCarga(){
     body = `
       <div class="carga-steps">
         <div class="cstep" style="border:1px solid var(--cola);padding:12px"><b>★</b><div><div class="cs-t">Desde las órdenes de producción (lo más rápido)</div><div class="cs-d">Sube el PDF de la orden tal como sale del sistema (puedes elegir varios). La app lee obra, OP, ítem, sistema, cantidad, vidrio, medidas, m², ubicación y fecha, y <b>divide cada cantidad en OP de instalación</b> (6291-1.1, 6291-1.2…): si la ubicación trae los apartamentos (201-303-403-503) le asigna uno a cada unidad con su piso. Antes de guardar revisas todo. Al cargar, la orden también queda subida <b>con su QR</b>.</div>
-          <label class="btn primary sm" style="cursor:pointer">${ICON.pdf} Elegir órdenes PDF<input type="file" id="fileOpPdf" accept="application/pdf,.pdf,.xlsx" multiple style="display:none"></label></div></div>
+          <label class="btn primary sm" style="cursor:pointer">${ICON.pdf} Elegir órdenes PDF<input type="file" id="fileOpPdf" accept="application/pdf,.pdf" multiple style="display:none"></label></div></div>
         <div class="cs-d" style="margin:4px 0 2px">O, si prefieres, desde Excel:</div>
         <div class="cstep"><b>1</b><div><div class="cs-t">Descarga la plantilla</div><div class="cs-d">Tiene las columnas que la app necesita. Llénala como hoy, con las cantidades ya divididas en OP INSTALACION: una fila por cada una.</div>
           <button class="btn sm" onclick="descargarPlantilla()">${ICON.down} Descargar plantilla</button></div></div>
@@ -5880,7 +5915,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas e instalación)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas e instalación)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)'],['artica_ops','Ártica · OP de clientes y OPTIMA']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
@@ -6096,15 +6131,16 @@ async function leerOrdenesPDF(files){
   C.estado = 'leyendo'; C.archivo = files.length === 1 ? files[0].name : files.length + ' órdenes PDF'; C.msg = 'Leyendo las órdenes'; renderCarga();
   try{
     await qrLibsPDF();
-    const ops = [], pdfs = [];
+    const ops = [], pdfs = [], artFuera = [];
     for(const [fi, file] of files.entries()){
       C.msg = `Leyendo ${file.name} (${fi + 1} de ${files.length})`; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = C.msg;
-      if(/\.xlsx?$/i.test(file.name)){ ops.push(...await leerOPArticaXlsx(file)); continue; }   // formato de OP de Ártica en Excel
+      if(/\.xlsx?$/i.test(file.name)){ artFuera.push(file.name); continue; }   // las OP de Ártica en Excel se cargan en Ártica
       const r = await leerOPsPDF(new Uint8Array(await file.arrayBuffer()), file.name);
-      ops.push(...r.ops);
+      for(const o of r.ops){ if(o.artica) artFuera.push(o.op); else ops.push(o); }
       if(r.num) pdfs.push({num: r.num, file});
     }
-    if(!ops.length) throw new Error('No encontré órdenes de producción en ese PDF (busco el "Número: 006291-1" del encabezado).');
+    if(artFuera.length) toast(`OP de clientes de Ártica (${artFuera.join(', ')}): se cargan en Ártica → OPTIMA y etiquetas`, true);
+    if(!ops.length) throw new Error(artFuera.length ? 'Las OP de clientes de Ártica se cargan desde Ártica → OPTIMA y etiquetas → Cargar OP de clientes.' : 'No encontré órdenes de producción en ese PDF (busco el "Número: 006291-1" del encabezado).');
     // Ártica: las líneas de vidrio de cada OP (las OP de terceros solo traen vidrio: no crean ítems en Elíptica)
     C.vidrios = artFilasDeOps(ops);
     const filas = [];
@@ -6199,7 +6235,7 @@ async function leerOPArticaXlsx(file){
   const num = String(val('OP_NUM', 'K3')).match(/(\d{3,6})-(\d+)/);
   if(!num) throw new Error(file.name + ': falta el N.º de OP (ej. 6585-1)');
   const o = {op: num[1].replace(/^0+(?=\d)/, '') + '-' + num[2], cliente: val('OP_CLIENTE', 'D8') || null, direccion: val('OP_DIRECCION', 'D9') || null,
-    fecha: fISO, obs: val('OP_OBS', 'B40') || null, archivo: file.name, artica: true, tercero: true, vidrios: [], perfiles: []};
+    fecha: fISO, entrega: (e => e instanceof Date ? e.getFullYear() + '-' + pad(e.getMonth() + 1) + '-' + pad(e.getDate()) : null)(val('OP_ENTREGA', 'I10')), obs: val('OP_OBS', 'B40') || null, archivo: file.name, artica: true, tercero: true, vidrios: [], perfiles: []};
   if(!o.cliente) throw new Error(file.name + ': falta el cliente');
   const rg = XLSX.utils.decode_range(nom.OP_LINEAS || 'B13:M36');
   for(let r = rg.s.r; r <= rg.e.r; r++){
@@ -6252,7 +6288,7 @@ function vidriosPagina(it, o){
 }
 // Filas para art_piezas (una por línea de vidrio de la OP)
 const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: v.item || o.item || null,
-  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, canto: v.canto || o.canto || null, obs: v.obs || o.obs || null})));
+  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, canto: v.canto || o.canto || null, obs: v.obs || o.obs || null, fecha: o.fecha || null, entrega: o.entrega || null})));
 // Lee los datos de la primera página de una OP usando la posición de cada encabezado
 function ordenPagina(it, op){
   const cx = t => (t.x + t.x2) / 2;
