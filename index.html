@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.31';
+const APP_VERSION = '7.32';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1551,7 +1551,7 @@ async function artSubirOPs(files){
   const rows = artFilasDeOps(ops);
   const body = `${ops.length ? `<div class="summary"><b>${fmtN(ops.length)} OP</b> · ${fmtN(rows.length)} medidas · ${fmtN(rows.reduce((a, r) => a + r.cant, 0))} piezas</div>
       <div style="margin-top:8px">${ops.map(o => `<div class="art-lote"><div><b>OP ${esc(o.op)} · ${esc(o.cliente || '')}</b><span>${o.fecha ? 'OP del ' + fmtD(o.fecha) + ' · ' : ''}${o.entrega ? 'entrega ' + fmtD(o.entrega) + ' · ' : ''}${fmtN(o.vidrios.length)} medidas · ${fmtN(o.vidrios.reduce((a, v) => a + v.cant, 0))} piezas</span></div></div>`).join('')}</div>` : ''}
-    ${eli.length ? `<div class="warn">No se cargan aquí (son OP de Elíptica): ${esc(eli.join(', '))}</div>` : ''}
+    ${eli.length ? `<div class="warn">No se cargan aquí: ${esc(eli.join(', '))} ${eli.length === 1 ? 'tiene' : 'tienen'} el formato de Elíptica (son OP de Elíptica y se cargan en Elíptica).</div>` : ''}
     ${errs.length ? `<div class="warn">${errs.map(esc).join('<br>')}</div>` : ''}`;
   openSheet('Cargar OP de clientes', 'Ártica', body, ops.length ? `Cargar ${fmtN(ops.length)} OP` : 'Cerrar', async () => {
     if(!ops.length) return;
@@ -6194,7 +6194,7 @@ async function leerOPsPDF(data, nombre){
     vidriosPagina(it, actual);
   }
   await pdf.destroy();
-  for(const o of ops) o.tercero = o.artica || (!o.alum && o.vidrios.length > 0);
+  for(const o of ops) o.tercero = !!o.artica;   // solo el formato de Ártica es de clientes; el de Elíptica es de Elíptica aunque solo traiga vidrio
   return {ops, num};
 }
 // ── OP de clientes de Ártica (formato propio de Ártica) ──
