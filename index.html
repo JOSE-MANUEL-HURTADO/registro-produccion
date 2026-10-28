@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.36';
+const APP_VERSION = '7.37';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1948,9 +1948,13 @@ async function faltanteSheet(rows){
   const sub = l.map(i => i.op_instalacion).filter(Boolean);
   openSheet('Corte parcial · ¿qué material faltó?', `OP ${esc(op)}${sub.length ? ' · ' + esc(sub.length > 6 ? sub.length + ' sub-OP' : sub.join(', ')) : ''}`,
     `<div id="faltBody"><div class="loading"><div class="spin"></div>Leyendo los perfiles de la orden ${esc(op)}…</div></div>`, 'Registrar faltante', async () => {
-      const sel = [...document.querySelectorAll('.faltCk:checked')].map(c => window._perf[+c.value]);
+      // La cantidad es la que realmente faltó (no la de la OP)
+      const sel = [], cantDe = id => { const v = parseFloat(String(($('#' + id) || {}).value || '').replace(',', '.')); return isFinite(v) && v > 0 ? v : null; };
+      for(const c of document.querySelectorAll('.faltCk:checked')){ const k = +c.value, x = window._perf[k], n = cantDe('faltN' + k);
+        if(n == null){ toast(`Escribe cuántas faltaron de ${x.ref}`, true); const i = $('#faltN' + k); if(i) i.focus(); return false; }
+        sel.push({...x, cant: n}); }
       const otro = ($('#faltOtro') || {}).value ? $('#faltOtro').value.trim().toUpperCase() : '';
-      if(otro) sel.push({ref: otro, desc: null, cant: null, medida: null});
+      if(otro){ const n = cantDe('faltOtroN'); if(n == null){ toast('Escribe cuántas faltaron de ' + otro, true); return false; } sel.push({ref: otro, desc: null, cant: n, medida: null}); }
       if(!sel.length){ toast('Elige el perfil que faltó (o toca "No faltó material")', true); return false; }
       const nota = (($('#faltNota') || {}).value || '').trim() || null;
       try{
@@ -1964,11 +1968,14 @@ async function faltanteSheet(rows){
   const cancelar = document.querySelector('#layer .sh-foot .btn'); if(cancelar) cancelar.textContent = 'No faltó material';
   const per = await perfilesDeOp(op); window._perf = per;
   const box = $('#faltBody'); if(!box) return;
-  box.innerHTML = `${per.length ? `<div class="sc-note" style="margin-bottom:6px">Marca el perfil o los perfiles que no alcanzaron. Salen de la orden de producción de la OP ${esc(op)}.</div>
-      <div style="max-height:42vh;overflow:auto;flex:none">${per.map((x, k) => `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px">
-        <input type="checkbox" class="faltCk" value="${k}"><span style="flex:1"><b>${esc(x.ref)}</b> ${esc(x.desc || '')}</span><span class="mono" style="font-size:12px;color:var(--text2)">${x.cant != null ? fmtN(x.cant) + ' und' : ''}${x.medida ? ' × ' + fmtN(x.medida) + ' mm' : ''}</span></label>`).join('')}</div>`
+  box.innerHTML = `${per.length ? `<div class="sc-note" style="margin-bottom:6px">Marca el perfil que no alcanzó y escribe <b>cuántas faltaron de verdad</b> (no tiene que ser lo de la OP). Los perfiles salen de la orden de producción de la OP ${esc(op)}.</div>
+      <div style="max-height:42vh;overflow:auto;flex:none">${per.map((x, k) => `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px">
+        <input type="checkbox" class="faltCk" id="faltCk${k}" value="${k}" onchange="const i=document.getElementById('faltN${k}'); i.style.visibility=this.checked?'visible':'hidden'; if(this.checked) i.focus()">
+        <label for="faltCk${k}" style="flex:1;cursor:pointer"><b>${esc(x.ref)}</b> ${esc(x.desc || '')}<br><small class="mono" style="color:var(--text2)">En la OP: ${x.cant != null ? fmtN(x.cant) + ' und' : '—'}${x.medida ? ' × ' + fmtN(x.medida) + ' mm' : ''}</small></label>
+        <input id="faltN${k}" type="number" inputmode="decimal" min="0" step="any" placeholder="¿Cuántas?" style="width:96px;visibility:hidden" title="Cantidad que faltó"></div>`).join('')}</div>`
       : `<div class="warn">No encontré los perfiles HSP en la orden PDF de la OP ${esc(op)} (puede que la orden no esté cargada). Escribe la referencia abajo.</div>`}
     <div class="fgrid" style="margin-top:10px"><div class="field"><span class="lbl">Otro perfil (si no está en la lista)</span><input id="faltOtro" placeholder="Ej. HSP045" autocapitalize="characters" autocomplete="off"></div>
+      <div class="field"><span class="lbl">Cantidad que faltó</span><input id="faltOtroN" type="number" inputmode="decimal" min="0" step="any" placeholder="¿Cuántas?"></div>
       <div class="field"><span class="lbl">Nota (opcional)</span><input id="faltNota" placeholder="Ej. faltaron 2 tiras de 6 m"></div></div>`;
 }
 function faltDetHTML(it){
