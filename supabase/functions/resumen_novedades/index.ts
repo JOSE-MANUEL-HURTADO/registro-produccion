@@ -88,8 +88,9 @@ type Falt = { id: number; obra: string | null; op: string; op_inst: string[]; re
 const e = (t: unknown) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const n0 = (v: number | null) => v == null ? "" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 2 });
 async function correoFaltantes(ids: number[] | null, usuario: string, clave: string) {
-  const { data: cf } = await db.from("push_config").select("correos_faltantes").eq("id", 1).single();
-  const para = String(cf?.correos_faltantes || "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+  const { data: cf } = await db.from("push_config").select("correos_faltantes, correos_faltantes_cc").eq("id", 1).single();
+  const lista = (t: unknown) => String(t || "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+  const para = lista(cf?.correos_faltantes), cc = lista(cf?.correos_faltantes_cc);
   if (!para.length) return { enviados: 0, error: "sin destinatarios" };
   // Los indicados, y lo que haya quedado sin enviar de los últimos 3 días
   const { data: fs, error } = await db.from("faltantes").select("*").is("correo_en", null)
@@ -110,7 +111,7 @@ async function correoFaltantes(ids: number[] | null, usuario: string, clave: str
       ${g.some((f) => f.nota) ? `<p><b>Nota:</b> ${e(g.map((f) => f.nota).filter(Boolean).join(" · "))}</p>` : ""}
       <p>Elíptica Cerramientos Translúcidos · Registro de producción</p>`;
     try {
-      await smtp.sendMail({ from: `"Elíptica · Faltante de material" <${usuario}>`, to: para.join(", "),
+      await smtp.sendMail({ from: `"Elíptica · Faltante de material" <${usuario}>`, to: para.join(", "), ...(cc.length ? { cc: cc.join(", ") } : {}),
         subject: `Faltante de material · ${f0.obra || ""} · OP ${f0.op} · ${g.map((f) => f.ref).join(", ")}`, html });
       await db.from("faltantes").update({ correo_en: new Date().toISOString() }).in("id", g.map((f) => f.id));
       n++;
