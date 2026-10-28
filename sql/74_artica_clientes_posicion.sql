@@ -80,7 +80,7 @@ end; $$;
 
 create or replace function public.art_listos(p_ops text[])
 returns table(op text, total bigint, listos bigint) language sql stable security definer set search_path = public as $$
-  select p.op, sum(p.cant), sum(case when p.historica then p.cant else least(p.cant, (select count(*) from public.art_registros g where g.pieza_id = p.id and g.estacion = p.ruta[array_length(p.ruta,1)])) end)
+  select p.op, sum(p.cant), sum(public.art_hechos(p, p.ruta[array_length(p.ruta,1)]))
     from public.art_piezas p where p.op = any(p_ops) and not p.tercero
      and coalesce(public.rol_actual() in ('gerente','asistente','consulta','planta','cobros'), false)
    group by p.op;
@@ -95,6 +95,7 @@ begin
   if old.vidrio_proc is not distinct from new.vidrio_proc then return null; end if;
   select count(*) into n_uni from public.items where op = new.op;
   if old.vidrio_proc = 'X' then
+    perform set_config('art.origen', 'Vidrio desmarcado en Elíptica · ' || coalesce(new.op_instalacion, new.op), true);
     -- Desmarcado: esa unidad vuelve a pendiente
     for p in select * from public.art_piezas where op = new.op and not tercero for update loop
       k := ceil(p.cant::numeric / greatest(n_uni, 1));
