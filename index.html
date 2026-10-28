@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.42';
+const APP_VERSION = '7.43';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -5291,9 +5291,9 @@ function lineaPDF(ens){
   const l = (PG.items || []).filter(i => i.ens_asignado === ens && !i.dia_final && !i.despachado);
   const fecha = id => (PG.lista.find(p => p.id === id) || {}).fecha_req || '';
   const filas = [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => ordLinea(a) - ordLinea(b) || nat(fecha(a[0].programacion_id) || '9', fecha(b[0].programacion_id) || '9') || nat(a[0].op, b[0].op))
-    .map(f => { const i0 = f[0]; return {v: [fecha(i0.programacion_id) ? fmtD(fecha(i0.programacion_id)) : '—', 'N.º ' + i0.programacion_id, i0.obra, i0.op, i0.diseno, i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) : '', fmtN(f.length), f.map(i => i.op_instalacion.split('.').pop()).join(', '), pisosTxt(f), fmtN(f.filter(i => !i.dia_inicio && listoEns(i)).length), '□']}; });
+    .map(f => { const i0 = f[0]; return {v: ['N.º ' + i0.programacion_id, i0.obra, i0.op, i0.diseno, fmtN(f.length), fmtN(f.filter(i => !i.dia_inicio && listoEns(i)).length), '□']}; });
   pdfTabla({titulo: 'LÍNEA DE ENSAMBLE', sub: ens + ' · ' + fmtD(today()), info: `${fmtN(l.length)} unidades asignadas, en el orden en que se asignaron (primero lo más urgente). "Listos" = con cortado, troquelado y mecanizado completos (y programados).`,
-    cols: [['Para', 20, 'l'], ['Prog.', 16, 'l'], ['Obra', 46, 'l'], ['OP', 18, 'l'], ['Diseño', 48, 'l'], ['Medida', 22, 'l'], ['Cant.', 11, 'r'], ['Unidades (.n)', 30, 'l'], ['Pisos', 20, 'l'], ['Listos', 13, 'r'], ['Hecho', 11.4, 'c']],
+    cols: [['Prog.', 20, 'l'], ['Obra', 70, 'l'], ['OP', 28, 'l'], ['Diseño', 85, 'l'], ['Cant.', 16, 'r'], ['Listos', 18, 'r'], ['Hecho', 18.4, 'c']],
     filas, pie: 'Al iniciar y terminar cada unidad, escanee su etiqueta en la app (Inicio / Ensamble terminado).', nombre: 'Linea_' + ens.replace(/\W+/g, '_') + '.pdf', firmas: ['Ensamblador', 'Supervisor']});
 }
 // Todas las líneas de ensamble en un solo documento (seguimiento del jefe de planta y la asistente)
@@ -5310,12 +5310,12 @@ function lineasTodasPDF(){
     for(const f of [...grp(l, i => i.programacion_id + '|' + i.op).values()].sort((a, b) => ordLinea(a) - ordLinea(b) || nat(fecha(a[0].programacion_id) || '9', fecha(b[0].programacion_id) || '9') || nat(a[0].op, b[0].op))){
       const i0 = f[0], fp = f.filter(i => !i.dia_inicio).length, fe = f.filter(enEspera).length, fc = f.length - fp - fe;
       const est = [fc ? fc + ' en ensamble' : '', fp ? fp + ' por iniciar' : '', fe ? fe + ' EN ESPERA' : ''].filter(Boolean).join(' · ');
-      filas.push({v: [fecha(i0.programacion_id) ? fmtD(fecha(i0.programacion_id)) : '—', i0.programacion_id ? 'N.º ' + i0.programacion_id : '—', i0.obra, i0.op, i0.diseno, i0.ancho ? fmtN(i0.ancho) + ' × ' + fmtN(i0.alto) : '', fmtN(f.length), f.map(i => String(i.op_instalacion || '').split('.').pop()).join(', '), pisosTxt(f), est, '□']});
+      filas.push({v: [i0.programacion_id ? 'N.º ' + i0.programacion_id : '—', i0.obra, i0.op, i0.diseno, fmtN(f.length), est, '□']});
     }
   }
   pdfTabla({titulo: 'LÍNEAS DE ENSAMBLE', sub: 'Todos los ensambladores · ' + fmtD(today()) + ' ' + nowTime(),
     info: `${fmtN(vivos.length)} unidades en líneas de ensamble: ${fmtN(tC)} en ensamble · ${fmtN(tP)} por iniciar${tE ? ' · ' + fmtN(tE) + ' en espera por novedad' : ''}. Cada ensamblador en el orden en que se le asignó (primero lo más urgente).`,
-    cols: [['Para', 18, 'l'], ['Prog.', 15, 'l'], ['Obra', 40, 'l'], ['OP', 17, 'l'], ['Diseño', 42, 'l'], ['Medida', 21, 'l'], ['Cant.', 10, 'r'], ['Unidades (.n)', 26, 'l'], ['Pisos', 18, 'l'], ['Estado', 38, 'l'], ['OK', 10.4, 'c']],
+    cols: [['Prog.', 18, 'l'], ['Obra', 60, 'l'], ['OP', 24, 'l'], ['Diseño', 70, 'l'], ['Cant.', 14, 'r'], ['Estado', 52, 'l'], ['OK', 17.4, 'c']],
     filas, nombre: 'Lineas_ensamble_' + today() + '.pdf', firmas: ['Jefe de planta', 'Asistente']});
 }
 // ── Orden de despacho (cargue): ítems seleccionados, peso total y si caben en el camión ──
