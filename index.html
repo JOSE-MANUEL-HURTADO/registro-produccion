@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.35';
+const APP_VERSION = '7.36';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1341,6 +1341,8 @@ Object.assign(API, {
   async artRutaSet(id, ruta){ const {error} = await this.sb.rpc('art_ruta_set', {p_id: id, p_ruta: ruta}); if(error) throw error; },
   async artOrdenCorte(l, lote){ const {data,error} = await this.sb.rpc('art_orden_corte', {p: l, p_lote: lote}); if(error) throw error; return data; },
   async artOptimaMarcar(l, lote){ const {data,error} = await this.sb.rpc('art_optima_marcar', {p: l, p_lote: lote}); if(error) throw error; return data; },
+  async artCargarOP(rows){ const {data,error} = await this.sb.rpc('art_cargar_op', {p: rows}); if(error) throw error; return data; },
+  async artOpsExisten(ops){ if(!ops.length) return []; const {data,error} = await this.sb.from('art_piezas').select('op').eq('tercero', true).in('op', ops); if(error) throw error; return [...new Set((data || []).map(x => x.op))]; },
   async artOptimaLote(l, lote){ const {data,error} = await this.sb.rpc('art_optima_lote', {p: l, p_lote: lote}); if(error) throw error; return data; },
   async artOptimaDevolver(ids){ const {data,error} = await this.sb.rpc('art_optima_devolver', {p_ids: ids}); if(error) throw error; return data; },
   async artHistorial(id){
@@ -1549,14 +1551,23 @@ async function artSubirOPs(files){
     }catch(e){ errs.push(errMsg(e)); }
   }
   const rows = artFilasDeOps(ops);
+  let ya = []; try{ ya = await API.artOpsExisten(ops.map(o => o.op)); }catch(e){}
   const body = `${ops.length ? `<div class="summary"><b>${fmtN(ops.length)} OP</b> · ${fmtN(rows.length)} medidas · ${fmtN(rows.reduce((a, r) => a + r.cant, 0))} piezas</div>
-      <div style="margin-top:8px">${ops.map(o => `<div class="art-lote"><div><b>OP ${esc(o.op)} · ${esc(o.cliente || '')}</b><span>${o.fecha ? 'OP del ' + fmtD(o.fecha) + ' · ' : ''}${o.entrega ? 'entrega ' + fmtD(o.entrega) + ' · ' : ''}${fmtN(o.vidrios.length)} medidas · ${fmtN(o.vidrios.reduce((a, v) => a + v.cant, 0))} piezas</span></div></div>`).join('')}</div>` : ''}
+      ${ya.length ? `<div class="warn" style="margin-top:8px"><b>${ya.length === 1 ? 'La OP ' + esc(ya[0]) + ' ya existe' : 'Ya existen: ' + esc(ya.join(', '))}</b>: se <b>reemplaza${ya.length === 1 ? '' : 'n'}</b> con esta versión. Las medidas que siguen iguales conservan sus escaneos; las que ya no están se borran (si ya se escanearon, se conservan con una nota).</div>` : ''}
+      <div style="margin-top:8px">${ops.map(o => `<div class="art-lote"><div><b>OP ${esc(o.op)} · ${esc(o.cliente || '')}${ya.includes(o.op) ? ' <span class="badge-new">Reemplaza</span>' : ''}</b><span>${o.fecha ? 'OP del ' + fmtD(o.fecha) + ' · ' : ''}${o.entrega ? 'entrega ' + fmtD(o.entrega) + ' · ' : ''}${fmtN(o.vidrios.length)} medidas · ${fmtN(o.vidrios.reduce((a, v) => a + v.cant, 0))} piezas</span></div></div>`).join('')}</div>` : ''}
     ${eli.length ? `<div class="warn">No se cargan aquí: ${esc(eli.join(', '))} ${eli.length === 1 ? 'tiene' : 'tienen'} el formato de Elíptica (son OP de Elíptica y se cargan en Elíptica).</div>` : ''}
     ${errs.length ? `<div class="warn">${errs.map(esc).join('<br>')}</div>` : ''}`;
-  openSheet('Cargar OP de clientes', 'Ártica', body, ops.length ? `Cargar ${fmtN(ops.length)} OP` : 'Cerrar', async () => {
+  openSheet('Cargar OP de clientes', 'Ártica', body, ops.length ? (ya.length ? `Cargar y reemplazar ${fmtN(ops.length)} OP` : `Cargar ${fmtN(ops.length)} OP`) : 'Cerrar', async () => {
     if(!ops.length) return;
-    try{ const n = await API.artCargar(rows); toast(`✓ ${fmtN(ops.length)} OP · ${fmtN(n)} medidas cargadas`); A.piezas = null; artCargar(); }
-    catch(e){ toast(artFaltaSQL(e), true); return false; }
+    try{
+      const res = [];
+      for(const o of ops){ const rs = rows.filter(r => r.op === o.op);
+        try{ res.push(await API.artCargarOP(rs)); }
+        catch(e){ if(/art_cargar_op|PGRST202|42883/.test(errMsg(e) + (e.code || '')) && !ya.includes(o.op)){ await API.artCargar(rs); res.push({op: o.op, nuevas: rs.length}); } else throw e; } }
+      const cons = res.flatMap(r => (r.conservadas || []).map(c => r.op + ' ' + c));
+      toast(`✓ ${res.map(r => `OP ${r.op}: ${[r.actualizadas ? r.actualizadas + ' iguales' : '', r.nuevas ? r.nuevas + ' nuevas' : '', r.borradas ? r.borradas + ' borradas' : ''].filter(Boolean).join(', ')}`).join(' · ')}${cons.length ? ' · se conservan (ya escaneadas): ' + cons.join(', ') : ''}`, !!cons.length);
+      A.piezas = null; artCargar();
+    }catch(e){ toast(/art_cargar_op|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el reemplazo de OP en la base (SQL 78)' : artFaltaSQL(e), true); return false; }
   });
 }
 // Carga solo vidrios (OP de terceros) desde la revisión del PDF
