@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.39';
+const APP_VERSION = '7.40';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1321,7 +1321,8 @@ const artMed = p => `${p.ancho} × ${p.alto}`;
 const artTempl = p => (p.ruta || []).includes('templado') || /TEMP/i.test(p.tipo || '');
 // Canto a canto (cc): se respeta la medida de la OP (no se pule, no se suman 4 mm)
 const artCC = p => p.canto === 'cc';
-const artCorte = p => artTempl(p) && !artCC(p) ? {ancho: Number(p.ancho) + 4, alto: Number(p.alto) + 4} : {ancho: Number(p.ancho), alto: Number(p.alto)};
+// Solo el templado con canto PULIDO se corta 4 mm más; fileteado ('fil') y canto a canto ('cc') respetan la medida de la OP
+const artCorte = p => artTempl(p) && !artCC(p) && p.canto !== 'fil' ? {ancho: Number(p.ancho) + 4, alto: Number(p.alto) + 4} : {ancho: Number(p.ancho), alto: Number(p.alto)};
 // Hecho en una estación = base (terminadas antes de la app) + escaneos − rotas (por reprocesar), entre 0 y la cantidad
 const artHechos = (p, e) => Math.max(0, Math.min(p.cant, (p.base != null ? p.base : (p.historica ? p.cant : 0)) + Number((p.hechos || {})[e] || 0) - (p.rotas || 0)));
 const artUltimo = p => p.ruta[p.ruta.length - 1];
@@ -6278,7 +6279,7 @@ function artLineaFmt(o, x){   // x = {item, cant, tipo, cal, col, canto, ancho, 
   if(!cant || !x.tipo || !ancho || !alto) return;
   const canto = String(x.canto || '').toUpperCase().trim();
   o.vidrios.push({item: String(x.item || '').trim() || null, tipo: artTipoTxt(x.tipo, x.cal, x.col), cant, ancho, alto,
-    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : null, forrado: /^S/i.test(String(x.forr || '').trim()), mecanizado: /^S/i.test(String(x.mec || '').trim()),
+    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : /FILETEAD/.test(canto) ? 'fil' : null, forrado: /^S/i.test(String(x.forr || '').trim()), mecanizado: /^S/i.test(String(x.mec || '').trim()),
     obs: [canto && !/CANTO\s+A\s+CANTO/.test(canto) ? 'CANTO ' + canto.replace(/^CANTO\s+/, '') : '', String(x.obs || '').trim(), o.obs || ''].filter(Boolean).join(' · ') || null});
 }
 async function leerOPArticaXlsx(file){
