@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.40';
+const APP_VERSION = '7.41';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1322,7 +1322,12 @@ const artTempl = p => (p.ruta || []).includes('templado') || /TEMP/i.test(p.tipo
 // Canto a canto (cc): se respeta la medida de la OP (no se pule, no se suman 4 mm)
 const artCC = p => p.canto === 'cc';
 // Solo el templado con canto PULIDO se corta 4 mm más; fileteado ('fil') y canto a canto ('cc') respetan la medida de la OP
-const artCorte = p => artTempl(p) && !artCC(p) && p.canto !== 'fil' ? {ancho: Number(p.ancho) + 4, alto: Number(p.alto) + 4} : {ancho: Number(p.ancho), alto: Number(p.alto)};
+// Se corta a la medida exacta de la OP: OPTIMA agrega la amoladura según el calibre
+const artCorte = p => ({ancho: Number(p.ancho), alto: Number(p.alto)});
+// Descripción del canto: la de la OP de clientes; en Elíptica, laminado = canto a canto, lo demás pulido
+const artCanto = p => { const d = String(p.canto_desc || '').trim().toUpperCase(); if(d) return d.replace(/^CANTO\s+(?!A\s+CANTO)/, '');
+  if(p.canto === 'cc') return 'CANTO A CANTO'; if(p.canto === 'fil') return 'FILETEADO';
+  return /(^|[^A-Z])LAM/i.test(p.tipo || '') || !(p.ruta || []).includes('pulido') ? 'CANTO A CANTO' : 'PULIDO'; };
 // Hecho en una estación = base (terminadas antes de la app) + escaneos − rotas (por reprocesar), entre 0 y la cantidad
 const artHechos = (p, e) => Math.max(0, Math.min(p.cant, (p.base != null ? p.base : (p.historica ? p.cant : 0)) + Number((p.hechos || {})[e] || 0) - (p.rotas || 0)));
 const artUltimo = p => p.ruta[p.ruta.length - 1];
@@ -1437,7 +1442,7 @@ function artAvanceHTML(){
 }
 function artPiezaHTML(p){
   const paso = artPaso(p);
-  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b>${artCorte(p).ancho !== Number(p.ancho) ? ` <span title="Templado: se corta 4 mm más por lado para pulir">· corte ${artCorte(p).ancho} × ${artCorte(p).alto}</span>` : ''}${artCC(p) ? ' <span>· canto a canto</span>' : ''} <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.optima_pos ? ' · <b>POS ' + esc(artPosTxt(p)) + '</b>' : ''}${p.obs ? ' · ' + esc(p.obs) : ''}</span></div>
+  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b><span> · ${esc(artCanto(p).toLowerCase())}</span> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.optima_pos ? ' · <b>POS ' + esc(artPosTxt(p)) + '</b>' : ''}${p.obs ? ' · ' + esc(p.obs) : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
       <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
@@ -1591,7 +1596,10 @@ function vidrioCar(t){
   return {tipo, cal, col, txt: `${tipo} ${cal} ${col}`};
 }
 // Notas para OPTIMA: cc-calibre (canto a canto) o cp-calibre (canto pulido: templado, +4 mm)
-const artNotas = p => { const c = vidrioCar(p.tipo), cal = c.cal === 'SIN CALIBRE' ? '' : c.cal.replace(/\s*MM$/, ''); return (artCorte(p).ancho !== Number(p.ancho) ? 'cp' : 'cc') + (cal ? '-' + cal : ''); };
+// Notas para OPTIMA: código del canto + calibre (cc-4 = canto a canto 4 mm, fi = fileteado, pb/pm = pulido brillado/mate, p = pulido)
+const artNotas = p => { const c = vidrioCar(p.tipo), cal = c.cal === 'SIN CALIBRE' ? '' : c.cal.replace(/\s*MM$/, ''), d = artCanto(p);
+  const cod = /CANTO A CANTO/.test(d) ? 'cc' : /FILETEAD/.test(d) ? 'fi' : /BRILLAD/.test(d) ? 'pb' : /MATE/.test(d) ? 'pm' : /PULID/.test(d) ? 'p' : d.slice(0, 3).toLowerCase();
+  return cod + (cal ? '-' + cal : ''); };
 const artPosTxt = p => p.optima_pos ? String(p.optima_pos) : '';
 const artEnPlan = p => p.optima_en ? Math.max(0, (p.optima_pend || 0) - (p.corte_post_optima || 0)) : 0;   // piezas que siguen en el plan de OPTIMA
 const artPorEnviar = p => Math.max(0, p.cant - artHechos(p, 'corte') - artEnPlan(p));
@@ -1634,8 +1642,9 @@ function artOptSel(k, on){ const o = A.optOff || (A.optOff = new Set()); on ? o.
 // Excel para digitar en OPTIMA: POS, CANT, MED X (ancho), MED Y (alto), CLIENTE (ítem), PEDIDO, NOTAS
 const artPed = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return m ? m[1].padStart(6, '0') + '-' + m[2] : op; };   // como lo digitan en OPTIMA: 006295-1
 function artExcelBlob(ps, cantDe){
-  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','MEDIDA OP','OBRA / CLIENTE','VIDRIO','FECHA OP']].concat(ps.map(p => { const c = artCorte(p);
-    return [p._pos || p.optima_pos, cantDe(p), c.ancho, c.alto, p.item || '', artPed(p.op), artNotas(p), p.ancho + ' x ' + p.alto, artObra(p), p.tipo, p.fecha_op ? fmtD(p.fecha_op) : '']; }));
+  // Medidas exactas de la OP (OPTIMA calcula la amoladura) y la descripción del canto
+  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','CANTO','OBRA / CLIENTE','VIDRIO','FECHA OP']].concat(ps.map(p =>
+    [p._pos || p.optima_pos, cantDe(p), Number(p.ancho), Number(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), p.tipo, p.fecha_op ? fmtD(p.fecha_op) : '']));
   const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 34, 11].map(w => ({wch: w}));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'OPTIMA');
   return new Blob([XLSX.write(wb, {bookType: 'xlsx', type: 'array'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -1767,19 +1776,15 @@ async function artEtqPDF(lista, nombre){
       doc.setTextColor(0); doc.setFontSize(16); doc.text(corta(p.op, qx - 26, 16), 24, 18.2);
     } else { doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17); }
     doc.setFontSize(17); doc.text(`${p.ancho} × ${p.alto}`, 4, 27);
-    if(artCorte(p).ancho !== Number(p.ancho)){   // templado: medida de corte (+4 mm por lado para pulir)
-      const c = artCorte(p); doc.setFontSize(8.5); doc.text(`CORTE ${c.ancho} × ${c.alto}`, 4, 32.2);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 36.6);
-      doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 40.8);
-    } else {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 33);
-      doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 39);
-    }
+    // Canto (pulido, fileteado, canto a canto…) en negrilla debajo de la medida
+    doc.setFontSize(8.5); doc.text(corta(artCanto(p), qx - 6, 8.5), 4, 32.2);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 36.6);
+    doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 40.8);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(`${n}/${p.cant}`, qx + S_ / 2, qy + S_ + 4.5, {align: 'center'});
     // Ruta: casillas para marcar a mano si hace falta
     let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
-    doc.text(corta([artCC(p) ? 'CANTO A CANTO' : '', p.forrado ? 'FORRAR' : '', p.obs || ''].filter(Boolean).join(' · '), W - 28, 6.5), 4, 57.5);
+    doc.text(corta([p.forrado ? 'FORRAR' : '', p.obs || ''].filter(Boolean).join(' · '), W - 28, 6.5), 4, 57.5);
     doc.text(artCod(p) + '-' + n, W - 4, 57.5, {align: 'right'});
   });
   const blob = doc.output('blob'), url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
@@ -6279,8 +6284,8 @@ function artLineaFmt(o, x){   // x = {item, cant, tipo, cal, col, canto, ancho, 
   if(!cant || !x.tipo || !ancho || !alto) return;
   const canto = String(x.canto || '').toUpperCase().trim();
   o.vidrios.push({item: String(x.item || '').trim() || null, tipo: artTipoTxt(x.tipo, x.cal, x.col), cant, ancho, alto,
-    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : /FILETEAD/.test(canto) ? 'fil' : null, forrado: /^S/i.test(String(x.forr || '').trim()), mecanizado: /^S/i.test(String(x.mec || '').trim()),
-    obs: [canto && !/CANTO\s+A\s+CANTO/.test(canto) ? 'CANTO ' + canto.replace(/^CANTO\s+/, '') : '', String(x.obs || '').trim(), o.obs || ''].filter(Boolean).join(' · ') || null});
+    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : /FILETEAD/.test(canto) ? 'fil' : null, canto_desc: canto ? canto.replace(/^CANTO\s+(?!A\s+CANTO)/, '') : null, forrado: /^S/i.test(String(x.forr || '').trim()), mecanizado: /^S/i.test(String(x.mec || '').trim()),
+    obs: [String(x.obs || '').trim(), o.obs || ''].filter(Boolean).join(' · ') || null});
 }
 async function leerOPArticaXlsx(file){
   if(!window.XLSX) await loadScript(XLSX_URL);
@@ -6356,7 +6361,9 @@ function vidriosPagina(it, o){
 }
 // Filas para art_piezas (una por línea de vidrio de la OP)
 const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: v.item || o.item || null,
-  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, mecanizado: o.tercero ? !!v.mecanizado : null, canto: v.canto || o.canto || null, obs: v.obs || o.obs || null, fecha: o.fecha || null, entrega: o.entrega || null})));
+  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, mecanizado: o.tercero ? !!v.mecanizado : null, canto: v.canto || o.canto || null,
+  canto_desc: v.canto_desc || ((String(o.obs || '').toUpperCase().match(/CANTO\s+(PULIDO\s+[A-ZÁÉÍÓÚ]+|PULIDO|A\s+CANTO|FILETEADO|[A-ZÁÉÍÓÚ]+)/) || [])[1] || '').replace(/^A\s+CANTO$/, 'CANTO A CANTO') || null,
+  obs: String(v.obs || o.obs || '').replace(/^\s*CANTO\s+(PULIDO\s+[A-ZÁÉÍÓÚ]+|PULIDO|A\s+CANTO|FILETEADO)\s*(·\s*)?/i, '').trim() || null, fecha: o.fecha || null, entrega: o.entrega || null})));
 // Lee los datos de la primera página de una OP usando la posición de cada encabezado
 function ordenPagina(it, op){
   const cx = t => (t.x + t.x2) / 2;
