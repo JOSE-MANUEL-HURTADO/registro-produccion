@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.38';
+const APP_VERSION = '7.39';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1546,7 +1546,7 @@ async function artSubirOPs(files){
   for(const f of files){
     try{
       const l = /\.xlsx?$/i.test(f.name) ? await leerOPArticaXlsx(f) : (await leerOPsPDF(new Uint8Array(await f.arrayBuffer()), f.name)).ops;
-      for(const o of l){ if(!(o.tercero && (o.vidrios || []).length)) eli.push(o.op); else if(!ops.some(x => x.op === o.op)) ops.push(o); }   // la misma OP en Excel y PDF: una sola vez
+      for(const o of l){ if(!o.tercero) eli.push(o.op); else if(!(o.vidrios || []).length) errs.push(`${f.name}: OP ${o.op} — no pude leer las medidas (revisa que cada fila tenga cantidad, tipo, calibre, ancho y alto)`); else if(!ops.some(x => x.op === o.op)) ops.push(o); }   // la misma OP en Excel y PDF: una sola vez
       if(!l.length) errs.push(f.name + ': no encontré una OP');
     }catch(e){ errs.push(errMsg(e)); }
   }
@@ -6316,9 +6316,12 @@ function artOPLineas(it, o){
     if(obs){ o.obs = [o.obs, f.s].filter(Boolean).join(' · '); continue; }
     // Formato nuevo (plantilla): # ÍTEM CANT TIPO CALIBRE COLOR CANTO ANCHO ALTO M² [MECANIZADO] FORRADO [OBS]
     if(/\bMECANIZADO\b/i.test(f.s) && /\bFORRADO\b/i.test(f.s)) o.colMec = true;
-    const n = f.s.match(/^\d+\s+(\S+)\s+(\d{1,4})\s+(TEMPLADO|LAMINADO|CRUDO|ESPEJO|REFLECTIVO)\s+(\S+)\s+(.+?)\s+(PULIDO BRILLADO|PULIDO MATE|CANTO A CANTO)\s+(\d{2,5})\s+(\d{2,5})(?:\s+[\d.,]+)?(?:\s+(S[IÍ]|NO))?(?:\s+(S[IÍ]|NO))?(?:\s+(.*))?$/i);
-    if(n){ o.fmtNuevo = true; const dos = n[10] != null, mec = dos ? n[9] : o.colMec ? n[9] : null, forr = dos ? n[10] : o.colMec ? null : n[9];
-      artLineaFmt(o, {item: n[1], cant: n[2], tipo: n[3], cal: n[4], col: n[5], canto: n[6], ancho: n[7], alto: n[8], mec, forr, obs: n[11]}); continue; }
+    // COLOR y CANTO pueden ser cualquier valor de las listas (también los que agreguen, ej. FILETEADO)
+    const n = f.s.match(/^\d+\s+(\S+)\s+(\d{1,4})\s+([A-ZÁÉÍÓÚÑ]{4,})\s+(\d+(?:[.,]\d+)?(?:\s*\+\s*\d+(?:[.,]\d+)?)?)\s+(.+?)\s+(\d{2,5})\s+(\d{2,5})(?:\s+[\d.,]+)?(?:\s+(S[IÍ]|NO))?(?:\s+(S[IÍ]|NO))?(?:\s+(.*))?$/i);
+    if(n && !/^TOTAL$/i.test(n[1])){ o.fmtNuevo = true; const dos = n[9] != null, mec = dos ? n[8] : o.colMec ? n[8] : null, forr = dos ? n[9] : o.colMec ? null : n[8];
+      const mid = n[5].trim(), kc = mid.match(/^(.*?)\s*\b(PULIDO BRILLADO|PULIDO MATE|CANTO A CANTO|BRILLADO|MATE|[A-ZÁÉÍÓÚÑ]+)$/i);
+      const col = kc && kc[1] ? kc[1] : mid.split(/\s+/)[0], canto = kc && kc[1] ? kc[2] : mid.split(/\s+/).slice(1).join(' ');
+      artLineaFmt(o, {item: n[1], cant: n[2], tipo: n[3], cal: n[4], col, canto, ancho: n[6], alto: n[7], mec, forr, obs: n[10]}); continue; }
     const m = f.s.match(/^(\S+)\s+(\d{1,4})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/);
     if(!m || !/VIDRIO|TEMP|LAM|CRUDO|INCOL|BRONCE|GRIS|ESPEJO|REFLEC|\bMM\b/i.test(m[3])) continue;
     const ancho = mm(m[4]), alto = mm(m[5]); if(!ancho || !alto) continue;
