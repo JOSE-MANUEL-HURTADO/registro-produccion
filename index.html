@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.27';
+const APP_VERSION = '7.28';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1670,6 +1670,7 @@ async function artEtqPDF(lista, nombre){
   // Símbolo de Ártica (manual de identidad) en negro para la etiqueta
   let simb = null;
   try{ const r = await fetch('icons/artica_simbolo_negro.png'); const bl = await r.blob(); simb = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(bl); }); }catch(e){ simb = null; }
+  const logoEli = lista.some(e => !e.p.tercero) ? await etqLogo() : null;   // vidrio de OP de Elíptica: logo de Elíptica
   const corta = (t, max, size) => { doc.setFontSize(size); t = String(t || ''); while(t && doc.getTextWidth(t) > max) t = t.slice(0, -1); return t; };
   lista.forEach(({p, n}, i) => {
     if(i) doc.addPage([W, H], 'landscape');
@@ -1677,7 +1678,9 @@ async function artEtqPDF(lista, nombre){
     const S_ = 30, nm = q.getModuleCount(), cs = S_ / nm, qx = W - S_ - 4, qy = 4;
     doc.setFillColor(0, 0, 0); for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c)) doc.rect(qx + c * cs, qy + r * cs, cs + .02, cs + .02, 'F');
     doc.setTextColor(0);
-    if(simb){ doc.addImage(simb, 'PNG', 4, 2.2, 8.2, 6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('Á R T I C A', 13.6, 7); }
+    if(!p.tercero && logoEli){ const h = 5.6, w = Math.min(40, h * logoEli.r); doc.addImage(logoEli.url, 'PNG', 4, 2.4, w, w / logoEli.r); }
+    else if(!p.tercero){ doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ELÍPTICA', 4, 7); }
+    else if(simb){ doc.addImage(simb, 'PNG', 4, 2.2, 8.2, 6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('Á R T I C A', 13.6, 7); }
     else { doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ÁRTICA', 4, 7); }
     doc.setFont('helvetica', 'bold');
     if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande, con el lote
