@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.25';
+const APP_VERSION = '7.26';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1089,7 +1089,7 @@ function shell(inner){
     ${S.view === 'artica' ? artBrandHTML('Vidrio arquitectónico · v' + APP_VERSION) : brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
     <div class="top-r">
       ${veArtica() ? `<button class="btn sm" title="Cambiar de empresa" onclick="cambiarEmpresa()">${S.view === 'artica' ? 'Elíptica' : 'Ártica'} ⇄</button>` : ''}
-      ${S.view === 'artica' && isGerente() ? `<button class="btn sm primary" title="Escanear piezas de vidrio en una estación" onclick="goArticaOperario(true)">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
+      ${S.view === 'artica' && artEscaneaTodo() ? `<button class="btn sm primary" title="Escanear piezas de vidrio en una estación" onclick="goArticaOperario(true)">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(rolTxt(S.perfil.rol))}</span></div>
       ${S.view === 'artica' ? '' : puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       ${veDash() && S.view !== 'artica' ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
@@ -1303,6 +1303,7 @@ const ART_NOM = Object.fromEntries(ART_EST);
 const ART_AB = {corte:'C', pulido:'P', mecanizado:'M', templado:'T', lavado:'L', forrado:'F'};
 const veArtica = () => rolEs('gerente','asistente','consulta');
 const esOperarioArtica = () => rolEs('artica');
+const artEscaneaTodo = () => rolEs('gerente','asistente');   // todas las estaciones de Ártica (SQL 73)
 const artImprime = () => isGerente();          // transición: solo el gerente imprime etiquetas
 const A = {tab:'avance', obra:null, piezas:null, err:null, q:'', filtro:'pend', abierta:null, rend:null, rendDias:7, plan:null, ops:null, prefijos:null};
 function empresa(){ try{ return localStorage.getItem('empresa') === 'artica' ? 'artica' : 'eliptica'; }catch(e){ return 'eliptica'; } }
@@ -1745,7 +1746,7 @@ const shellOp = inner => `<div class="artop"><header class="artop-top"><div clas
 function artopSalir(){ artopCamStop(); goArtica(); }
 function renderOperario(){
   if(!AO.est){
-    $('#app').innerHTML = shellOp(`<div class="artop-elige"><div class="artop-t">${isGerente() ? '¿En qué estación vas a escanear?' : 'Elige tu estación'}</div>${AO.ests.map(e => `<button class="artop-estbtn" onclick="artopEst('${e}')">${ART_NOM[e]}</button>`).join('')}</div>`);
+    $('#app').innerHTML = shellOp(`<div class="artop-elige"><div class="artop-t">${artEscaneaTodo() ? '¿En qué estación vas a escanear?' : 'Elige tu estación'}</div>${AO.ests.map(e => `<button class="artop-estbtn" onclick="artopEst('${e}')">${ART_NOM[e]}</button>`).join('')}</div>`);
     return;
   }
   const u = AO.ult;
@@ -3914,8 +3915,8 @@ async function scCodigo(txt, manual){
   const now = Date.now();
   if(!manual && txt === SC.last && now - SC.lastT < 4000) return;
   SC.last = txt; SC.lastT = now;
-  if(/^\s*(P\d+-)?ART[:\-]?\d+\s*$/i.test(txt)){
-    if(!isGerente()){ scBeep(false); return toast('Esa es una etiqueta de vidrio de Ártica: se escanea en la pantalla de la estación', true); }
+  if(/^\s*(P\d+-)?ART[:\-]?\d+(-\d+)?\s*$/i.test(txt)){
+    if(!artEscaneaTodo()){ scBeep(false); return toast('Esa es una etiqueta de vidrio de Ártica: se escanea en la pantalla de la estación', true); }
     scBeep(true); scStop(); return goArticaOperario(false, txt.trim());
   }
   const p = scParse(txt);
