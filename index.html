@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.23';
+const APP_VERSION = '7.24';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1305,6 +1305,9 @@ function cambiarEmpresa(){
 }
 const artCod = p => 'ART:' + p.id;
 const artMed = p => `${p.ancho} × ${p.alto}`;
+// Templado: se corta 4 mm más de ancho y 4 mm más de alto para pulirlo sin perder la medida de la OP
+const artTempl = p => (p.ruta || []).includes('templado') || /TEMP/i.test(p.tipo || '');
+const artCorte = p => artTempl(p) ? {ancho: Number(p.ancho) + 4, alto: Number(p.alto) + 4} : {ancho: Number(p.ancho), alto: Number(p.alto)};
 // Hecho en una estación = base (terminadas antes de la app) + escaneos − rotas (por reprocesar), entre 0 y la cantidad
 const artHechos = (p, e) => Math.max(0, Math.min(p.cant, (p.base != null ? p.base : (p.historica ? p.cant : 0)) + Number((p.hechos || {})[e] || 0) - (p.rotas || 0)));
 const artUltimo = p => p.ruta[p.ruta.length - 1];
@@ -1377,7 +1380,8 @@ function artAvanceHTML(){
   const base = A.piezas.filter(p => A.origen === 'todas' || (A.origen === 'cli' ? p.tercero : !p.tercero));
   const seg = `<div class="art-seg">${[['todas','Todo'],['eli','Elíptica'],['cli','Clientes']].map(([k, n]) => `<button class="${A.origen === k ? 'on' : ''}" onclick="artOrigen('${k}')">${n} <b>${fmtN(A.piezas.filter(p => k === 'todas' || (k === 'cli' ? p.tercero : !p.tercero)).filter(p => artListas(p) < p.cant).reduce((s, p) => s + p.cant - artListas(p), 0))}</b></button>`).join('')}</div>`;
   const q = A.q.trim().toUpperCase().replace(/\s/g, '');
-  const coincide = p => !q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && String(v).toUpperCase().replace(/\s/g, '').includes(q));
+  const qn = normH(A.q).replace(/\s/g, '');
+  const coincide = p => !q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && normH(v).replace(/\s/g, '').includes(qn));
   const estado = p => A.filtro === 'todas' || (A.filtro === 'reproc' ? (p.rotas || 0) > 0 : A.filtro === 'pend' ? artListas(p) < p.cant : artListas(p) >= p.cant);
   const tot = base.reduce((s, p) => s + p.cant, 0), listas = base.reduce((s, p) => s + artListas(p), 0);
   const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of base){ const e = artPaso(p); if(e) enEst[e] += p.cant - artHechos(p, e); }
@@ -1413,7 +1417,7 @@ function artAvanceHTML(){
 }
 function artPiezaHTML(p){
   const paso = artPaso(p);
-  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.orden_corte ? ' · corte #' + p.orden_corte : ''}</span></div>
+  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b>${artTempl(p) ? ` <span title="Templado: se corta 4 mm más por lado para pulir">· corte ${artCorte(p).ancho} × ${artCorte(p).alto}</span>` : ''} <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.orden_corte ? ' · corte #' + p.orden_corte : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
       <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
@@ -1565,7 +1569,8 @@ async function artExportarLote(i){
   const l = (A._lotes || [])[i]; if(!l) return;
   const ps = [...l.piezas].sort((a, b) => nat(a.op, b.op) || a.linea - b.linea);
   const sep = ';', q = v => { v = String(v ?? ''); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  const filas = [['REFERENCIA','CANTIDAD','ANCHO','ALTO','MATERIAL','ID','OBRA','ITEM']].concat(ps.map(p => [p.op, artPorEnviar(p), p.ancho, p.alto, p.tipo, artCod(p), p.obra || p.cliente || '', p.item || '']));
+  // Templado: ANCHO y ALTO de corte = medida de la OP + 4 mm (para pulir); la medida final va en la columna MEDIDA OP
+  const filas = [['REFERENCIA','CANTIDAD','ANCHO','ALTO','MATERIAL','ID','OBRA','ITEM','MEDIDA OP']].concat(ps.map(p => { const c = artCorte(p); return [p.op, artPorEnviar(p), c.ancho, c.alto, p.tipo, artCod(p), p.obra || p.cliente || '', p.item || '', p.ancho + 'x' + p.alto]; }));
   const ahora = new Date(), hhmm = ahora.toTimeString().slice(0, 5);
   const nombre = `${l.obra} · ${l.car.tipo} ${l.car.cal} ${l.car.col} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
   const archivo = `OPTIMA_${l.obra}_${l.car.tipo}_${l.car.cal}_${l.car.col}_${today()}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.csv';
@@ -1620,9 +1625,11 @@ async function artLeerPlan(f){
     const ref = (iRef >= 0 ? r[iRef] : txtR).toUpperCase().match(/\d{3,6}-\d+/);
     if(!p && med.length === 2){
       const cerca = (x, y) => Math.abs(x - y) <= 2;
-      const cand = A.piezas.filter(q => (!ref || q.op === ref[0]) && ((cerca(q.ancho, med[0]) && cerca(q.alto, med[1])) || (cerca(q.ancho, med[1]) && cerca(q.alto, med[0]))));
+      // El plan trae la medida de corte (en templado, +4 mm); se acepta también la medida de la OP
+      const okMed = (q, a, b) => { const c = artCorte(q); return (cerca(c.ancho, a) && cerca(c.alto, b)) || (cerca(q.ancho, a) && cerca(q.alto, b)); };
+      const cand = A.piezas.filter(q => (!ref || q.op === ref[0]) && (okMed(q, med[0], med[1]) || okMed(q, med[1], med[0])));
       p = cand.find(q => (usado.get(q.id) || 0) < q.cant) || cand[0] || null;
-      if(p && !(cerca(p.ancho, med[0]) && cerca(p.alto, med[1]))) dudosas++;
+      if(p && !okMed(p, med[0], med[1])) dudosas++;
     }
     if(!p){ sin.push((ref ? ref[0] + ' ' : '') + (med.length === 2 ? med.join('×') : txtR.slice(0, 30))); continue; }
     for(let k = 0; k < cant; k++){ const n = (usado.get(p.id) || 0) + 1; usado.set(p.id, n); etq.push({p, n}); }
@@ -1652,8 +1659,14 @@ async function artEtqPDF(lista, nombre){
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17);
     doc.setFontSize(17); doc.text(`${p.ancho} × ${p.alto}`, 4, 27);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 33);
-    doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 39);
+    if(artTempl(p)){   // templado: medida de corte (+4 mm por lado para pulir)
+      const c = artCorte(p); doc.setFontSize(8.5); doc.text(`CORTE ${c.ancho} × ${c.alto}`, 4, 32.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 36.6);
+      doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 40.8);
+    } else {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 33);
+      doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 39);
+    }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(`${n}/${p.cant}`, qx + S_ / 2, qy + S_ + 4.5, {align: 'center'});
     // Ruta: casillas para marcar a mano si hace falta
     let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
