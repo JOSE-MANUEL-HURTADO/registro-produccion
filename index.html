@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.34';
+const APP_VERSION = '7.35';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1767,7 +1767,7 @@ async function artEtqPDF(lista, nombre){
     // Ruta: casillas para marcar a mano si hace falta
     let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
-    doc.text(corta([p.tercero ? 'CLIENTE' : '', artCC(p) ? 'CANTO A CANTO' : '', p.forrado ? 'FORRAR' : '', p.obs || ''].filter(Boolean).join(' · '), W - 28, 6.5), 4, 57.5);
+    doc.text(corta([artCC(p) ? 'CANTO A CANTO' : '', p.forrado ? 'FORRAR' : '', p.obs || ''].filter(Boolean).join(' · '), W - 28, 6.5), 4, 57.5);
     doc.text(artCod(p) + '-' + n, W - 4, 57.5, {align: 'right'});
   });
   const blob = doc.output('blob'), url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
