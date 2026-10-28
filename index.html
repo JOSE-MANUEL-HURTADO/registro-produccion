@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.28';
+const APP_VERSION = '7.29';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1555,7 +1555,7 @@ function vidrioCar(t){
 }
 // Notas para OPTIMA: cc-calibre (canto a canto) o cp-calibre (canto pulido: templado, +4 mm)
 const artNotas = p => { const c = vidrioCar(p.tipo), cal = c.cal === 'SIN CALIBRE' ? '' : c.cal.replace(/\s*MM$/, ''); return (artCorte(p).ancho !== Number(p.ancho) ? 'cp' : 'cc') + (cal ? '-' + cal : ''); };
-const artPosTxt = p => p.optima_pos ? (p.optima_lote_n ? 'L' + p.optima_lote_n + ' · ' : '') + p.optima_pos : '';
+const artPosTxt = p => p.optima_pos ? String(p.optima_pos) : '';
 const artEnPlan = p => p.optima_en ? Math.max(0, (p.optima_pend || 0) - (p.corte_post_optima || 0)) : 0;   // piezas que siguen en el plan de OPTIMA
 const artPorEnviar = p => Math.max(0, p.cant - artHechos(p, 'corte') - artEnPlan(p));
 function artLotes(){
@@ -1607,7 +1607,7 @@ async function artExportarLote(i){
   const t = new Date().toISOString();
   for(const p of ps){ const tot = artEnPlan(p) + artPorEnviar(p); p.optima_en = t; p.optima_pend = tot; p.corte_post_optima = 0; p.optima_lote = 'L' + n + ' · ' + nombre; p.optima_lote_n = n; p.optima_pos = pos.get(p.id); }
   A.ultLote = {nombre: 'L' + n + ' · ' + nombre, etq};
-  toast(`✓ Lote L${n} · ${fmtN(ps.length)} posiciones · ${fmtN(etq.length)} piezas`);
+  toast(`✓ ${fmtN(ps.length)} posiciones · ${fmtN(etq.length)} piezas`);
   renderArtica();
 }
 function artEtqLote(i){
@@ -1685,8 +1685,7 @@ async function artEtqPDF(lista, nombre){
     doc.setFont('helvetica', 'bold');
     if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande, con el lote
       doc.setFillColor(0, 0, 0); doc.rect(4, 9, 18, 12.6, 'F'); doc.setTextColor(255);
-      if(p.optima_lote_n){ doc.setFontSize(6.5); doc.text('L' + p.optima_lote_n, 13, 12.1, {align: 'center'}); }
-      doc.setFontSize(String(p.optima_pos).length > 2 ? 15 : 19); doc.text(String(p.optima_pos), 13, p.optima_lote_n ? 19.8 : 18.6, {align: 'center'});
+      doc.setFontSize(String(p.optima_pos).length > 2 ? 16 : 21); doc.text(String(p.optima_pos), 13, 18.4, {align: 'center'});
       doc.setTextColor(0); doc.setFontSize(16); doc.text(corta(p.op, qx - 26, 16), 24, 18.2);
     } else { doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17); }
     doc.setFontSize(17); doc.text(`${p.ancho} × ${p.alto}`, 4, 27);
@@ -5557,7 +5556,7 @@ function renderCarga(){
     body = `
       <div class="carga-steps">
         <div class="cstep" style="border:1px solid var(--cola);padding:12px"><b>★</b><div><div class="cs-t">Desde las órdenes de producción (lo más rápido)</div><div class="cs-d">Sube el PDF de la orden tal como sale del sistema (puedes elegir varios). La app lee obra, OP, ítem, sistema, cantidad, vidrio, medidas, m², ubicación y fecha, y <b>divide cada cantidad en OP de instalación</b> (6291-1.1, 6291-1.2…): si la ubicación trae los apartamentos (201-303-403-503) le asigna uno a cada unidad con su piso. Antes de guardar revisas todo. Al cargar, la orden también queda subida <b>con su QR</b>.</div>
-          <label class="btn primary sm" style="cursor:pointer">${ICON.pdf} Elegir órdenes PDF<input type="file" id="fileOpPdf" accept="application/pdf,.pdf" multiple style="display:none"></label></div></div>
+          <label class="btn primary sm" style="cursor:pointer">${ICON.pdf} Elegir órdenes PDF<input type="file" id="fileOpPdf" accept="application/pdf,.pdf,.xlsx" multiple style="display:none"></label></div></div>
         <div class="cs-d" style="margin:4px 0 2px">O, si prefieres, desde Excel:</div>
         <div class="cstep"><b>1</b><div><div class="cs-t">Descarga la plantilla</div><div class="cs-d">Tiene las columnas que la app necesita. Llénala como hoy, con las cantidades ya divididas en OP INSTALACION: una fila por cada una.</div>
           <button class="btn sm" onclick="descargarPlantilla()">${ICON.down} Descargar plantilla</button></div></div>
@@ -6069,6 +6068,7 @@ async function leerOrdenesPDF(files){
     const ops = [], pdfs = [];
     for(const [fi, file] of files.entries()){
       C.msg = `Leyendo ${file.name} (${fi + 1} de ${files.length})`; const el = document.querySelector('.loading'); if(el) el.lastChild.textContent = C.msg;
+      if(/\.xlsx?$/i.test(file.name)){ ops.push(...await leerOPArticaXlsx(file)); continue; }   // formato de OP de Ártica en Excel
       const r = await leerOPsPDF(new Uint8Array(await file.arrayBuffer()), file.name);
       ops.push(...r.ops);
       if(r.num) pdfs.push({num: r.num, file});
@@ -6136,22 +6136,58 @@ const filasPDF = it => { const filas = []; for(const t of [...it].sort((a, b) =>
   return filas.map(f => ({y: f.y, s: f.t.sort((a, b) => a.x - b.x).map(t => t.s).join(' ').replace(/\s+/g, ' ').trim()})); };
 function artOPHeader(it){
   const txt = it.map(t => t.s).join(' ');
-  const m = txt.match(/PRODUCCI[OÓ]N\s*(?:N[°ºo.]*\s*)?(\d{3,6})-(\d+)/i);
+  const m = txt.match(/PRODUCCI[OÓ]N[^\d]{0,24}?(\d{3,6})-(\d+)/i);
   if(!m || /N[uú]mero\s*:/i.test(txt)) return null;
   const filas = filasPDF(it), fila = re => (filas.find(f => re.test(f.s)) || {}).s || '';
-  const cli = fila(/^CLIENTE\s*:/i).replace(/^CLIENTE\s*:\s*/i, '').trim();
-  const dir = fila(/^DIRECCI[OÓ]N\s*:/i).replace(/^DIRECCI[OÓ]N\s*:\s*/i, '').trim();
+  const cli = fila(/^CLIENTE\b/i).replace(/^CLIENTE\s*:?\s*/i, '').replace(/\s+NIT\b.*$/i, '').trim();
+  const dir = fila(/^DIRECCI[OÓ]N\b/i).replace(/^DIRECCI[OÓ]N\s*:?\s*/i, '').replace(/\s+CIUDAD\b.*$/i, '').trim();
   const f = txt.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   return {op: m[1].replace(/^0+(?=\d)/, '') + '-' + m[2], cliente: cli || null, direccion: dir || null,
     fecha: f ? f[3] + '-' + pad(+f[2]) + '-' + pad(+f[1]) : null};
+}
+// Formato de OP de Ártica en Excel (plantilla "ARTICA-OP v1"): se lee celda por celda, sin adivinar
+const artTipoTxt = (tipo, cal, col) => { cal = String(cal || '').trim(); return [String(tipo || '').trim(), cal ? cal + (/\+/.test(cal) ? '' : ' MM') : '', String(col || '').trim()].filter(Boolean).join(' ').toUpperCase(); };
+function artLineaFmt(o, x){   // x = {item, cant, tipo, cal, col, canto, ancho, alto, forr, obs}
+  const num = v => typeof v === 'number' ? v : pdfNum(String(v ?? '').replace(/\.(?=\d{1,2}$)/, ','));
+  const mm = v => !v ? 0 : Math.round(v < 20 ? v * 1000 : v);   // por si alguien escribe metros (0,780)
+  const cant = parseInt(x.cant), ancho = mm(num(x.ancho)), alto = mm(num(x.alto));
+  if(!cant || !x.tipo || !ancho || !alto) return;
+  const canto = String(x.canto || '').toUpperCase().trim();
+  o.vidrios.push({item: String(x.item || '').trim() || null, tipo: artTipoTxt(x.tipo, x.cal, x.col), cant, ancho, alto,
+    canto: /CANTO\s+A\s+CANTO/.test(canto) ? 'cc' : null, forrado: /^S/i.test(String(x.forr || '').trim()),
+    obs: [canto && !/CANTO\s+A\s+CANTO/.test(canto) ? 'CANTO ' + canto.replace(/^CANTO\s+/, '') : '', String(x.obs || '').trim(), o.obs || ''].filter(Boolean).join(' · ') || null});
+}
+async function leerOPArticaXlsx(file){
+  if(!window.XLSX) await loadScript(XLSX_URL);
+  const wb = XLSX.read(await file.arrayBuffer(), {type: 'array', cellDates: true});
+  const ws = wb.Sheets.OP || wb.Sheets[wb.SheetNames[0]];
+  if(!ws || !/ARTICA-OP/i.test(String((ws.P1 || {}).v || ''))) throw new Error(file.name + ': no es una OP de Ártica en el formato de la plantilla (falta la marca ARTICA-OP)');
+  const nom = {}; for(const n of ((wb.Workbook || {}).Names || [])) nom[n.Name] = String(n.Ref || '').replace(/^.*!/, '').replace(/\$/g, '');
+  const val = (n, def) => { const c = ws[nom[n] || def]; return c ? (c.v instanceof Date ? c.v : String(c.v ?? '').trim()) : ''; };
+  const fecha = val('OP_FECHA', 'G10'), fISO = fecha instanceof Date ? fecha.getFullYear() + '-' + pad(fecha.getMonth() + 1) + '-' + pad(fecha.getDate()) : null;
+  const num = String(val('OP_NUM', 'K3')).match(/(\d{3,6})-(\d+)/);
+  if(!num) throw new Error(file.name + ': falta el N.º de OP (ej. 6585-1)');
+  const o = {op: num[1].replace(/^0+(?=\d)/, '') + '-' + num[2], cliente: val('OP_CLIENTE', 'D8') || null, direccion: val('OP_DIRECCION', 'D9') || null,
+    fecha: fISO, obs: val('OP_OBS', 'B40') || null, archivo: file.name, artica: true, tercero: true, vidrios: [], perfiles: []};
+  if(!o.cliente) throw new Error(file.name + ': falta el cliente');
+  const rg = XLSX.utils.decode_range(nom.OP_LINEAS || 'B13:M36');
+  for(let r = rg.s.r; r <= rg.e.r; r++){
+    const g = c => { const x = ws[XLSX.utils.encode_cell({r, c: rg.s.c + c})]; return x ? x.v : ''; };
+    artLineaFmt(o, {item: g(1), cant: g(2), tipo: g(3), cal: g(4), col: g(5), canto: g(6), ancho: g(7), alto: g(8), forr: g(10), obs: g(11)});
+  }
+  if(!o.vidrios.length) throw new Error(file.name + ': la OP no tiene medidas completas (cantidad, tipo, ancho y alto)');
+  return [o];
 }
 function artOPLineas(it, o){
   const mm = v => { const n = pdfNum(v); return n == null ? null : Math.round(n < 20 ? n * 1000 : n); };   // metros (0,780) → mm; si ya viene en mm se deja
   let obs = false;
   for(const f of filasPDF(it)){
-    if(/^OBSERVACIONES/i.test(f.s)){ obs = true; const r = f.s.replace(/^OBSERVACIONES\s*:?\s*/i, ''); if(r) o.obs = [o.obs, r].filter(Boolean).join(' · '); continue; }
-    if(/^(ELAB|REVIS)/i.test(f.s)){ obs = false; continue; }
+    if(/^OBSERVACIONES/i.test(f.s)){ obs = true; const r = f.s.replace(/^OBSERVACIONES(\s+GENERALES)?\s*:?\s*/i, ''); if(r) o.obs = [o.obs, r].filter(Boolean).join(' · '); continue; }
+    if(/^(ELAB|REVIS)|RECIBE PRODUCCI|www\.artica/i.test(f.s)){ obs = false; continue; }
     if(obs){ o.obs = [o.obs, f.s].filter(Boolean).join(' · '); continue; }
+    // Formato nuevo (plantilla): # ÍTEM CANT TIPO CALIBRE COLOR CANTO ANCHO ALTO M² FORRADO [OBS]
+    const n = f.s.match(/^\d+\s+(\S+)\s+(\d{1,4})\s+(TEMPLADO|LAMINADO|CRUDO|ESPEJO|REFLECTIVO)\s+(\S+)\s+(.+?)\s+(PULIDO BRILLADO|PULIDO MATE|CANTO A CANTO)\s+(\d{2,5})\s+(\d{2,5})(?:\s+[\d.,]+)?(?:\s+(S[IÍ]|NO))?(?:\s+(.*))?$/i);
+    if(n){ o.fmtNuevo = true; artLineaFmt(o, {item: n[1], cant: n[2], tipo: n[3], cal: n[4], col: n[5], canto: n[6], ancho: n[7], alto: n[8], forr: n[9], obs: n[10]}); continue; }
     const m = f.s.match(/^(\S+)\s+(\d{1,4})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/);
     if(!m || !/VIDRIO|TEMP|LAM|CRUDO|INCOL|BRONCE|GRIS|ESPEJO|REFLEC|\bMM\b/i.test(m[3])) continue;
     const ancho = mm(m[4]), alto = mm(m[5]); if(!ancho || !alto) continue;
@@ -6159,6 +6195,7 @@ function artOPLineas(it, o){
   }
   // Canto a canto: se respeta la medida de la OP (no se pule ni se suman 4 mm)
   o.canto = /CANTO\s+(A|AL)\s+CANTO/i.test(o.obs || '') ? 'cc' : null;
+  if(o.fmtNuevo && o.obs) for(const v of o.vidrios) if(!String(v.obs || '').includes(o.obs)) v.obs = [v.obs, o.obs].filter(Boolean).join(' · ');
 }
 // Líneas de vidrio de la lista de materiales: "LAM CRUDO INCOL 3+3 (6 MM)   8   689   1133" = tipo, cantidad (ya calculada), ancho, alto
 function vidriosPagina(it, o){
@@ -6184,7 +6221,7 @@ function vidriosPagina(it, o){
 }
 // Filas para art_piezas (una por línea de vidrio de la OP)
 const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: v.item || o.item || null,
-  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!o.forrado, tercero: !!o.tercero, canto: o.canto || null, obs: o.obs || null})));
+  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!(v.forrado || o.forrado), tercero: !!o.tercero, canto: v.canto || o.canto || null, obs: v.obs || o.obs || null})));
 // Lee los datos de la primera página de una OP usando la posición de cada encabezado
 function ordenPagina(it, op){
   const cx = t => (t.x + t.x2) / 2;
