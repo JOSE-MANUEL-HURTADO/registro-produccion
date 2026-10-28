@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.29';
+const APP_VERSION = '7.30';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1504,11 +1504,7 @@ function artEtqHTML(){
   return `<div class="cstep"><b>1</b><div><div class="cs-t">Vidrios de las OP</div><div class="cs-d">Al cargar el PDF de las OP en Elíptica, sus líneas de vidrio entran solas a Ártica. Para las OP que ya estaban cargadas, léelas una vez de las órdenes PDF guardadas.</div>
       <button class="btn sm" onclick="artLeerExistentes()">Leer vidrios de las ${fmtN(S.ordenes ? S.ordenes.size : 0)} órdenes PDF guardadas</button></div></div>
     ${artOptimaHTML()}
-    <div class="cstep"><b>3</b><div><div class="cs-t">Cargar el plan optimizado de OPTIMA</div><div class="cs-d">Sube el archivo que exporta OPTIMA con el orden de corte. La app reconoce las medidas aunque vengan giradas (ancho y alto al revés) y deja las etiquetas en ese mismo orden.</div>
-      <label class="btn sm">Elegir archivo del plan (CSV / TXT)<input type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style="display:none" onchange="artLeerPlan(this.files[0]); this.value=''"></label>
-      ${plan ? `<div class="summary" style="margin-top:8px"><b>${esc(plan.nombre)}</b> · ${fmtN(plan.etq.length)} etiquetas en orden de corte${plan.sin.length ? ` · <b style="color:var(--danger)">${fmtN(plan.sin.length)} filas sin pieza que coincida</b>` : ''}${plan.dudosas ? ` · ${plan.dudosas} medidas giradas reconocidas` : ''}</div>
-        ${plan.sin.length ? `<div class="warn">No encontré en Ártica: ${esc(plan.sin.slice(0, 12).join(' · '))}${plan.sin.length > 12 ? '…' : ''}</div>` : ''}` : ''}</div></div>
-    <div class="cstep"><b>4</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ${plan ? '<b>en el orden de corte del plan</b>' : 'por lote, en el orden del archivo enviado (carga el plan de OPTIMA para imprimirlas en el orden de corte). También puedes imprimir cada lote desde "Enviados a OPTIMA"'}. Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
+    <div class="cstep"><b>3</b><div><div class="cs-t">Imprimir etiquetas QR (85 × 60 mm)</div><div class="cs-d">Una etiqueta por pieza, ordenadas por la posición de OPTIMA (el número grande). También puedes imprimir cada lote desde "Enviados a OPTIMA". Imprime en la TSC TTP-247 desde el PC de OPTIMA.</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" id="artEtqBtn" onclick="artImprimirEtq()" ${plan || A.ultLote ? '' : 'disabled'}>${plan ? `Imprimir ${fmtN(plan.etq.length)} etiquetas del plan` : A.ultLote ? `Imprimir etiquetas del último lote (${fmtN(A.ultLote.etq.length)})` : 'Exporta un lote primero'}</button>
         <button class="btn sm" onclick="artReimprimirBuscar()">Reimprimir una etiqueta</button></div></div></div>`;
 }
@@ -1569,46 +1565,81 @@ function artLotes(){
 function artOptimaHTML(){
   if(!window.XLSX) loadScript(XLSX_URL).catch(() => {});   // listo antes del toque de descarga (Safari)
   const lotes = artLotes(); A._lotes = lotes;
-  const porObra = [...grp(lotes, l => l.obra).entries()];
+  // Un grupo por vidrio igual (tipo + calibre + color): OPTIMA puede optimizar juntas varias obras y clientes
+  const vids = [...grp(lotes, l => l.car.txt).values()].map(ls => ({car: ls[0].car, lotes: ls})).sort((a, b) => a.car.txt.localeCompare(b.car.txt)); A._vid = vids;
+  const off = A.optOff || (A.optOff = new Set());
   const env = new Map(); for(const p of A.piezas){ const n = artEnPlan(p); if(!n) continue; const k = p.optima_lote || 'Sin nombre'; if(!env.has(k)) env.set(k, {k, piezas: [], n: 0, en: p.optima_en}); const g = env.get(k); g.piezas.push(p); g.n += n; if(p.optima_en > g.en) g.en = p.optima_en; }
   const enviados = [...env.values()].sort((a, b) => String(b.en).localeCompare(String(a.en))); A._env = enviados;
   const opsTxt = s => { const a = [...s].sort(nat); return a.length > 5 ? a.slice(0, 5).join(', ') + ` y ${a.length - 5} más` : a.join(', '); };
-  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un Excel por <b>obra, tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Cada medida lleva su <b>posición (POS)</b>: digítalas en OPTIMA <b>en ese mismo orden</b> para que OPTIMA les dé el mismo número, que sale grande en la etiqueta. Si una medida sale de un retal, se borra en OPTIMA: los demás números no cambian. Al descargarlo, el lote pasa a "Enviados a OPTIMA"; si se rompe una pieza ya cortada, vuelve a aparecer aquí.</div>
-      ${porObra.length ? porObra.map(([obra, ls]) => `<div class="art-lote-obra">${esc(obra)}${ls[0].cliente ? ' <span class="badge-new">Cliente</span>' : ''}</div>
-        ${ls.map(l => `<div class="art-lote"><div><b>${esc(l.car.tipo)} · ${esc(l.car.cal)} · ${esc(l.car.col)}</b><span>${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div>
-          <button class="btn sm primary" onclick="artExportarLote(${lotes.indexOf(l)})">${ICON.down} Excel</button></div>`).join('')}`).join('')
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;margin:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text);flex:none"';
+  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un Excel por <b>tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Marca las obras y clientes que vas a optimizar juntos para aprovechar mejor la lámina. Cada medida lleva su <b>posición (POS)</b>: digítalas en OPTIMA <b>en ese mismo orden</b> para que OPTIMA les dé el mismo número, que sale grande en la etiqueta. Si una medida sale de un retal, se borra en OPTIMA: los demás números no cambian.</div>
+      ${vids.length ? vids.map((v, vi) => { const sel = v.lotes.filter(l => !off.has(l.k)), n = sel.reduce((a, l) => a + l.n, 0);
+        return `<div class="art-lote-obra">${esc(v.car.tipo)} · ${esc(v.car.cal)} · ${esc(v.car.col)}</div>
+        ${v.lotes.map(l => `<label class="art-lote" style="cursor:pointer;justify-content:flex-start;gap:10px"><input type="checkbox" ${ck} ${off.has(l.k) ? '' : 'checked'} onchange="artOptSel(decodeURIComponent('${encQ(l.k)}'), this.checked)">
+          <div><b>${esc(l.obra)}</b>${l.cliente ? ' <span class="badge-new">Cliente</span>' : ''}<span>${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div></label>`).join('')}
+        <div style="display:flex;justify-content:flex-end;margin:6px 0 14px"><button class="btn sm primary" ${n ? '' : 'disabled'} onclick="artExportarVid(${vi})">${ICON.down} Excel · ${fmtN(n)} piezas${sel.length > 1 ? ' · ' + sel.length + ' obras/clientes' : ''}</button></div>`; }).join('')
         : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
       ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
-        ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k)}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="artEtqLote(${i})">Etiquetas</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver a la lista</button></div></div>`).join('')}</details>` : ''}</div></div>`;
+        ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k.replace(/^L\d+ · /, ''))}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="artExcelLote(${i})">Excel</button><button class="btn sm" onclick="artEtqLote(${i})">Etiquetas</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver a la lista</button></div></div>`).join('')}</details>` : ''}</div></div>`;
 }
-async function artExportarLote(i){
-  const l = (A._lotes || [])[i]; if(!l) return;
-  if(!window.XLSX){ try{ await loadScript(XLSX_URL); }catch(e){ return toast('No se pudo cargar el generador de Excel: ' + errMsg(e), true); } return toast('Listo: toca otra vez Excel para descargar', false); }
-  const ps = [...l.piezas].sort((a, b) => nat(a.op, b.op) || nat(a.item, b.item) || a.linea - b.linea);
-  const pos = new Map(ps.map((p, k) => [p.id, k + 1]));
-  const ped = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return m ? m[1].padStart(6, '0') + '-' + m[2] : op; };   // como lo digitan en OPTIMA: 006295-1
-  // Med. X = ancho, Med. Y = alto, en medida de corte (templado pulido: +4 mm); MEDIDA OP de referencia
+function artOptSel(k, on){ const o = A.optOff || (A.optOff = new Set()); on ? o.delete(k) : o.add(k); renderArtica(); }
+// Excel para digitar en OPTIMA: POS, CANT, MED X (ancho), MED Y (alto), CLIENTE (ítem), PEDIDO, NOTAS
+const artPed = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return m ? m[1].padStart(6, '0') + '-' + m[2] : op; };   // como lo digitan en OPTIMA: 006295-1
+function artExcelBlob(ps, cantDe){
   const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','MEDIDA OP','OBRA / CLIENTE','VIDRIO']].concat(ps.map(p => { const c = artCorte(p);
-    return [pos.get(p.id), artPorEnviar(p), c.ancho, c.alto, p.item || '', ped(p.op), artNotas(p), p.ancho + ' x ' + p.alto, artObra(p), p.tipo]; }));
-  const ahora = new Date(), hhmm = ahora.toTimeString().slice(0, 5);
-  const nombre = `${l.obra} · ${l.car.tipo} ${l.car.cal} ${l.car.col} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
-  const archivo = `OPTIMA_${l.obra}_${l.car.tipo}_${l.car.cal}_${l.car.col}_${today()}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.xlsx';
+    return [p._pos || p.optima_pos, cantDe(p), c.ancho, c.alto, p.item || '', artPed(p.op), artNotas(p), p.ancho + ' x ' + p.alto, artObra(p), p.tipo]; }));
   const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 34].map(w => ({wch: w}));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'OPTIMA');
-  // Primero la descarga (Safari solo deja descargar en el mismo toque), luego se marca como enviado
-  const blob = new Blob([XLSX.write(wb, {bookType: 'xlsx', type: 'array'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = archivo; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000);
-  // Etiquetas de este lote en orden de posición (numeradas desde lo ya cortado)
-  const etq = ps.flatMap(p => { const k = artPorEnviar(p), h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: k}, (_, j) => ({p, n: h + j + 1})); });
-  let n;
-  try{ n = await API.artOptimaLote(ps.map(p => ({id: p.id, pend: artEnPlan(p) + artPorEnviar(p), pos: pos.get(p.id)})), nombre); }
-  catch(e){ return toast(/art_optima|optima_|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'El Excel se descargó, pero falta activar la posición de OPTIMA en la base (SQL 74): el lote sigue en la lista' : 'El Excel se descargó, pero no se pudo marcar como enviado: ' + errMsg(e), true); }
-  const t = new Date().toISOString();
-  for(const p of ps){ const tot = artEnPlan(p) + artPorEnviar(p); p.optima_en = t; p.optima_pend = tot; p.corte_post_optima = 0; p.optima_lote = 'L' + n + ' · ' + nombre; p.optima_lote_n = n; p.optima_pos = pos.get(p.id); }
-  A.ultLote = {nombre: 'L' + n + ' · ' + nombre, etq};
-  toast(`✓ ${fmtN(ps.length)} posiciones · ${fmtN(etq.length)} piezas`);
-  renderArtica();
+  return new Blob([XLSX.write(wb, {bookType: 'xlsx', type: 'array'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+const artArchivo = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w+.-]+/g, '_');
+const esIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Entrega el archivo: en computador se descarga; en iPhone/iPad se comparte (Guardar en Archivos, AirDrop, correo…)
+function artEntregar(blob, archivo, titulo, sub, extra){
+  const file = new File([blob], archivo, {type: blob.type}), url = URL.createObjectURL(blob);
+  const comp = !!(navigator.canShare && navigator.canShare({files: [file]}));
+  window._artArch = {file, archivo};
+  if(!esIOS()){ const a = document.createElement('a'); a.href = url; a.download = archivo; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); }
+  openSheet(titulo, sub, `<div style="display:flex;flex-direction:column;gap:8px">
+      ${comp ? `<button class="btn ${esIOS() ? 'primary' : ''}" onclick="navigator.share({files:[_artArch.file], title:_artArch.archivo}).catch(()=>{})">Compartir / Guardar en Archivos</button>` : ''}
+      <a class="btn ${comp && esIOS() ? '' : 'primary'}" href="${url}" download="${esc(archivo)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar Excel</a>
+      ${extra || ''}</div>`, 'Listo', async () => {});
+}
+async function artExportarVid(vi){
+  const v = (A._vid || [])[vi]; if(!v) return;
+  const off = A.optOff || new Set(), sel = v.lotes.filter(l => !off.has(l.k));
+  if(!sel.length) return toast('Marca al menos una obra o cliente', true);
+  try{
+    if(!window.XLSX){ toast('Preparando el Excel…'); await loadScript(XLSX_URL); }
+    // Orden: obra o cliente, OP e ítem; posiciones 1, 2, 3… seguidas en todo el archivo
+    const ps = sel.flatMap(l => l.piezas).sort((a, b) => nat(artObra(a), artObra(b)) || nat(a.op, b.op) || nat(a.item, b.item) || a.linea - b.linea);
+    ps.forEach((p, k) => { p._pos = k + 1; p._cant = artPorEnviar(p); });
+    const etq = ps.flatMap(p => { const h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: p._cant}, (_, j) => ({p, n: h + j + 1})); });
+    const blob = artExcelBlob(ps, p => p._cant);
+    const obras = sel.map(l => l.obra), hhmm = new Date().toTimeString().slice(0, 5);
+    const nombre = `${v.car.tipo} ${v.car.cal} ${v.car.col} · ${obras.join(' + ')} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
+    const archivo = artArchivo(`OPTIMA_${v.car.tipo}_${v.car.cal}_${v.car.col}_${obras.length > 1 ? obras.length + '_obras' : obras[0]}_${today()}`) + '.xlsx';
+    let n = null, err = null;
+    try{ n = await API.artOptimaLote(ps.map(p => ({id: p.id, pend: artEnPlan(p) + p._cant, pos: p._pos})), nombre); }
+    catch(e){ err = /art_optima|optima_|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'falta activar la posición de OPTIMA en la base (SQL 74)' : errMsg(e); }
+    if(n != null){ const t = new Date().toISOString();
+      for(const p of ps){ p.optima_pend = artEnPlan(p) + p._cant; p.optima_en = t; p.corte_post_optima = 0; p.optima_lote = 'L' + n + ' · ' + nombre; p.optima_lote_n = n; p.optima_pos = p._pos; } }
+    A.ultLote = {nombre, etq}; A._etqUlt = etq;
+    renderArtica();
+    artEntregar(blob, archivo, 'Excel para OPTIMA', `${fmtN(ps.length)} posiciones · ${fmtN(etq.length)} piezas · ${esc(obras.join(' + '))}`,
+      `${err ? `<div class="warn">El archivo está listo, pero no quedó marcado como enviado: ${esc(err)}. Sigue en la lista.</div>` : `<div class="sc-note">Quedó en "Enviados a OPTIMA". Digita las filas en ese orden.</div>`}
+       <button class="btn" onclick="artEtqPDF(A._etqUlt, 'Etiquetas_' + artArchivo(A.ultLote.nombre) + '.pdf')">Imprimir las ${fmtN(etq.length)} etiquetas</button>`);
+  }catch(e){ toast('No se pudo generar el Excel: ' + errMsg(e), true); }
+}
+// Volver a bajar el Excel de un lote ya enviado (mismas posiciones)
+async function artExcelLote(i){
+  const g = (A._env || [])[i]; if(!g) return;
+  try{
+    if(!window.XLSX){ toast('Preparando el Excel…'); await loadScript(XLSX_URL); }
+    const ps = [...g.piezas].sort((a, b) => (a.optima_pos || 1e9) - (b.optima_pos || 1e9)); ps.forEach(p => { p._pos = p.optima_pos; });
+    artEntregar(artExcelBlob(ps, p => p.optima_pend || artEnPlan(p)), artArchivo('OPTIMA_' + g.k.replace(/^L\d+ · /, '')) + '.xlsx', 'Excel para OPTIMA', esc(g.k.replace(/^L\d+ · /, '')));
+  }catch(e){ toast('No se pudo generar el Excel: ' + errMsg(e), true); }
 }
 function artEtqLote(i){
   const g = (A._env || [])[i]; if(!g) return;
