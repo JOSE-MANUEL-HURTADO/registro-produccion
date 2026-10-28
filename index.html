@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.43';
+const APP_VERSION = '7.44';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -788,6 +788,7 @@ const API = {
   async pendInstalar(){ const l = await this.all(o => this.sb.from('items').select('obra,piso,ubicacion', o).eq('despachado', true).or('instalado.is.null,instalado.eq.false').is('acta_id', null).order('id'));
     return l.filter(i => !(S.cerradas && S.cerradas.has(i.obra))); },
   async pisoInstalacion(id, piso){ const {data,error} = await this.sb.rpc('asignar_piso_instalacion', {p_id:id, p_piso:piso}); if(error) throw error; return Array.isArray(data) ? data[0] : data; },
+  async reubicarInst(a, b){ const {error} = await this.sb.rpc('reubicar_instalacion', {p_desp:a, p_dest:b}); if(error) throw error; },
   async intercambiar(a, b){ const {error} = await this.sb.rpc('intercambiar_destino', {p_a:a, p_b:b}); if(error) throw error; },
   async progCrear(o){ const {data,error} = await this.sb.from('programaciones').insert(o).select('*').single(); if(error) throw error; return data; },
   async progLista(){ const {data,error} = await this.sb.from('programaciones').select('*').eq('estado', 'activa').order('fecha_req', {nullsFirst:false}).order('id'); if(error) throw error; return data || []; },
@@ -4106,7 +4107,11 @@ async function scCodigo(txt, manual){
           }catch(err){ scBeep(false); toast(/asignar_piso|function/.test(errMsg(err)) ? errMsg(err) + ' (¿ya corriste el SQL 32?)' : errMsg(err), true); }
           return;
         }
-        if(!cand.length){ scBeep(false); toast(`La OP ${it.op} (${it.obra}) no tiene unidades por instalar en ${SC.instPiso}. Revisa el piso elegido o la etiqueta.`, true); return; }
+        if(!cand.length){
+          // Se despachó para otro piso pero la están instalando aquí: toma el destino de una unidad de este piso aún sin despachar
+          const otros = items.filter(x => x.obra === it.obra && !x.instalado && !x.acta_id && !x.despachado && !indef(x) && (x.piso || '(sin piso)') === SC.instPiso);
+          if(otros.length){ scBeep(true); scReubicarInst(it, otros, items.length, e); return; }
+          scBeep(false); toast(`La OP ${it.op} (${it.obra}) no tiene unidades por instalar en ${SC.instPiso}. Revisa el piso elegido o la etiqueta.`, true); return; }
         if(cand.length > 1 || cand[0].id !== it.id){ scBeep(true); scDondeInst(it, cand, items.length, e); return; }
       }
       // Procesos e inicio de ensamble: cualquier etiqueta de la OP sirve. Si la unidad escaneada no está en la
@@ -4126,10 +4131,34 @@ async function scCodigo(txt, manual){
       scBeep(true); toast(`✓ ${p.sub} · ${e.t}${e.k === 'entr' && SC.acta ? ' → acta N.º ' + SC.acta.num + (it.piso ? ' · ' + pisoLbl(it.piso) : '') + (it.ubicacion ? ' · ' + lugarCorto(it.ubicacion) : '') : ''}${e.k === 'desp' && (it.ubicacion || it.piso) ? ' → ' + [it.ubicacion, it.piso].filter(Boolean).join(' · ') : ''}`);
       return;
     }
+    if(e.k === 'inst' && !items.some(x => !scMotivo(x, e))){
+      // Escaneó la OP: nada despachado para este piso, pero hay unidades despachadas para otro piso → instalar aquí
+      const desp = items.filter(x => x.despachado && !x.instalado && !x.acta_id && !indef(x)), otros = items.filter(x => !x.instalado && !x.acta_id && !x.despachado && !indef(x) && (x.piso || '(sin piso)') === SC.instPiso);
+      if(desp.length && otros.length){ scBeep(true); scReubicarInst(desp[0], otros, items.length, e); return; }
+    }
     scBeep(true);
     scHoja(p, items, e);
   }catch(err){ scBeep(false); toast(errMsg(err), true); }
   finally{ SC.busy = false; }
+}
+// Instalar en otro piso: la unidad despachada (iba para otro piso) toma el destino de una de este piso que sigue en planta
+function scReubicarInst(it, otros, tot, e){
+  const lugar = x => [x.ubicacion, x.piso].filter(Boolean).join(' · ') || x.op_instalacion;
+  const l = [...otros].sort((a, b) => nat(a.ubicacion, b.ubicacion)); window._rI = l.length === 1 ? l[0].id : null;
+  const body = `<div class="summary"><b>${esc(it.obra || '')}</b><br>La <b>${esc(it.op_instalacion)}</b> se despachó para <b>${esc(lugar(it))}</b>, pero estás instalando en <b>${esc(SC.instPiso)}</b>.<br><small>Las unidades de la OP ${esc(it.op)} son iguales: esta queda en la ubicación que elijas de ${esc(SC.instPiso)}, y esa ubicación pasa a ${esc(it.piso || 'su piso')} para el próximo despacho.</small></div>
+    <div class="sc-note" style="margin-top:8px">${l.length === 1 ? 'Queda instalada en:' : '¿En cuál ubicación de ' + esc(SC.instPiso) + ' quedó?'}</div>
+    <div id="rIlista" style="display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto;margin-top:6px">${l.map(x => `<button class="btn${l.length === 1 ? ' primary' : ''}" data-id="${x.id}" style="justify-content:flex-start;text-align:left" onclick="window._rI=${x.id};document.querySelectorAll('#rIlista .btn').forEach(b=>b.classList.toggle('primary', b.dataset.id==='${x.id}'))">${esc(lugar(x))}</button>`).join('')}</div>`;
+  openSheet('Instalar en otro piso · OP ' + esc(it.op), esc(it.obra || ''), body, 'Registrar instalación', async () => {
+    const obj = l.find(x => x.id === window._rI);
+    if(!obj){ toast('Toca la ubicación donde quedó instalada', true); return false; }
+    try{
+      await API.reubicarInst(it.id, obj.id);
+      const ub = it.ubicacion, pi = it.piso; it.ubicacion = obj.ubicacion; it.piso = obj.piso; obj.ubicacion = ub; obj.piso = pi;
+      for(const x of (S.items || [])){ if(x.id === it.id){ x.ubicacion = it.ubicacion; x.piso = it.piso; } if(x.id === obj.id){ x.ubicacion = ub; x.piso = pi; } }
+      if(await scAplicar([it], tot, e) === false) return false;
+    }catch(err){ scBeep(false); toast(/reubicar_instalacion|function|PGRST202/.test(errMsg(err)) ? 'Falta activar "instalar en otro piso" en la base (SQL 84)' : errMsg(err), true); return false; }
+    scBeep(true); toast(`✓ ${it.op_instalacion} · instalada en ${lugar(it)}`);
+  });
 }
 function scDondeInst(it, cand, tot, e){
   const lugar = x => [x.ubicacion, x.piso].filter(Boolean).join(' · ') || x.op_instalacion;
