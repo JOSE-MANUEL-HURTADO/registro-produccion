@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.26';
+const APP_VERSION = '7.27';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1317,7 +1317,9 @@ const artCod = p => 'ART:' + p.id;
 const artMed = p => `${p.ancho} × ${p.alto}`;
 // Templado: se corta 4 mm más de ancho y 4 mm más de alto para pulirlo sin perder la medida de la OP
 const artTempl = p => (p.ruta || []).includes('templado') || /TEMP/i.test(p.tipo || '');
-const artCorte = p => artTempl(p) ? {ancho: Number(p.ancho) + 4, alto: Number(p.alto) + 4} : {ancho: Number(p.ancho), alto: Number(p.alto)};
+// Canto a canto (cc): se respeta la medida de la OP (no se pule, no se suman 4 mm)
+const artCC = p => p.canto === 'cc';
+const artCorte = p => artTempl(p) && !artCC(p) ? {ancho: Number(p.ancho) + 4, alto: Number(p.alto) + 4} : {ancho: Number(p.ancho), alto: Number(p.alto)};
 // Hecho en una estación = base (terminadas antes de la app) + escaneos − rotas (por reprocesar), entre 0 y la cantidad
 const artHechos = (p, e) => Math.max(0, Math.min(p.cant, (p.base != null ? p.base : (p.historica ? p.cant : 0)) + Number((p.hechos || {})[e] || 0) - (p.rotas || 0)));
 const artUltimo = p => p.ruta[p.ruta.length - 1];
@@ -1337,6 +1339,7 @@ Object.assign(API, {
   async artRutaSet(id, ruta){ const {error} = await this.sb.rpc('art_ruta_set', {p_id: id, p_ruta: ruta}); if(error) throw error; },
   async artOrdenCorte(l, lote){ const {data,error} = await this.sb.rpc('art_orden_corte', {p: l, p_lote: lote}); if(error) throw error; return data; },
   async artOptimaMarcar(l, lote){ const {data,error} = await this.sb.rpc('art_optima_marcar', {p: l, p_lote: lote}); if(error) throw error; return data; },
+  async artOptimaLote(l, lote){ const {data,error} = await this.sb.rpc('art_optima_lote', {p: l, p_lote: lote}); if(error) throw error; return data; },
   async artOptimaDevolver(ids){ const {data,error} = await this.sb.rpc('art_optima_devolver', {p_ids: ids}); if(error) throw error; return data; },
   async artHistorial(id){
     const [r1, r2] = await Promise.all([this.sb.from('art_registros').select('estacion,creado,quien,n').eq('pieza_id', id).order('creado'), this.sb.from('art_reprocesos').select('*').eq('pieza_id', id).order('creado')]);
@@ -1427,7 +1430,7 @@ function artAvanceHTML(){
 }
 function artPiezaHTML(p){
   const paso = artPaso(p);
-  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b>${artTempl(p) ? ` <span title="Templado: se corta 4 mm más por lado para pulir">· corte ${artCorte(p).ancho} × ${artCorte(p).alto}</span>` : ''} <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.orden_corte ? ' · corte #' + p.orden_corte : ''}</span></div>
+  return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b>${artCorte(p).ancho !== Number(p.ancho) ? ` <span title="Templado: se corta 4 mm más por lado para pulir">· corte ${artCorte(p).ancho} × ${artCorte(p).alto}</span>` : ''}${artCC(p) ? ' <span>· canto a canto</span>' : ''} <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.optima_pos ? ' · <b>POS ' + esc(artPosTxt(p)) + '</b>' : ''}${p.obs ? ' · ' + esc(p.obs) : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
       <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
@@ -1550,6 +1553,9 @@ function vidrioCar(t){
   col = col.replace(/\bINCOL(ORO)?\b/, 'INCOLORO') || 'INCOLORO';
   return {tipo, cal, col, txt: `${tipo} ${cal} ${col}`};
 }
+// Notas para OPTIMA: cc-calibre (canto a canto) o cp-calibre (canto pulido: templado, +4 mm)
+const artNotas = p => { const c = vidrioCar(p.tipo), cal = c.cal === 'SIN CALIBRE' ? '' : c.cal.replace(/\s*MM$/, ''); return (artCorte(p).ancho !== Number(p.ancho) ? 'cp' : 'cc') + (cal ? '-' + cal : ''); };
+const artPosTxt = p => p.optima_pos ? (p.optima_lote_n ? 'L' + p.optima_lote_n + ' · ' : '') + p.optima_pos : '';
 const artEnPlan = p => p.optima_en ? Math.max(0, (p.optima_pend || 0) - (p.corte_post_optima || 0)) : 0;   // piezas que siguen en el plan de OPTIMA
 const artPorEnviar = p => Math.max(0, p.cant - artHechos(p, 'corte') - artEnPlan(p));
 function artLotes(){
@@ -1561,15 +1567,16 @@ function artLotes(){
   return [...m.values()].sort((a, b) => nat(a.obra, b.obra) || a.car.txt.localeCompare(b.car.txt));
 }
 function artOptimaHTML(){
+  if(!window.XLSX) loadScript(XLSX_URL).catch(() => {});   // listo antes del toque de descarga (Safari)
   const lotes = artLotes(); A._lotes = lotes;
   const porObra = [...grp(lotes, l => l.obra).entries()];
   const env = new Map(); for(const p of A.piezas){ const n = artEnPlan(p); if(!n) continue; const k = p.optima_lote || 'Sin nombre'; if(!env.has(k)) env.set(k, {k, piezas: [], n: 0, en: p.optima_en}); const g = env.get(k); g.piezas.push(p); g.n += n; if(p.optima_en > g.en) g.en = p.optima_en; }
   const enviados = [...env.values()].sort((a, b) => String(b.en).localeCompare(String(a.en))); A._env = enviados;
   const opsTxt = s => { const a = [...s].sort(nat); return a.length > 5 ? a.slice(0, 5).join(', ') + ` y ${a.length - 5} más` : a.join(', '); };
-  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un archivo por <b>obra, tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Al descargarlo, ese lote sale de esta lista y pasa a "Enviados a OPTIMA". Si se rompe una pieza ya cortada, vuelve a aparecer aquí.</div>
+  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un Excel por <b>obra, tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Cada medida lleva su <b>posición (POS)</b>: digítalas en OPTIMA <b>en ese mismo orden</b> para que OPTIMA les dé el mismo número, que sale grande en la etiqueta. Si una medida sale de un retal, se borra en OPTIMA: los demás números no cambian. Al descargarlo, el lote pasa a "Enviados a OPTIMA"; si se rompe una pieza ya cortada, vuelve a aparecer aquí.</div>
       ${porObra.length ? porObra.map(([obra, ls]) => `<div class="art-lote-obra">${esc(obra)}${ls[0].cliente ? ' <span class="badge-new">Cliente</span>' : ''}</div>
         ${ls.map(l => `<div class="art-lote"><div><b>${esc(l.car.tipo)} · ${esc(l.car.cal)} · ${esc(l.car.col)}</b><span>${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div>
-          <button class="btn sm primary" onclick="artExportarLote(${lotes.indexOf(l)})">${ICON.down} CSV</button></div>`).join('')}`).join('')
+          <button class="btn sm primary" onclick="artExportarLote(${lotes.indexOf(l)})">${ICON.down} Excel</button></div>`).join('')}`).join('')
         : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
       ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
         ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k)}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span></div>
@@ -1577,36 +1584,42 @@ function artOptimaHTML(){
 }
 async function artExportarLote(i){
   const l = (A._lotes || [])[i]; if(!l) return;
-  const ps = [...l.piezas].sort((a, b) => nat(a.op, b.op) || a.linea - b.linea);
-  const sep = ';', q = v => { v = String(v ?? ''); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  // Templado: ANCHO y ALTO de corte = medida de la OP + 4 mm (para pulir); la medida final va en la columna MEDIDA OP
-  const filas = [['REFERENCIA','CANTIDAD','ANCHO','ALTO','MATERIAL','ID','OBRA','ITEM','MEDIDA OP']].concat(ps.map(p => { const c = artCorte(p); return [p.op, artPorEnviar(p), c.ancho, c.alto, p.tipo, artCod(p), p.obra || p.cliente || '', p.item || '', p.ancho + 'x' + p.alto]; }));
+  if(!window.XLSX){ try{ await loadScript(XLSX_URL); }catch(e){ return toast('No se pudo cargar el generador de Excel: ' + errMsg(e), true); } return toast('Listo: toca otra vez Excel para descargar', false); }
+  const ps = [...l.piezas].sort((a, b) => nat(a.op, b.op) || nat(a.item, b.item) || a.linea - b.linea);
+  const pos = new Map(ps.map((p, k) => [p.id, k + 1]));
+  const ped = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return m ? m[1].padStart(6, '0') + '-' + m[2] : op; };   // como lo digitan en OPTIMA: 006295-1
+  // Med. X = ancho, Med. Y = alto, en medida de corte (templado pulido: +4 mm); MEDIDA OP de referencia
+  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','MEDIDA OP','OBRA / CLIENTE','VIDRIO']].concat(ps.map(p => { const c = artCorte(p);
+    return [pos.get(p.id), artPorEnviar(p), c.ancho, c.alto, p.item || '', ped(p.op), artNotas(p), p.ancho + ' x ' + p.alto, artObra(p), p.tipo]; }));
   const ahora = new Date(), hhmm = ahora.toTimeString().slice(0, 5);
   const nombre = `${l.obra} · ${l.car.tipo} ${l.car.cal} ${l.car.col} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
-  const archivo = `OPTIMA_${l.obra}_${l.car.tipo}_${l.car.cal}_${l.car.col}_${today()}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.csv';
-  // Etiquetas de este lote (numeradas desde lo ya cortado)
-  const etq = ps.flatMap(p => { const n = artPorEnviar(p), h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: n}, (_, k) => ({p, n: h + k + 1})); });
+  const archivo = `OPTIMA_${l.obra}_${l.car.tipo}_${l.car.cal}_${l.car.col}_${today()}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.xlsx';
+  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 34].map(w => ({wch: w}));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'OPTIMA');
   // Primero la descarga (Safari solo deja descargar en el mismo toque), luego se marca como enviado
-  const blob = new Blob(['﻿' + filas.map(r => r.map(q).join(sep)).join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const blob = new Blob([XLSX.write(wb, {bookType: 'xlsx', type: 'array'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = archivo; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000);
-  try{ await API.artOptimaMarcar(ps.map(p => ({id: p.id, pend: artEnPlan(p) + artPorEnviar(p)})), nombre); }
-  catch(e){ return toast(/art_optima|optima_|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'El archivo se descargó, pero falta activar los lotes de OPTIMA en la base (SQL 69): el lote sigue en la lista' : 'El archivo se descargó, pero no se pudo marcar como enviado: ' + errMsg(e), true); }
+  // Etiquetas de este lote en orden de posición (numeradas desde lo ya cortado)
+  const etq = ps.flatMap(p => { const k = artPorEnviar(p), h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: k}, (_, j) => ({p, n: h + j + 1})); });
+  let n;
+  try{ n = await API.artOptimaLote(ps.map(p => ({id: p.id, pend: artEnPlan(p) + artPorEnviar(p), pos: pos.get(p.id)})), nombre); }
+  catch(e){ return toast(/art_optima|optima_|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'El Excel se descargó, pero falta activar la posición de OPTIMA en la base (SQL 74): el lote sigue en la lista' : 'El Excel se descargó, pero no se pudo marcar como enviado: ' + errMsg(e), true); }
   const t = new Date().toISOString();
-  for(const p of ps){ const tot = artEnPlan(p) + artPorEnviar(p); p.optima_en = t; p.optima_pend = tot; p.corte_post_optima = 0; p.optima_lote = nombre; }
-  A.ultLote = {nombre, etq};
-  toast(`✓ ${fmtN(etq.length)} piezas exportadas · ${nombre}`);
+  for(const p of ps){ const tot = artEnPlan(p) + artPorEnviar(p); p.optima_en = t; p.optima_pend = tot; p.corte_post_optima = 0; p.optima_lote = 'L' + n + ' · ' + nombre; p.optima_lote_n = n; p.optima_pos = pos.get(p.id); }
+  A.ultLote = {nombre: 'L' + n + ' · ' + nombre, etq};
+  toast(`✓ Lote L${n} · ${fmtN(ps.length)} posiciones · ${fmtN(etq.length)} piezas`);
   renderArtica();
 }
 function artEtqLote(i){
   const g = (A._env || [])[i]; if(!g) return;
-  const etq = [...g.piezas].sort((a, b) => nat(a.op, b.op) || a.linea - b.linea).flatMap(p => { const n = artEnPlan(p), h = artHechos(p, 'corte'); return Array.from({length: n}, (_, k) => ({p, n: h + k + 1})); });
+  const etq = [...g.piezas].sort((a, b) => (a.optima_pos || 1e9) - (b.optima_pos || 1e9) || nat(a.op, b.op) || a.linea - b.linea).flatMap(p => { const n = artEnPlan(p), h = artHechos(p, 'corte'); return Array.from({length: n}, (_, k) => ({p, n: h + k + 1})); });
   if(!etq.length) return toast('Este lote ya está cortado', true);
   artEtqPDF(etq, `Etiquetas_${g.k}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.pdf');
 }
 async function artDevolverLote(i){
   const g = (A._env || [])[i]; if(!g) return;
   if(!confirm(`¿Devolver "${g.k}" a la lista de exportar? Úsalo si el archivo no se cargó en OPTIMA o se va a mandar de nuevo.`)) return;
-  try{ await API.artOptimaDevolver(g.piezas.map(p => p.id)); for(const p of g.piezas){ p.optima_en = null; p.optima_pend = null; p.optima_lote = null; p.corte_post_optima = 0; } toast('✓ Devuelto a la lista'); renderArtica(); }
+  try{ await API.artOptimaDevolver(g.piezas.map(p => p.id)); for(const p of g.piezas){ p.optima_en = null; p.optima_pend = null; p.optima_lote = null; p.optima_lote_n = null; p.optima_pos = null; p.corte_post_optima = 0; } toast('✓ Devuelto a la lista'); renderArtica(); }
   catch(e){ toast(errMsg(e), true); }
 }
 // 3. Plan de OPTIMA: cada fila trae referencia y/o medidas en el orden de corte; se expande por cantidad
@@ -1667,9 +1680,14 @@ async function artEtqPDF(lista, nombre){
     if(simb){ doc.addImage(simb, 'PNG', 4, 2.2, 8.2, 6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('Á R T I C A', 13.6, 7); }
     else { doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ÁRTICA', 4, 7); }
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17);
+    if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande, con el lote
+      doc.setFillColor(0, 0, 0); doc.rect(4, 9, 18, 12.6, 'F'); doc.setTextColor(255);
+      if(p.optima_lote_n){ doc.setFontSize(6.5); doc.text('L' + p.optima_lote_n, 13, 12.1, {align: 'center'}); }
+      doc.setFontSize(String(p.optima_pos).length > 2 ? 15 : 19); doc.text(String(p.optima_pos), 13, p.optima_lote_n ? 19.8 : 18.6, {align: 'center'});
+      doc.setTextColor(0); doc.setFontSize(16); doc.text(corta(p.op, qx - 26, 16), 24, 18.2);
+    } else { doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17); }
     doc.setFontSize(17); doc.text(`${p.ancho} × ${p.alto}`, 4, 27);
-    if(artTempl(p)){   // templado: medida de corte (+4 mm por lado para pulir)
+    if(artCorte(p).ancho !== Number(p.ancho)){   // templado: medida de corte (+4 mm por lado para pulir)
       const c = artCorte(p); doc.setFontSize(8.5); doc.text(`CORTE ${c.ancho} × ${c.alto}`, 4, 32.2);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 36.6);
       doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 40.8);
@@ -1681,7 +1699,7 @@ async function artEtqPDF(lista, nombre){
     // Ruta: casillas para marcar a mano si hace falta
     let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
-    doc.text([p.tercero ? 'TERCEROS' : '', p.forrado ? 'FORRAR' : '', p.orden_corte ? 'Corte #' + p.orden_corte : ''].filter(Boolean).join(' · '), 4, 57.5);
+    doc.text(corta([p.tercero ? 'CLIENTE' : '', artCC(p) ? 'CANTO A CANTO' : '', p.forrado ? 'FORRAR' : '', p.obs || ''].filter(Boolean).join(' · '), W - 28, 6.5), 4, 57.5);
     doc.text(artCod(p) + '-' + n, W - 4, 57.5, {align: 'right'});
   });
   const blob = doc.output('blob'), url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
@@ -6094,14 +6112,50 @@ async function leerOPsPDF(data, nombre){
       const op = m[1].replace(/^0+(?=\d)/, '') + '-' + m[2];
       if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = nombre; actual.vidrios = []; actual.perfiles = []; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
     }
-    if(!actual) continue;
+    else if(!m){
+      // OP de clientes de Ártica: "ORDEN DE PRODUCCION 6585-1", cliente y medidas en metros
+      const h = artOPHeader(it);
+      if(h){ if(!actual || actual.op !== h.op || !actual.artica){ actual = {...h, archivo: nombre, artica: true, tercero: true, vidrios: [], perfiles: []}; ops.push(actual); } }
+      if(actual && actual.artica){ artOPLineas(it, actual); continue; }
+    }
+    if(!actual || actual.artica) continue;
     // Nombre completo del vidrio (en el encabezado sale cortado): se busca en la lista de materiales
     if(actual.vidrioCorto && !actual.vidrio){ const v = it.find(t => t.s.length > actual.vidrioCorto.length && t.s.startsWith(actual.vidrioCorto)); if(v) actual.vidrio = v.s; }
     vidriosPagina(it, actual);
   }
   await pdf.destroy();
-  for(const o of ops) o.tercero = !o.alum && o.vidrios.length > 0;
+  for(const o of ops) o.tercero = o.artica || (!o.alum && o.vidrios.length > 0);
   return {ops, num};
+}
+// ── OP de clientes de Ártica (formato propio de Ártica) ──
+// Ojo: el número puede coincidir con una OP de Elíptica; se guardan aparte (tercero = true, SQL 74)
+const filasPDF = it => { const filas = []; for(const t of [...it].sort((a, b) => b.y - a.y || a.x - b.x)){ let f = filas.find(r => Math.abs(r.y - t.y) < 2.5); if(!f){ f = {y: t.y, t: []}; filas.push(f); } f.t.push(t); }
+  return filas.map(f => ({y: f.y, s: f.t.sort((a, b) => a.x - b.x).map(t => t.s).join(' ').replace(/\s+/g, ' ').trim()})); };
+function artOPHeader(it){
+  const txt = it.map(t => t.s).join(' ');
+  const m = txt.match(/PRODUCCI[OÓ]N\s*(?:N[°ºo.]*\s*)?(\d{3,6})-(\d+)/i);
+  if(!m || /N[uú]mero\s*:/i.test(txt)) return null;
+  const filas = filasPDF(it), fila = re => (filas.find(f => re.test(f.s)) || {}).s || '';
+  const cli = fila(/^CLIENTE\s*:/i).replace(/^CLIENTE\s*:\s*/i, '').trim();
+  const dir = fila(/^DIRECCI[OÓ]N\s*:/i).replace(/^DIRECCI[OÓ]N\s*:\s*/i, '').trim();
+  const f = txt.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return {op: m[1].replace(/^0+(?=\d)/, '') + '-' + m[2], cliente: cli || null, direccion: dir || null,
+    fecha: f ? f[3] + '-' + pad(+f[2]) + '-' + pad(+f[1]) : null};
+}
+function artOPLineas(it, o){
+  const mm = v => { const n = pdfNum(v); return n == null ? null : Math.round(n < 20 ? n * 1000 : n); };   // metros (0,780) → mm; si ya viene en mm se deja
+  let obs = false;
+  for(const f of filasPDF(it)){
+    if(/^OBSERVACIONES/i.test(f.s)){ obs = true; const r = f.s.replace(/^OBSERVACIONES\s*:?\s*/i, ''); if(r) o.obs = [o.obs, r].filter(Boolean).join(' · '); continue; }
+    if(/^(ELAB|REVIS)/i.test(f.s)){ obs = false; continue; }
+    if(obs){ o.obs = [o.obs, f.s].filter(Boolean).join(' · '); continue; }
+    const m = f.s.match(/^(\S+)\s+(\d{1,4})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/);
+    if(!m || !/VIDRIO|TEMP|LAM|CRUDO|INCOL|BRONCE|GRIS|ESPEJO|REFLEC|\bMM\b/i.test(m[3])) continue;
+    const ancho = mm(m[4]), alto = mm(m[5]); if(!ancho || !alto) continue;
+    o.vidrios.push({item: m[1], tipo: m[3].trim(), cant: +m[2], ancho, alto});
+  }
+  // Canto a canto: se respeta la medida de la OP (no se pule ni se suman 4 mm)
+  o.canto = /CANTO\s+(A|AL)\s+CANTO/i.test(o.obs || '') ? 'cc' : null;
 }
 // Líneas de vidrio de la lista de materiales: "LAM CRUDO INCOL 3+3 (6 MM)   8   689   1133" = tipo, cantidad (ya calculada), ancho, alto
 function vidriosPagina(it, o){
@@ -6126,8 +6180,8 @@ function vidriosPagina(it, o){
   }
 }
 // Filas para art_piezas (una por línea de vidrio de la OP)
-const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: o.item || null,
-  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!o.forrado, tercero: !!o.tercero})));
+const artFilasDeOps = ops => ops.flatMap(o => (o.vidrios || []).map((v, k) => ({op: o.op, linea: k + 1, obra: o.obra || null, cliente: o.cliente || null, item: v.item || o.item || null,
+  tipo: v.tipo, cant: v.cant, ancho: v.ancho, alto: v.alto, forrado: !!o.forrado, tercero: !!o.tercero, canto: o.canto || null, obs: o.obs || null})));
 // Lee los datos de la primera página de una OP usando la posición de cada encabezado
 function ordenPagina(it, op){
   const cx = t => (t.x + t.x2) / 2;
