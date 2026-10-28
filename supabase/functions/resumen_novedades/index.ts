@@ -1,4 +1,5 @@
 // ELÍPTICA · Edge Function "resumen_novedades"
+// También envía al instante el correo de faltantes de material en corte (body {tipo:"faltante"}) a compras e inventario.
 // Al final de la jornada (6:00 p. m., la llama la base con pg_cron) envía a cobros UN correo por obra
 // con el PDF de las novedades de instalación del día (fecha y hora del servidor, motivo, ítems y fotos).
 // Secretos necesarios (Edge Functions → Secrets): GMAIL_USER y GMAIL_APP_PASSWORD.
@@ -82,12 +83,50 @@ export async function pdfObra(obra: string, novs: Nov[], items: Map<number, It>,
   return await pdf.save();
 }
 
+// ── Faltantes de material en corte: correo inmediato a compras e inventario (SQL 81) ──
+type Falt = { id: number; obra: string | null; op: string; op_inst: string[]; ref: string; descripcion: string | null; cant: number | null; medida: number | null; nota: string | null; quien: string | null; creada: string };
+const e = (t: unknown) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const n0 = (v: number | null) => v == null ? "" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 2 });
+async function correoFaltantes(ids: number[] | null, usuario: string, clave: string) {
+  const { data: cf } = await db.from("push_config").select("correos_faltantes").eq("id", 1).single();
+  const para = String(cf?.correos_faltantes || "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+  if (!para.length) return { enviados: 0, error: "sin destinatarios" };
+  // Los indicados, y lo que haya quedado sin enviar de los últimos 3 días
+  const { data: fs, error } = await db.from("faltantes").select("*").is("correo_en", null)
+    .gte("creada", new Date(Date.now() - 3 * 864e5).toISOString()).order("creada");
+  if (error) throw error;
+  const l = (fs || []) as Falt[];   // incluye los recién registrados (ids) y lo que no se pudo enviar antes
+  if (!l.length) return { enviados: 0 };
+  const smtp = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: usuario, pass: clave } });
+  const grupos = new Map<string, Falt[]>();
+  for (const f of l) { const k = (f.obra || "") + "|" + f.op + "|" + f.creada.slice(0, 16); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k)!.push(f); }
+  let n = 0;
+  for (const g of grupos.values()) {
+    const f0 = g[0], subs = [...new Set(g.flatMap((f) => f.op_inst || []))];
+    const filas = g.map((f) => `<tr><td style="padding:6px 10px;border:1px solid #ccc"><b>${e(f.ref)}</b></td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.descripcion || "")}</td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right"><b>${n0(f.cant)}</b></td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right">${f.medida ? n0(f.medida) + " mm" : ""}</td></tr>`).join("");
+    const html = `<p>Se registró un <b>faltante de material en corte</b>:</p>
+      <p><b>Obra:</b> ${e(f0.obra || "")}<br><b>OP:</b> ${e(f0.op)}${subs.length ? ` · unidades afectadas: ${e(subs.join(", "))}` : ""}<br><b>Reportó:</b> ${e(f0.quien || "")} · ${fh(f0.creada)}</p>
+      <table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px"><tr style="background:#1e1f20;color:#fff"><th style="padding:6px 10px;text-align:left">Perfil</th><th style="padding:6px 10px;text-align:left">Descripción</th><th style="padding:6px 10px">Cantidad faltante</th><th style="padding:6px 10px">Medida de corte</th></tr>${filas}</table>
+      ${g.some((f) => f.nota) ? `<p><b>Nota:</b> ${e(g.map((f) => f.nota).filter(Boolean).join(" · "))}</p>` : ""}
+      <p>Elíptica Cerramientos Translúcidos · Registro de producción</p>`;
+    try {
+      await smtp.sendMail({ from: `"Elíptica · Faltante de material" <${usuario}>`, to: para.join(", "),
+        subject: `Faltante de material · ${f0.obra || ""} · OP ${f0.op} · ${g.map((f) => f.ref).join(", ")}`, html });
+      await db.from("faltantes").update({ correo_en: new Date().toISOString() }).in("id", g.map((f) => f.id));
+      n++;
+    } catch (err) { console.error("faltante", err); }
+  }
+  return { enviados: n };
+}
+
 Deno.serve(async (req) => {
   try {
     const { data: cfg } = await db.from("push_config").select("cron_token").eq("id", 1).single();
     if (!cfg?.cron_token || req.headers.get("x-elp-token") !== cfg.cron_token) return new Response("no autorizado", { status: 401 });
     const usuario = Deno.env.get("GMAIL_USER"), clave = Deno.env.get("GMAIL_APP_PASSWORD");
     if (!usuario || !clave) return new Response("Faltan los secretos GMAIL_USER y GMAIL_APP_PASSWORD", { status: 500 });
+    const body = await req.json().catch(() => ({}));
+    if (body?.tipo === "faltante") return new Response(JSON.stringify(await correoFaltantes(body.ids || null, usuario, clave)), { headers: { "Content-Type": "application/json" } });
     const { data: para } = await db.rpc("correos_cobros");
     const destinos = (para || []).map((x: { email?: string } | string) => typeof x === "string" ? x : x.email).filter(Boolean);
     if (!destinos.length) return new Response("No hay usuario de cobros con correo", { status: 500 });
