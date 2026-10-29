@@ -81,6 +81,10 @@ body.artica .sheet{background:#2e2e2e;}
 @media(max-width:760px){.art-pzr{grid-template-columns:1fr;}}
 .art-pzm b{font-family:var(--art-t,var(--mono));font-size:20px;}.art-pzm span{color:var(--muted);font-size:13px;display:block;}
 .art-ruta span{position:relative}.art-ruta span i.q{position:absolute;top:-8px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#fff;color:#272727;font-style:normal;font-size:11px;line-height:17px;font-weight:700;box-shadow:0 0 0 2px var(--surface,#272727);z-index:1}
+.art-est-c{cursor:pointer}.art-est-c:hover{outline:1px solid var(--text);outline-offset:-1px}
+.cola-obra{margin:0 0 14px}.cola-oh{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border2);padding:4px 0;margin-bottom:4px}.cola-oh b{font-size:15px;text-transform:uppercase;letter-spacing:.04em}.cola-oh span{font-weight:700}
+.cola-op{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:baseline;width:100%;text-align:left;background:none;border:0;border-bottom:1px dashed var(--border);padding:7px 2px;color:var(--text);cursor:pointer;font:inherit}.cola-op:hover{background:var(--surface2)}
+.cola-opn{font-weight:700;white-space:nowrap}.cola-med{font-size:12px;color:var(--muted)}.cola-med b{color:var(--text)}.cola-med i{font-style:normal;font-weight:700}.cola-n{font-weight:700;font-size:16px}
 .art-ley{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12px;color:var(--muted);margin:4px 0 12px}.art-ley .art-ruta span{width:30px;font-size:13px;padding:2px 0}.art-ley .art-ruta span small{font-size:8px}.art-ley-ab{flex-basis:100%;font-size:12px}.art-ley-ab b{color:var(--text)}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
 .art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#5b6a6d);border-color:var(--art-acento,#5b6a6d);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
@@ -550,7 +554,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.58';
+const APP_VERSION = '7.59';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1436,7 +1440,7 @@ function artAvanceHTML(){
     const obras = [...porObra.entries()].sort((a, b) => b[1].reduce((s, p) => s + p.cant - artListas(p), 0) - a[1].reduce((s, p) => s + p.cant - artListas(p), 0) || nat(a[0], b[0]));
     return `<div class="art-head"><div><div class="h1">${A.origen === 'cli' ? 'Clientes' : A.origen === 'eli' ? 'Obras de Elíptica' : 'Obras activas'}</div><div class="h1-sub">${fmtN(new Set(base.map(artObra)).size)} ${A.origen === 'cli' ? 'clientes' : 'obras'} · ${fmtN(tot)} piezas de vidrio · ${fmtN(listas)} listas · ${fmtN(tot - listas)} en proceso</div></div>
         <button class="btn sm ghost" onclick="A.piezas=null;artCargar()">${ICON.ref} Actualizar</button></div>
-      <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(enEst[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join('')}</div>
+      <div class="art-est">${(A._estBase = base, ART_EST.map(([e, n]) => `<div class="art-est-c" onclick="artColaSheet('${e}')"><b>${fmtN(enEst[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join(''))}</div>
       ${seg}${filtros}
       ${!A.piezas.length ? `<div class="empty">Todavía no hay vidrios cargados. ${isGerente() ? 'Se cargan solos al subir el PDF de las OP, o léelos de las órdenes ya cargadas en <b>OPTIMA y etiquetas</b>.' : ''}</div>`
         : obras.length ? `<div class="grid-obras">${obras.map(([o, l]) => artObraCard(o, l)).join('')}</div>` : '<div class="empty">Ninguna obra coincide.</div>'}`;
@@ -1450,7 +1454,7 @@ function artAvanceHTML(){
   return `<button class="back" onclick="A.obra=null;A.q='';renderArtica()">${ICON.back} Obras</button>
     <div class="art-head"><div><div class="h1">${esc(A.obra)}</div><div class="h1-sub">${fmtN(new Set(deObra.map(p => p.op)).size)} OP · ${fmtN(t0)} piezas · ${fmtN(ok0)} listas · ${fmtN(t0 - ok0)} en proceso</div></div>
       <button class="btn sm ghost" onclick="A.piezas=null;artCargar()">${ICON.ref} Actualizar</button></div>
-    <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(en0[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join('')}</div>
+    <div class="art-est">${(A._estBase = deObra, ART_EST.map(([e, n]) => `<div class="art-est-c" onclick="artColaSheet('${e}')"><b>${fmtN(en0[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join(''))}</div>
     ${seg}${filtros}
     <div class="art-ley"><div class="art-ruta"><span>C<small>0/8</small></span></div> Ninguna pieza
       <div class="art-ruta"><span class="mid">C<small>3/8</small></span></div> Algunas piezas
@@ -1464,6 +1468,21 @@ function artAvanceHTML(){
           <span class="art-op-c"><b>${fmtN(ok)}</b> / ${fmtN(t)}</span><span class="art-bar"><i style="width:${t ? ok / t * 100 : 0}%"></i></span></button>
         ${ab ? `<div class="art-pz">${l.map(p => artPiezaHTML(p)).join('')}</div>` : ''}</div>`; }).join('') || '<div class="empty">Ninguna OP coincide con el filtro.</div>'}</div>`;
 }
+// Al tocar "Por <estación>": obras, OP y medidas que tienen piezas esperando en esa estación
+function artColaSheet(e){
+  const nom = String(ART_NOM[e] || e).toLowerCase(), por = new Map();
+  for(const p of A._estBase || []){ const n = artCola(p, {[e]: 0})[e]; if(!n) continue;
+    const o = artObra(p); if(!por.has(o)) por.set(o, new Map()); const ops = por.get(o); if(!ops.has(p.op)) ops.set(p.op, []); ops.get(p.op).push({p, n}); }
+  const sum = l => l.reduce((a, x) => a + x.n, 0);
+  const obras = [...por.entries()].map(([o, ops]) => ({o, ops: [...ops.entries()].sort((a, b) => nat(a[0], b[0])), n: [...ops.values()].reduce((a, l) => a + sum(l), 0)})).sort((a, b) => b.n - a.n || nat(a.o, b.o));
+  const tot = obras.reduce((a, x) => a + x.n, 0); A._colaObras = obras;
+  openSheet('Por ' + nom, `${fmtN(tot)} pieza${tot === 1 ? '' : 's'} esperando · ${fmtN(obras.length)} obra${obras.length === 1 ? '' : 's'} / cliente${obras.length === 1 ? '' : 's'}`,
+    obras.length ? obras.map((x, i) => `<div class="cola-obra"><div class="cola-oh"><b>${esc(x.o)}</b><span>${fmtN(x.n)} pz</span></div>
+      ${x.ops.map(([op, l], k) => `<button class="cola-op" onclick="artColaIr(${i}, ${k})"><span class="cola-opn">${esc(op)}${l[0].p.item && !l[0].p.tercero ? ' · ' + esc(l[0].p.item) : ''}</span>
+        <span class="cola-med">${l.map(({p, n}) => `${artMed(p)}${p.optima_pos ? ' <i>POS ' + esc(artPosTxt(p)) + '</i>' : ''} <b>×${n}</b>`).join(' · ')}</span><span class="cola-n">${fmtN(sum(l))}</span></button>`).join('')}</div>`).join('')
+    : `<div class="empty">No hay piezas esperando en ${esc(nom)}.</div>`, 'Listo', async () => {});
+}
+function artColaIr(i, k){ const x = (A._colaObras || [])[i]; if(!x) return; A.obra = x.o; A.abierta = x.ops[k][0]; A.q = ''; A.filtro = 'pend'; closeSheet(); renderArtica(); window.scrollTo(0, 0); }
 function artPiezaHTML(p){
   const paso = artPaso(p), c = artCola(p, Object.fromEntries(p.ruta.map(e => [e, 0])));
   const espera = p.ruta.filter(e => c[e]).map(e => `<b>${fmtN(c[e])}</b> en ${esc(String(ART_NOM[e] || e).toLowerCase())}`).join(' · ');
