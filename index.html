@@ -43,13 +43,21 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .mono{font-family:var(--mono);}
 
 
-/* ════ ÁRTICA ════ negro #272727, blanco, grises #3F3C39 y #324549 · DIN Condensed (títulos) · Futura Condensed Light (cuerpo) · esquinas rectas */
-body.artica{--bg:#272727;--surface:#2f2e2c;--surface2:#3F3C39;--surface3:#34322f;--border:#4a4743;--border2:#5c5853;--text:#ffffff;--text2:#d6d4d1;--muted:#9a9894;--dim:#6b6864;
-  --art-acento:#324549;--art-t:'DIN Condensed','DINCondensed-Bold','Barlow Condensed',sans-serif;--art-b:'Futura Condensed Light','Futura-CondensedLight','Futura Condensed','Barlow Condensed',sans-serif;
+/* ════ ÁRTICA ════ (manual de identidad 2021) principal: negro #272727 y blanco · neutros: escala del negro (≤90 %)
+   complementarios #3F3C39 / #324549 solo en tintes ≤ 80 % · DIN Condensed Bold (títulos) · Futura Condensed Light (cuerpo) · Futura Medium (logo) · esquinas rectas */
+body.artica{--bg:#272727;--surface:#2e2e2e;--surface2:#333333;--surface3:#3d3d3d;--border:#474747;--border2:#5a5a5a;--text:#ffffff;--text2:#d4d4d4;--muted:#939393;--dim:#686868;
+  --art-acento:#5b6a6d;--art-t:'DIN Condensed','DINCondensed-Bold','Barlow Condensed',sans-serif;--art-b:'Futura Condensed Light','Futura-CondensedLight','Futura Condensed','Barlow Condensed',sans-serif;
   font-family:var(--art-b);font-weight:300;font-size:16px;background-image:none;}
 body.artica *{border-radius:0!important;}
 html:has(body.artica){background:#272727;}
-body.artica .badge-new{background:#324549;color:#fff;}
+body.artica .badge-new{background:transparent;color:#fff;border:1px solid #fff;font-family:var(--art-t);letter-spacing:.12em;}
+/* Barra superior y fondo como las portadas del manual: grafito plano con el símbolo en línea, grande y tenue */
+body.artica .top{background:rgba(39,39,39,.97);border-bottom:1px solid #3d3d3d;}
+body.artica::after{content:'';position:fixed;right:-6vw;bottom:-14vh;width:min(70vw,900px);height:min(70vw,900px);background:url(icons/artica_simbolo.png) no-repeat right bottom/contain;opacity:.05;pointer-events:none;z-index:0;}
+body.artica #app{position:relative;z-index:1;}
+body.artica .h1{letter-spacing:.08em;}
+body.artica .art-est>div,body.artica .obra-card,body.artica .art-op,body.artica .art-lote,body.artica .cstep{background:var(--surface);}
+body.artica .art-est b{font-weight:700;}
 body.artica .h1,body.artica .brand-name,body.artica .tab,body.artica .btn,body.artica .lbl,body.artica .section-t,body.artica .cs-t,body.artica .sh-title{font-family:var(--art-t);font-weight:700;letter-spacing:.06em;}
 body.artica .h1{font-size:30px;text-transform:uppercase;}
 body.artica .tabs .tab{font-size:15px;}
@@ -57,7 +65,7 @@ body.artica .btn{font-size:14px;}
 body.artica .btn.primary{background:#fff;color:#272727;}
 body.artica input,body.artica select,body.artica .mono{font-family:var(--art-b);font-size:17px;}
 body.artica .tab.on{border-color:#fff;color:#fff;}
-body.artica .sheet{background:#2f2e2c;}
+body.artica .sheet{background:#2e2e2e;}
 .art-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .art-est{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:16px;}
 .art-est>div{background:var(--surface2);padding:10px;}.art-est b{display:block;font-family:var(--art-t,var(--sans));font-size:26px;font-weight:700;}.art-est span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
@@ -73,11 +81,11 @@ body.artica .sheet{background:#2f2e2c;}
 @media(max-width:760px){.art-pzr{grid-template-columns:1fr;}}
 .art-pzm b{font-family:var(--art-t,var(--mono));font-size:20px;}.art-pzm span{color:var(--muted);font-size:13px;display:block;}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
-.art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#324549);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
+.art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#5b6a6d);border-color:var(--art-acento,#5b6a6d);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
 .art-pzs{font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .art-lote-obra{font-family:var(--art-t);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:14px 0 6px;font-size:15px;}
 .art-lote{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);margin-bottom:6px;background:var(--surface);}
-.art-lote > div:first-child{display:flex;flex-direction:column;gap:2px;}.art-lote span{color:var(--muted);font-size:13px;}
+.art-lote > div:first-of-type{display:flex;flex-direction:column;gap:2px;}.art-lote span{color:var(--muted);font-size:13px;}
 .art-env{margin-top:14px;}.art-env summary{cursor:pointer;font-family:var(--art-t);font-weight:700;letter-spacing:.04em;padding:8px 0;color:var(--text2);}
 .art-opsel{max-height:40vh;overflow:auto;border:1px solid var(--border);}.art-opsel label{cursor:pointer;}.art-opsel label.on{background:rgba(255,255,255,.08);}
 /* Casillas legibles en el tema oscuro (en Safari el chulo salía blanco sobre blanco) */
@@ -91,16 +99,16 @@ input[type=checkbox]:disabled{opacity:.4;cursor:default;}.art-opsel label{displa
 .artop-top{display:flex;justify-content:space-between;align-items:center;}.artop-brand{display:flex;align-items:center;gap:12px;}
 .art-sym{height:44px;width:auto;flex:none;display:block;}
 .artop .art-sym{height:36px;}.artop .art-name{font-size:19px;letter-spacing:.28em;}
-.art-name{font-family:var(--sans);font-weight:300;font-size:24px;letter-spacing:.32em;line-height:1;text-transform:uppercase;color:#fff;}
+.art-name{font-family:'Futura','Futura Medium','Futura-Medium','Jost',var(--sans);font-weight:500;font-size:24px;letter-spacing:.32em;line-height:1;text-transform:uppercase;color:#fff;}
 .art-name sup{font-size:.35em;letter-spacing:0;vertical-align:top;margin-left:-.2em;}
-.art-brand .brand-sub{font-family:var(--art-t);font-weight:700;letter-spacing:.24em;color:#d6d4d1;font-size:11px;margin-top:7px;}
+.art-brand .brand-sub{font-family:var(--art-t);font-weight:700;letter-spacing:.24em;color:#d4d4d4;font-size:11px;margin-top:7px;}
 .top .art-name{font-size:21px;}
 @media(max-width:640px){.top .art-sym{height:36px;}.top .art-name{font-size:16px;letter-spacing:.26em;}}
 .artop-who{display:flex;gap:8px;align-items:center;color:var(--text2);}
 .artop-bar{display:flex;align-items:center;gap:14px;border:1px solid var(--border);padding:10px 14px;background:var(--surface2);}
 .artop-est{font-family:var(--art-t);font-size:34px;font-weight:700;text-transform:uppercase;line-height:1;}
 .artop-cnt{margin-left:auto;text-align:right;}.artop-cnt b{display:block;font-family:var(--art-t);font-size:40px;line-height:1;}.artop-cnt span{color:var(--muted);text-transform:uppercase;font-size:12px;letter-spacing:.1em;}
-.artop-panel{flex:1;min-height:42vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;border:1px solid var(--border);background:#323130;transition:background .15s;}
+.artop-panel{flex:1;min-height:42vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;border:1px solid var(--border);background:#333333;transition:background .15s;}
 .artop-panel.st-ok{background:#1f7a3a;border-color:#1f7a3a;}.artop-panel.st-fuera,.artop-panel.st-noruta,.artop-panel.st-nohay,.artop-panel.st-err{background:#b3261e;border-color:#b3261e;}
 .artop-panel.st-ya,.artop-panel.st-deshecho{background:#000;border-color:#fff;}
 .artop-idle{font-family:var(--art-t);font-size:30px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
@@ -537,7 +545,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.50';
+const APP_VERSION = '7.51';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -631,7 +639,7 @@ const ICON = {
 };
 const SYMBOL = '<svg viewBox="30 60 990 755" aria-hidden="true"><path fill="none" stroke="#fff" stroke-width="22" stroke-linejoin="round" d="M48 80H1000V160L920 240H210M210 160H1000M210 160V318H1000V475H210M210 240L48 395H1000L920 475M210 475L48 632H1000V795H178M210 475V632M210 555H1000M1000 632L920 712H48"/></svg>';
 // Logo de Ártica según su manual: símbolo + ÁRTICA (geométrica liviana, muy espaciada) + descriptor
-const artBrandHTML = sub => `<div class="brand art-brand"><img class="art-sym" src="icons/artica_simbolo.png" alt=""><div><div class="art-name">Ártica<sup>®</sup></div><div class="brand-sub">${sub}</div></div></div>`;
+const artBrandHTML = sub => `<div class="brand art-brand"><img class="art-sym" src="icons/artica_simbolo.png" alt=""><div><div class="art-name">Artica<sup>®</sup></div><div class="brand-sub">${sub}</div></div></div>`;
 const brandHTML = sub => `<div class="brand">${SYMBOL}<div><div class="brand-name">Elíptica<sup>®</sup></div><div class="brand-sub">${sub}</div></div></div>`;
 
 // ════════════════════════════════════════════════════════════════
@@ -1313,7 +1321,7 @@ const artEscaneaTodo = () => rolEs('gerente','asistente');   // todas las estaci
 const artImprime = () => isGerente() || esArticaOps();
 const A = {tab:'avance', obra:null, piezas:null, err:null, q:'', filtro:'pend', abierta:null, rend:null, rendDias:7, plan:null, ops:null, prefijos:null};
 function empresa(){ try{ return localStorage.getItem('empresa') === 'artica' ? 'artica' : 'eliptica'; }catch(e){ return 'eliptica'; } }
-function aplicarEmpresa(){ document.body.classList.toggle('artica', esOperarioArtica() || (veArtica() && S.view === 'artica')); }
+function aplicarEmpresa(){ document.body.classList.toggle('artica', esOperarioArtica() || esArticaOps() || S.view === 'artop' || ((veArtica() || esArticaOps()) && S.view === 'artica')); }
 function cambiarEmpresa(){
   const e = S.view === 'artica' ? 'eliptica' : 'artica';
   try{ localStorage.setItem('empresa', e); }catch(x){}
@@ -1861,7 +1869,7 @@ async function artEtqPDF(lista, nombre){
     doc.setTextColor(0);
     if(!p.tercero && logoEli){ const h = 5.6, w = Math.min(40, h * logoEli.r); doc.addImage(logoEli.url, 'PNG', 4, 2.4, w, w / logoEli.r); }
     else if(!p.tercero){ doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ELÍPTICA', 4, 7); }
-    else if(simb){ doc.addImage(simb, 'PNG', 4, 2.2, 8.2, 6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('Á R T I C A', 13.6, 7); }
+    else if(simb){ doc.addImage(simb, 'PNG', 4, 2.2, 8.2, 6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('A R T I C A', 13.6, 7); }
     else { doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ÁRTICA', 4, 7); }
     doc.setFont('helvetica', 'bold');
     if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande, con el lote
@@ -1939,7 +1947,7 @@ async function goArticaOperario(cam, codigo){
   AO.est = AO.ests.includes(g) ? g : AO.ests.length === 1 ? AO.ests[0] : null;
   renderOperario();
 }
-const shellOp = inner => `<div class="artop"><header class="artop-top"><div class="artop-brand"><img class="art-sym" src="icons/artica_simbolo.png" alt=""><span class="art-name">Ártica<sup>®</sup></span></div><div class="artop-who">${esc(S.perfil.nombre || S.user.email)}${S.view === 'artop' && veArtica() ? ` <button class="btn sm" onclick="artopSalir()">Salir</button>` : ''} <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button></div></header>${inner}</div>`;
+const shellOp = inner => `<div class="artop"><header class="artop-top"><div class="artop-brand"><img class="art-sym" src="icons/artica_simbolo.png" alt=""><span class="art-name">Artica<sup>®</sup></span></div><div class="artop-who">${esc(S.perfil.nombre || S.user.email)}${S.view === 'artop' && veArtica() ? ` <button class="btn sm" onclick="artopSalir()">Salir</button>` : ''} <button class="icon-btn" title="Cerrar sesión" onclick="logout()">${ICON.out}</button></div></header>${inner}</div>`;
 function artopSalir(){ artopCamStop(); goArtica(); }
 function renderOperario(){
   if(!AO.est){
