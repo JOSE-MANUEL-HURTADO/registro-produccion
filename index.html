@@ -537,18 +537,18 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.47';
+const APP_VERSION = '7.48';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
 };
 
 const PROCS = [
-  ['cortado','Cortado','COR'],['troquelado','Troquelado','TRO'],['mecanizado','Mecanizado','MEC'],
-  ['programado','Programado','PRG'],['vidrio_proc','Vidrio','VID'],['prealistado','Prealistado','PRE']
+  ['programado','Programado','PRG'],['cortado','Cortado','COR'],['troquelado','Troquelado','TRO'],['mecanizado','Mecanizado','MEC'],
+  ['vidrio_proc','Vidrio','VID'],['prealistado','Prealistado','PRE']
 ];
 // Para iniciar ensamble deben estar completos (X) estos procesos; vidrio y prealistado pueden ir después
-const PROC_ENS = ['cortado','troquelado','mecanizado','programado'];
+const PROC_ENS = ['programado','cortado','troquelado','mecanizado'];
 const faltaProc = it => PROCS.filter(([k]) => PROC_ENS.includes(k) && it[k] !== 'X').map(([,,c]) => c);
 // Procesos que se quitarían (X → otra cosa) a un ítem que ya está en ensamble
 const quitaProc = (it, nuevo) => (it.ensamblador || it.dia_inicio) ? PROCS.filter(([k]) => PROC_ENS.includes(k) && it[k] === 'X' && k in nuevo && nuevo[k] !== 'X').map(([,,c]) => c) : [];

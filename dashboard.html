@@ -1561,7 +1561,7 @@ function processRawData(raw){
   // ── COLA_CTMV: EN COLA items with X/+ per process column (new names) ──
   const pVal=v=>{const s=String(v||'').trim().toUpperCase();return s==='X'?'X':s==='+'?'+':'';};
   const COLA_CTMV_NEW={};
-  const _procCols=[['CORTADO','cortado'],['TROQUELADO','troquelado'],['MECANIZADO','mecanizado'],['PROGRAMADO','programado'],['VIDRIO_1','vidrio'],['PREALISTADO','prealistado']];
+  const _procCols=[['PROGRAMADO','programado'],['CORTADO','cortado'],['TROQUELADO','troquelado'],['MECANIZADO','mecanizado'],['VIDRIO_1','vidrio'],['PREALISTADO','prealistado']];
   raw.filter(r=>String(r['STATUS PLANTA']||'').trim().toUpperCase()==='EN COLA').forEach(r=>{
     const obra=String(r.OBRA||'').trim();if(!obra)return;
     if(!COLA_CTMV_NEW[obra])COLA_CTMV_NEW[obra]={CORTADO_X:0,CORTADO_P:0,TROQUELADO_X:0,TROQUELADO_P:0,MECANIZADO_X:0,MECANIZADO_P:0,PROGRAMADO_X:0,PROGRAMADO_P:0,VIDRIO_X:0,VIDRIO_P:0,PREALISTADO_X:0,PREALISTADO_P:0,items:[]};
@@ -1684,7 +1684,7 @@ function openColaCTMV(obraName){
     todasObras.forEach(ob=>{const d=COLA_CTMV[ob];Object.keys(totales).forEach(k=>{totales[k]+=(d[k]||0);});});
     document.getElementById('colaCTMVTitle').textContent='TODAS LAS OBRAS EN COLA';
     document.getElementById('colaCTMVSub').textContent=total+' ítems · '+todasObras.length+' obras';
-    const procs=[{k:'CORTADO',label:'CORTE',color:'#e8e8e8'},{k:'TROQUELADO',label:'TROQ.',color:'#c8a84b'},{k:'MECANIZADO',label:'MECA.',color:'#888888'},{k:'PROGRAMADO',label:'PROG.',color:'#aac4e0'},{k:'VIDRIO',label:'VIDR.',color:'#6db56d'},{k:'PREALISTADO',label:'PREAL.',color:'#b07fd4'}];
+    const procs=[{k:'PROGRAMADO',label:'PROG.',color:'#aac4e0'},{k:'CORTADO',label:'CORTE',color:'#e8e8e8'},{k:'TROQUELADO',label:'TROQ.',color:'#c8a84b'},{k:'MECANIZADO',label:'MECA.',color:'#888888'},{k:'VIDRIO',label:'VIDR.',color:'#6db56d'},{k:'PREALISTADO',label:'PREAL.',color:'#b07fd4'}];
     const summaryHTML=procs.map(p=>{
       const cx=totales[p.k+'_X']||0,cp=totales[p.k+'_P']||0;
       const pctX=total>0?Math.round(cx/total*100):0,pctP=total>0?Math.round(cp/total*100):0;
@@ -1702,18 +1702,18 @@ function openColaCTMV(obraName){
     const legend='<div style="font-size:10px;color:var(--muted);margin-bottom:10px"><b style="color:#e8e8e8">X</b> = Completo &nbsp;&nbsp; <b style="color:#c8a84b">+</b> = Parcial &nbsp;&nbsp; <b style="color:var(--muted)">·</b> = Sin proceso</div>';
     const tblHTML='<div style="overflow-x:auto;margin-top:4px"><table class="drill-table"><thead><tr>'
       +'<th>OBRA</th><th>ÍTEM</th><th>DISEÑO</th><th>OP INST.</th>'
-      +'<th style="text-align:center">CORT.</th><th style="text-align:center">TROQ.</th><th style="text-align:center">MECA.</th>'
-      +'<th style="text-align:center">PROG.</th><th style="text-align:center">VIDR.</th><th style="text-align:center">PREAL.</th>'
+      +'<th style="text-align:center">PROG.</th><th style="text-align:center">CORT.</th><th style="text-align:center">TROQ.</th><th style="text-align:center">MECA.</th>'
+      +'<th style="text-align:center">VIDR.</th><th style="text-align:center">PREAL.</th>'
       +'</tr></thead><tbody>'
       +todosItems.map(r=>'<tr>'
         +'<td style="font-size:10px;white-space:nowrap;color:var(--accent2);font-weight:600">'+r._obra+'</td>'
         +'<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+(r.item||'—')+'</td>'
         +'<td style="font-size:10px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(r.diseno||'')+'">'+(r.diseno||'—')+'</td>'
         +'<td style="font-family:monospace;font-size:10px;white-space:nowrap;color:var(--accent2)">'+(r.op_inst||'—')+'</td>'
+        +'<td style="text-align:center">'+cv(r.programado)+'</td>'
         +'<td style="text-align:center">'+cv(r.cortado)+'</td>'
         +'<td style="text-align:center">'+cv(r.troquelado)+'</td>'
         +'<td style="text-align:center">'+cv(r.mecanizado)+'</td>'
-        +'<td style="text-align:center">'+cv(r.programado)+'</td>'
         +'<td style="text-align:center">'+cv(r.vidrio)+'</td>'
         +'<td style="text-align:center">'+cv(r.prealistado)+'</td>'
         +'</tr>').join('')
@@ -1771,17 +1771,17 @@ function openColaCTMV(obraName){
 
   const tblHTML='<div style="overflow-x:auto;margin-top:4px"><table class="drill-table"><thead><tr>'
     +'<th>ÍTEM</th><th>DISEÑO</th><th>OP INST.</th>'
-    +'<th style="text-align:center">CORT.</th><th style="text-align:center">TROQ.</th><th style="text-align:center">MECA.</th>'
-    +'<th style="text-align:center">PROG.</th><th style="text-align:center">VIDR.</th><th style="text-align:center">PREAL.</th>'
+    +'<th style="text-align:center">PROG.</th><th style="text-align:center">CORT.</th><th style="text-align:center">TROQ.</th><th style="text-align:center">MECA.</th>'
+    +'<th style="text-align:center">VIDR.</th><th style="text-align:center">PREAL.</th>'
     +'</tr></thead><tbody>'
     +items.map(r=>'<tr>'
       +'<td style="font-family:monospace;font-size:11px;white-space:nowrap">'+(r.item||'—')+'</td>'
       +'<td style="font-size:10px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(r.diseno||'')+'">'+(r.diseno||'—')+'</td>'
       +'<td style="font-family:monospace;font-size:10px;white-space:nowrap;color:var(--accent2)">'+(r.op_inst||'—')+'</td>'
+      +'<td style="text-align:center">'+cv(r.programado)+'</td>'
       +'<td style="text-align:center">'+cv(r.cortado)+'</td>'
       +'<td style="text-align:center">'+cv(r.troquelado)+'</td>'
       +'<td style="text-align:center">'+cv(r.mecanizado)+'</td>'
-      +'<td style="text-align:center">'+cv(r.programado)+'</td>'
       +'<td style="text-align:center">'+cv(r.vidrio)+'</td>'
       +'<td style="text-align:center">'+cv(r.prealistado)+'</td>'
       +'</tr>').join('')
@@ -1922,7 +1922,7 @@ async function liveLoad(manual, blocking){
 
 /* ══ TODAS LAS OBRAS EN COLA · filtros por proceso en la tabla ══ */
 window._CT = {obra:'', f:{}};
-const CT_PROCS = [['CORTADO','cortado','CORT.','#e8e8e8'],['TROQUELADO','troquelado','TROQ.','#c8a84b'],['MECANIZADO','mecanizado','MECA.','#888888'],['PROGRAMADO','programado','PROG.','#aac4e0'],['VIDRIO','vidrio','VIDR.','#6db56d'],['PREALISTADO','prealistado','PREAL.','#b07fd4']];
+const CT_PROCS = [['PROGRAMADO','programado','PROG.','#aac4e0'],['CORTADO','cortado','CORT.','#e8e8e8'],['TROQUELADO','troquelado','TROQ.','#c8a84b'],['MECANIZADO','mecanizado','MECA.','#888888'],['VIDRIO','vidrio','VIDR.','#6db56d'],['PREALISTADO','prealistado','PREAL.','#b07fd4']];
 const CT_OPC = [['','Todos'],['sin','Sin hacer'],['p','Parcial'],['falta','Sin terminar'],['x','Completo']];
 const ctEsc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ctOk = (v, f) => !f || (f==='sin' ? !v : f==='p' ? v==='+' : f==='x' ? v==='X' : v!=='X');
