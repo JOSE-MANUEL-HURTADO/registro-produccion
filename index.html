@@ -548,7 +548,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.53';
+const APP_VERSION = '7.54';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1615,6 +1615,7 @@ function vidrioCar(t){
 const artNotas = p => { const c = vidrioCar(p.tipo), cal = c.cal === 'SIN CALIBRE' ? '' : c.cal.replace(/\s*MM$/, ''), d = artCanto(p);
   const cod = /CANTO A CANTO/.test(d) ? 'cc' : /FILETEAD/.test(d) ? 'fi' : /BRILLAD/.test(d) ? 'pb' : /MATE/.test(d) ? 'pm' : /PULID/.test(d) ? 'p' : d.slice(0, 3).toLowerCase();
   return cod + (cal ? '-' + cal : ''); };
+const artObs = p => [p.forrado ? 'FORRAR' : '', String(p.obs || '').trim()].filter(Boolean).join(' · ');   // observaciones de la OP para el operario de corte
 const artPosTxt = p => p.optima_pos ? String(p.optima_pos) : '';
 const artEnPlan = p => p.optima_en ? Math.max(0, (p.optima_pend || 0) - (p.corte_post_optima || 0)) : 0;   // piezas que siguen en el plan de OPTIMA
 const artPorEnviar = p => Math.max(0, p.cant - artHechos(p, 'corte') - artEnPlan(p));
@@ -1675,16 +1676,16 @@ async function artExcelPro(ps, cantDe, meta){
   const ws = wb.addWorksheet('OPTIMA', {views: [{showGridLines: false}], pageSetup: {paperSize: 1, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
     margins: {left: .3, right: .3, top: .35, bottom: .45, header: .15, footer: .2}, horizontalCentered: true, printTitlesRow: '10:10'}});
   ws.headerFooter.oddFooter = '&L&"DIN Condensed,Bold"&8ÁRTICA · VIDRIO ARQUITECTÓNICO&C&"Futura"&8Orden de corte · ' + (meta.nombre || '').replace(/&/g, '&&') + '&R&"Futura"&8Hoja &P de &N';
-  ws.columns = [7, 7, 10, 10, 12, 13, 9, 17, 28, 11, 10].map(w => ({width: w}));
+  ws.columns = [7, 7, 10, 10, 12, 13, 9, 17, 24, 38, 11, 10].map(w => ({width: w}));
   const fill = c => ({type: 'pattern', pattern: 'solid', fgColor: {argb: c}});
   const celda = (ref, v, font, f, al) => { const c = ws.getCell(ref); c.value = v; if(font) c.font = font; if(f) c.fill = fill(f); c.alignment = al || {vertical: 'middle'}; return c; };
   // 1-4 · Franja grafito: logo, título y el símbolo en línea (como las portadas del manual)
-  for(let r = 1; r <= 4; r++){ ws.getRow(r).height = 20; for(let c = 1; c <= 11; c++) ws.getCell(r, c).fill = fill(GRAF); }
+  for(let r = 1; r <= 4; r++){ ws.getRow(r).height = 20; for(let c = 1; c <= 12; c++) ws.getCell(r, c).fill = fill(GRAF); }
   ws.mergeCells('D1:H2'); celda('D1', 'ORDEN DE CORTE · OPTIMA', {name: DIN, size: 24, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'bottom'});
   ws.mergeCells('D3:H4'); celda('D3', 'Ingreso de medidas al optimizador · digitar en este orden', {name: FUT, size: 11, color: {argb: 'FFBFBFBF'}}, GRAF, {vertical: 'top'});
   const logo = await b64Icono('icons/artica_logo_grafito.png'), tri = await b64Icono('icons/artica_triangulos.png');
   if(logo) ws.addImage(wb.addImage({base64: logo, extension: 'png'}), {tl: {col: 0.3, row: 0.1}, ext: {width: 120, height: 100}});
-  if(tri) ws.addImage(wb.addImage({base64: tri, extension: 'png'}), {tl: {col: 8.75, row: 0}, ext: {width: 166, height: 99}});
+  if(tri) ws.addImage(wb.addImage({base64: tri, extension: 'png'}), {tl: {col: 9.75, row: 0}, ext: {width: 166, height: 99}});
   ws.getRow(5).height = 8;
   // 6-8 · Línea de producto (estilo del manual: V I D R I O / TEMPLADO) y datos del lote
   const car = meta.car || {}, espaciado = t => String(t || '').split('').join(' ');
@@ -1694,49 +1695,50 @@ async function artExcelPro(ps, cantDe, meta){
   ws.mergeCells('A8:D8'); celda('A8', [car.cal, car.col].filter(Boolean).join(' · '), {name: DIN, size: 12, color: {argb: 'FFBFBFBF'}}, GRAF, {vertical: 'top', horizontal: 'center'});
   const tot = ps.reduce((a, p) => a + (Number(cantDe(p)) || 0), 0), m2 = ps.reduce((a, p) => a + (Number(cantDe(p)) || 0) * p.ancho * p.alto / 1e6, 0);
   const datos = [['OBRAS / CLIENTES', (meta.obras || []).join('  ·  ')], ['PIEZAS', `${fmtN(tot)} piezas  ·  ${fmtN(ps.length)} medidas (posiciones)  ·  ${fmtN(m2, 2)} m²`], ['FECHA', `${fmtD(today())}  ${nowTime()}${meta.quien ? '   ·   Exportó: ' + meta.quien : ''}`]];
-  datos.forEach(([l, v], k) => { const r = 6 + k; ws.mergeCells(`F${r}:G${r}`); ws.mergeCells(`H${r}:K${r}`);
+  datos.forEach(([l, v], k) => { const r = 6 + k; ws.mergeCells(`F${r}:G${r}`); ws.mergeCells(`H${r}:L${r}`);
     celda(`F${r}`, l, {name: DIN, size: 10, bold: true, color: {argb: TXT2}}, GRIS, {vertical: 'middle', indent: 1});
     celda(`H${r}`, v, {name: FUT, size: 11, color: {argb: GRAF}}, GRIS, {vertical: 'middle', shrinkToFit: true}); ws.getCell(`E${r}`).fill = fill(BLANCO); });
   ws.getRow(9).height = 10;
   // 10 · Encabezado de la tabla (se repite en cada hoja)
-  const heads = ['POS', 'CANT', 'MED X', 'MED Y', 'ÍTEM', 'PEDIDO', 'NOTAS', 'CANTO', 'OBRA / CLIENTE', 'FECHA OP', 'DIGITADO'];
+  const heads = ['POS', 'CANT', 'MED X', 'MED Y', 'ÍTEM', 'PEDIDO', 'NOTAS', 'CANTO', 'OBRA / CLIENTE', 'OBSERVACIONES', 'FECHA OP', 'DIGITADO'];
   ws.getRow(10).height = 22;
   heads.forEach((h, i) => { const c = ws.getCell(10, i + 1); c.value = h; c.font = {name: DIN, size: 11, bold: true, color: {argb: BLANCO}}; c.fill = fill(GRAF); c.alignment = {vertical: 'middle', horizontal: 'center'}; });
   const linea = {style: 'thin', color: {argb: 'FFD0D0D0'}};
-  ps.forEach((p, k) => { const r = 11 + k, row = ws.getRow(r); row.height = 19;
-    const v = [p._pos || p.optima_pos, Number(cantDe(p)), Number(p.ancho), Number(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), p.fecha_op ? fmtD(p.fecha_op) : '', '☐'];
+  ps.forEach((p, k) => { const r = 11 + k, row = ws.getRow(r), ob = artObs(p); row.height = Math.max(19, Math.ceil(ob.length / 42) * 14 + 5, Math.ceil(String(artObra(p)).length / 20) * 16 + 5);
+    const v = [p._pos || p.optima_pos, Number(cantDe(p)), Number(p.ancho), Number(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), artObs(p), p.fecha_op ? fmtD(p.fecha_op) : '', '☐'];
     v.forEach((x, i) => { const c = ws.getCell(r, i + 1); c.value = x;
-      c.font = i === 0 ? {name: DIN, size: 14, bold: true, color: {argb: GRAF}} : i === 10 ? {name: FUT, size: 13, color: {argb: TXT2}} : {name: FUT, size: 10.5, bold: i >= 1 && i <= 3, color: {argb: GRAF}};
-      c.alignment = {vertical: 'middle', horizontal: i === 8 ? 'left' : 'center', shrinkToFit: i === 8, indent: i === 8 ? 1 : 0};
+      c.font = i === 0 ? {name: DIN, size: 14, bold: true, color: {argb: GRAF}} : i === 11 ? {name: FUT, size: 13, color: {argb: TXT2}} : i === 9 ? {name: FUT, size: 10, bold: true, color: {argb: GRAF}} : i === 8 ? {name: DIN, size: 12, bold: true, color: {argb: GRAF}} : {name: FUT, size: 10.5, bold: i >= 1 && i <= 3, color: {argb: GRAF}};
+      c.alignment = i === 9 || i === 8 ? {vertical: 'middle', horizontal: 'left', wrapText: true, indent: 1} : {vertical: 'middle', horizontal: 'center'};
       c.border = {bottom: linea, left: i ? linea : undefined};
       c.fill = fill(i === 0 ? GRIS : k % 2 ? GRIS2 : BLANCO);
+      if(i === 9 && x){ c.fill = fill(GRIS); c.border = {bottom: linea, left: {style: 'thick', color: {argb: GRAF}}}; }
       if(i >= 1 && i <= 3) c.numFmt = '0'; }); });
   // Total, indicaciones, firmas y pie
   let r = 11 + ps.length; ws.getRow(r).height = 22;
   ws.mergeCells(`A${r}:A${r}`); celda(`A${r}`, 'TOTAL', {name: DIN, size: 11, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
   celda(`B${r}`, tot, {name: DIN, size: 13, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
-  ws.mergeCells(`C${r}:K${r}`); celda(`C${r}`, `piezas en ${fmtN(ps.length)} posiciones  ·  ${fmtN(m2, 2)} m²`, {name: FUT, size: 10.5, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', indent: 1});
-  r += 2; ws.mergeCells(`A${r}:K${r + 1}`);
-  celda(`A${r}`, 'Digita las filas en este orden: OPTIMA le da a cada medida la misma posición (POS) que lleva su etiqueta. Si una medida sale de un retal, bórrala en OPTIMA; las demás no cambian de número. Las medidas son las de la OP: OPTIMA agrega la amoladura según el calibre.',
+  ws.mergeCells(`C${r}:L${r}`); celda(`C${r}`, `piezas en ${fmtN(ps.length)} posiciones  ·  ${fmtN(m2, 2)} m²`, {name: FUT, size: 10.5, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', indent: 1});
+  r += 2; ws.mergeCells(`A${r}:L${r + 1}`);
+  celda(`A${r}`, 'Digita las filas en este orden: OPTIMA le da a cada medida la misma posición (POS) que lleva su etiqueta. Si una medida sale de un retal, bórrala en OPTIMA; las demás no cambian de número. Las medidas son las de la OP: OPTIMA agrega la amoladura según el calibre. Lee las OBSERVACIONES de cada fila antes de cortar.',
     {name: FUT, size: 10, italic: true, color: {argb: TXT2}}, null, {vertical: 'top', wrapText: true});
   ws.getRow(r).height = 16; ws.getRow(r + 1).height = 16;
   r += 5; ws.getRow(r - 1).height = 26;
-  for(const [a, b, t] of [['A', 'D', 'DIGITÓ EN OPTIMA'], ['F', 'H', 'CORTÓ'], ['I', 'K', 'REVISÓ']]){
+  for(const [a, b, t] of [['A', 'D', 'DIGITÓ EN OPTIMA'], ['F', 'H', 'CORTÓ'], ['I', 'L', 'REVISÓ']]){
     ws.mergeCells(`${a}${r}:${b}${r}`); const c = celda(`${a}${r}`, t, {name: DIN, size: 10, bold: true, color: {argb: TXT2}}, null, {horizontal: 'center', vertical: 'top'});
     c.border = {top: {style: 'medium', color: {argb: GRAF}}}; }
-  r += 2; ws.getRow(r).height = 20; for(let c = 1; c <= 11; c++) ws.getCell(r, c).fill = fill(GRAF);
-  ws.mergeCells(`A${r}:K${r}`); celda(`A${r}`, 'Cra. 16 Sur # 67-406, Interior Bodega 5-6  ·  Zona Industrial el Papayo, Ibagué – Tolima  ·  Tel. 310 210 0257  ·  www.artica.com.co',
+  r += 2; ws.getRow(r).height = 20; for(let c = 1; c <= 12; c++) ws.getCell(r, c).fill = fill(GRAF);
+  ws.mergeCells(`A${r}:L${r}`); celda(`A${r}`, 'Cra. 16 Sur # 67-406, Interior Bodega 5-6  ·  Zona Industrial el Papayo, Ibagué – Tolima  ·  Tel. 310 210 0257  ·  www.artica.com.co',
     {name: DIN, size: 10, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
-  ws.pageSetup.printArea = `A1:K${r}`;
+  ws.pageSetup.printArea = `A1:L${r}`;
   const buf = await wb.xlsx.writeBuffer();
   return new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 // Excel sencillo (respaldo si no carga el generador con diseño)
 function artExcelBlob(ps, cantDe){
   // Medidas exactas de la OP (OPTIMA calcula la amoladura) y la descripción del canto
-  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','CANTO','OBRA / CLIENTE','VIDRIO','FECHA OP']].concat(ps.map(p =>
-    [p._pos || p.optima_pos, cantDe(p), Number(p.ancho), Number(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), p.tipo, p.fecha_op ? fmtD(p.fecha_op) : '']));
-  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 34, 11].map(w => ({wch: w}));
+  const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','CANTO','OBRA / CLIENTE','OBSERVACIONES','VIDRIO','FECHA OP']].concat(ps.map(p =>
+    [p._pos || p.optima_pos, cantDe(p), Number(p.ancho), Number(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), artObs(p), p.tipo, p.fecha_op ? fmtD(p.fecha_op) : '']));
+  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [5, 6, 8, 8, 12, 12, 8, 13, 26, 40, 34, 11].map(w => ({wch: w}));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'OPTIMA');
   return new Blob([XLSX.write(wb, {bookType: 'xlsx', type: 'array'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -1891,7 +1893,7 @@ async function artEtqPDF(lista, nombre, soloBlob){
   lista.forEach(({p, n}, i) => {
     if(i) doc.addPage([W, H], 'landscape');
     const q = qrcode(0, 'M'); q.addData(artCod(p) + '-' + n); q.make();   // el QR lleva el número de la pieza (ART:123-5)
-    const S_ = 30, nm = q.getModuleCount(), cs = S_ / nm, qx = W - S_ - 4, qy = 4;
+    const S_ = 25, nm = q.getModuleCount(), cs = S_ / nm, qx = W - S_ - 4, qy = 3;
     doc.setFillColor(0, 0, 0); for(let r = 0; r < nm; r++) for(let c = 0; c < nm; c++) if(q.isDark(r, c)) doc.rect(qx + c * cs, qy + r * cs, cs + .02, cs + .02, 'F');
     doc.setTextColor(0);
     if(!p.tercero && logoEli){ const h = 5.6, w = Math.min(40, h * logoEli.r); doc.addImage(logoEli.url, 'PNG', 4, 2.4, w, w / logoEli.r); }
@@ -1899,22 +1901,31 @@ async function artEtqPDF(lista, nombre, soloBlob){
     else if(simb){ doc.addImage(simb, 'PNG', 4, 2.2, 8.2, 6); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('A R T I C A', 13.6, 7); }
     else { doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('ÁRTICA', 4, 7); }
     doc.setFont('helvetica', 'bold');
-    if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande, con el lote
-      doc.setFillColor(0, 0, 0); doc.rect(4, 9, 18, 12.6, 'F'); doc.setTextColor(255);
-      doc.setFontSize(String(p.optima_pos).length > 2 ? 16 : 21); doc.text(String(p.optima_pos), 13, 18.4, {align: 'center'});
-      doc.setTextColor(0); doc.setFontSize(16); doc.text(corta(p.op, qx - 26, 16), 24, 18.2);
-    } else { doc.setFontSize(22); doc.text(corta(p.op, qx - 6, 22), 4, 17); }
-    doc.setFontSize(17); doc.text(`${p.ancho} × ${p.alto}`, 4, 27);
-    // Canto (pulido, fileteado, canto a canto…) en negrilla debajo de la medida
-    doc.setFontSize(8.5); doc.text(corta(artCanto(p), qx - 6, 8.5), 4, 32.2);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(corta(p.tipo, qx - 6, 7.5), 4, 36.6);
-    doc.text(corta([p.item, p.obra || p.cliente].filter(Boolean).join(' · '), W - 8, 7.5), 4, 40.8);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(`${n}/${p.cant}`, qx + S_ / 2, qy + S_ + 4.5, {align: 'center'});
+    if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande
+      doc.setFillColor(0, 0, 0); doc.rect(4, 9, 16, 11, 'F'); doc.setTextColor(255);
+      doc.setFontSize(String(p.optima_pos).length > 2 ? 15 : 19); doc.text(String(p.optima_pos), 12, 17.2, {align: 'center'});
+      doc.setTextColor(0); doc.setFontSize(14); doc.text(corta(p.op, qx - 24, 14), 22, 17);
+    } else { doc.setFontSize(18); doc.text(corta(p.op, qx - 6, 18), 4, 17); }
+    doc.setFontSize(16); doc.text(`${p.ancho} × ${p.alto}`, 4, 26.5);
+    doc.setFontSize(10); doc.text(`${n}/${p.cant}`, qx - 2, 26.5, {align: 'right'});
+    // OBRA / CLIENTE: franja negra a todo lo ancho, letra lo más grande que quepa (hasta 2 líneas)
+    const ob = String(p.obra || p.cliente || '').toUpperCase().trim() || '—';
+    doc.setFillColor(0, 0, 0); doc.rect(0, 31.5, W, 12, 'F'); doc.setTextColor(255);
+    let fs = 20; doc.setFontSize(fs); while(fs > 11 && doc.getTextWidth(ob) > W - 8){ fs -= .5; doc.setFontSize(fs); }
+    if(doc.getTextWidth(ob) <= W - 8) doc.text(ob, W / 2, 37.5 + fs * .13, {align: 'center'});
+    else { doc.setFontSize(fs = 11); const ls = doc.splitTextToSize(ob, W - 8).slice(0, 2); if(ls.length > 1) ls[1] = corta(ls[1], W - 8, 11);
+      doc.text(ls[0], W / 2, 36.4, {align: 'center'}); if(ls[1]) doc.text(ls[1], W / 2, 41.2, {align: 'center'}); }
+    doc.setTextColor(0);
+    // Canto en negrilla, vidrio e ítem
+    doc.setFontSize(8); doc.text(corta(artCanto(p), 40, 8), 4, 47.3);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.text(corta([p.item ? 'Ítem ' + p.item : '', p.tipo].filter(Boolean).join(' · '), W - 50, 7), 46, 47.3);
     // Ruta: casillas para marcar a mano si hace falta
-    let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 44, 9, 9); doc.setFontSize(10); doc.text(ART_AB[e], x + 4.5, 50.2, {align: 'center'}); x += 10.5; }
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
-    doc.text(corta([p.forrado ? 'FORRAR' : '', p.obs || ''].filter(Boolean).join(' · '), W - 28, 6.5), 4, 57.5);
-    doc.text(artCod(p) + '-' + n, W - 4, 57.5, {align: 'right'});
+    doc.setFont('helvetica', 'bold');
+    let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 49, 6.5, 5.5); doc.setFontSize(8); doc.text(ART_AB[e], x + 3.25, 53, {align: 'center'}); x += 7.5; }
+    const obs = artObs(p); doc.setFontSize(6.5);
+    if(obs){ const ls = doc.splitTextToSize(obs, W - x - 4).slice(0, 2); ls.forEach((t, k) => doc.text(corta(t, W - x - 4, 6.5), x + 1, 51.3 + k * 2.6)); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+    doc.text(artCod(p) + '-' + n, W - 4, 58, {align: 'right'});
   });
   if(soloBlob) return doc.output('blob');
   const blob = doc.output('blob'), url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
