@@ -533,6 +533,9 @@ body.ro .ck{visibility:hidden;}
 .demo-bar button{border:1px solid #181818;padding:2px 10px;font-size:10px;letter-spacing:.14em;}
 .demo-bar button.on{background:#181818;color:var(--cola);}
 @media(max-width:640px){.who{display:none;}.top .brand-name{font-size:16px;letter-spacing:.24em;}.top .brand-sub{display:none;}.h1{font-size:20px;}.obra-title .h1{font-size:21px;}}
+.art-ver{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
+.art-sub{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:8px 0 4px;padding:4px 8px;border-left:3px solid var(--text);opacity:.85}
+.art-sub.cli{border-left-style:double;border-left-width:4px;background:rgba(127,127,127,.12)}
 </style>
 </head>
 <body>
@@ -545,7 +548,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.52';
+const APP_VERSION = '7.53';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1628,7 +1631,10 @@ function artLotes(){
 function artOptimaHTML(){
   if(!window.XLSX) loadScript(XLSX_URL).catch(() => {});   // listo antes del toque de descarga (Safari)
   if(!window.ExcelJS) cargarExcelJS().catch(() => {});
-  const lotes = artLotes(); A._lotes = lotes;
+  const todos = artLotes(); A._lotes = todos;
+  const hayC = todos.some(l => l.cliente), hayE = todos.some(l => !l.cliente), ver = hayC && hayE ? (A.optVer || 'todo') : 'todo';
+  const lotes = todos.filter(l => ver === 'todo' || (ver === 'cli') === !!l.cliente);
+  const nPz = ls => fmtN(ls.reduce((a, l) => a + l.n, 0));
   // Un grupo por vidrio igual (tipo + calibre + color): OPTIMA puede optimizar juntas varias obras y clientes
   // Lo más antiguo primero (fecha de la OP) para priorizar el corte
   const fk = l => l.fecha || '9999';
@@ -1641,10 +1647,14 @@ function artOptimaHTML(){
   const opsTxt = s => { const a = [...s].sort(nat); return a.length > 5 ? a.slice(0, 5).join(', ') + ` y ${a.length - 5} más` : a.join(', '); };
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;margin:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text);flex:none"';
   return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un Excel por <b>tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Marca las obras y clientes que vas a optimizar juntos para aprovechar mejor la lámina. Cada medida lleva su <b>posición (POS)</b>: digítalas en OPTIMA <b>en ese mismo orden</b> para que OPTIMA les dé el mismo número, que sale grande en la etiqueta. Si una medida sale de un retal, se borra en OPTIMA: los demás números no cambian.</div>
+      ${hayC && hayE ? `<div class="art-ver">${[['todo', 'Todo', todos], ['eli', 'Obras de Elíptica', todos.filter(l => !l.cliente)], ['cli', 'Clientes de Ártica', todos.filter(l => l.cliente)]].map(([k, t, ls]) =>
+          `<button class="btn sm ${ver === k ? 'primary' : 'ghost'}" onclick="A.optVer='${k}';renderArtica()">${t} · ${nPz(ls)}</button>`).join('')}</div>` : ''}
       ${vids.length ? vids.map((v, vi) => { const sel = v.lotes.filter(l => !off.has(l.k)), n = sel.reduce((a, l) => a + l.n, 0);
         return `<div class="art-lote-obra">${esc(v.car.tipo)} · ${esc(v.car.cal)} · ${esc(v.car.col)}</div>
-        ${v.lotes.map(l => `<label class="art-lote" style="cursor:pointer;justify-content:flex-start;gap:10px"><input type="checkbox" ${ck} ${off.has(l.k) ? '' : 'checked'} onchange="artOptSel(decodeURIComponent('${encQ(l.k)}'), this.checked)">
-          <div><b>${esc(l.obra)}</b>${l.cliente ? ' <span class="badge-new">Cliente</span>' : ''}<span>${l.fecha ? dias(l.fecha) + ' · ' : ''}${l.entrega ? 'entrega ' + fmtD(l.entrega) + ' · ' : ''}${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div></label>`).join('')}
+        ${[['', 'Obras de Elíptica', v.lotes.filter(l => !l.cliente)], ['cli', 'Clientes de Ártica', v.lotes.filter(l => l.cliente)]].filter(x => x[2].length).map(([c, tit, ls]) => `
+        <div class="art-sub ${c}">${tit} · ${ls.length} · ${nPz(ls)} piezas</div>
+        ${ls.map(l => `<label class="art-lote" style="cursor:pointer;justify-content:flex-start;gap:10px"><input type="checkbox" ${ck} ${off.has(l.k) ? '' : 'checked'} onchange="artOptSel(decodeURIComponent('${encQ(l.k)}'), this.checked)">
+          <div><b>${esc(l.obra)}</b><span>${l.fecha ? dias(l.fecha) + ' · ' : ''}${l.entrega ? 'entrega ' + fmtD(l.entrega) + ' · ' : ''}${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div></label>`).join('')}`).join('')}
         <div style="display:flex;justify-content:flex-end;margin:6px 0 14px"><button class="btn sm primary" ${n ? '' : 'disabled'} onclick="artExportarVid(${vi})">${ICON.down} Excel · ${fmtN(n)} piezas${sel.length > 1 ? ' · ' + sel.length + ' obras/clientes' : ''}</button></div>`; }).join('')
         : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
       ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
