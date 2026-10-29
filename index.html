@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.45';
+const APP_VERSION = '7.46';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -820,7 +820,10 @@ const API = {
     r = q.includes('.') ? r.ilike('op_instalacion', q + '%') : q.includes('-') ? r.or(`op.eq.${q},op.ilike.${q}%`) : r.or(`op.eq.${q},op.ilike.${q}-%`);
     const {data, error} = await r; if(error) throw error; return data || [];
   },
-  async todasObras(){ const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
+  async todasObras(){
+    const {data, error} = await this.sb.rpc('obras_lista');   // una sola consulta (SQL 86)
+    if(!error) return (data || []).map(r => typeof r === 'string' ? r : Object.values(r)[0]);
+    const rows = await this.all(o => this.sb.from('items').select('obra',o).order('id')); return rows.map(r=>r.obra); },
   // ── Órdenes de producción en PDF (carpeta privada "ordenes", un archivo por número: ops/6235.pdf) ──
   async ordenesLista(){
     let out = [];
