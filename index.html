@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.49';
+const APP_VERSION = '7.50';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1619,6 +1619,7 @@ function artLotes(){
 }
 function artOptimaHTML(){
   if(!window.XLSX) loadScript(XLSX_URL).catch(() => {});   // listo antes del toque de descarga (Safari)
+  if(!window.ExcelJS) cargarExcelJS().catch(() => {});
   const lotes = artLotes(); A._lotes = lotes;
   // Un grupo por vidrio igual (tipo + calibre + color): OPTIMA puede optimizar juntas varias obras y clientes
   // Lo más antiguo primero (fecha de la OP) para priorizar el corte
@@ -1645,6 +1646,74 @@ function artOptimaHTML(){
 function artOptSel(k, on){ const o = A.optOff || (A.optOff = new Set()); on ? o.delete(k) : o.add(k); renderArtica(); }
 // Excel para digitar en OPTIMA: POS, CANT, MED X (ancho), MED Y (alto), CLIENTE (ítem), PEDIDO, NOTAS
 const artPed = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return m ? m[1].padStart(6, '0') + '-' + m[2] : op; };   // como lo digitan en OPTIMA: 006295-1
+// ── Orden de corte para OPTIMA con la imagen de Ártica (manual de identidad): ExcelJS, para imprimir ──
+const EXCELJS_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js', 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'];
+async function cargarExcelJS(){ if(window.ExcelJS) return; for(const u of EXCELJS_URLS){ try{ await loadScript(u); if(window.ExcelJS) return; }catch(e){} } throw new Error('No se pudo cargar el generador de Excel'); }
+async function b64Icono(u){ try{ const b = await (await fetch(u)).blob(); return await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(b); }); }catch(e){ return null; } }
+async function artExcelPro(ps, cantDe, meta){
+  await cargarExcelJS();
+  const GRAF = 'FF272727', BLANCO = 'FFFFFFFF', GRIS = 'FFE6E6E6', GRIS2 = 'FFF4F4F4', TXT2 = 'FF6B6B6B', DIN = 'DIN Condensed', FUT = 'Futura';
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Ártica · Registro de producción';
+  const ws = wb.addWorksheet('OPTIMA', {views: [{showGridLines: false}], pageSetup: {paperSize: 1, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    margins: {left: .3, right: .3, top: .35, bottom: .45, header: .15, footer: .2}, horizontalCentered: true, printTitlesRow: '10:10'}});
+  ws.headerFooter.oddFooter = '&L&"DIN Condensed,Bold"&8ÁRTICA · VIDRIO ARQUITECTÓNICO&C&"Futura"&8Orden de corte · ' + (meta.nombre || '').replace(/&/g, '&&') + '&R&"Futura"&8Hoja &P de &N';
+  ws.columns = [7, 7, 10, 10, 12, 13, 9, 17, 28, 11, 10].map(w => ({width: w}));
+  const fill = c => ({type: 'pattern', pattern: 'solid', fgColor: {argb: c}});
+  const celda = (ref, v, font, f, al) => { const c = ws.getCell(ref); c.value = v; if(font) c.font = font; if(f) c.fill = fill(f); c.alignment = al || {vertical: 'middle'}; return c; };
+  // 1-4 · Franja grafito: logo, título y el símbolo en línea (como las portadas del manual)
+  for(let r = 1; r <= 4; r++){ ws.getRow(r).height = 20; for(let c = 1; c <= 11; c++) ws.getCell(r, c).fill = fill(GRAF); }
+  ws.mergeCells('D1:H2'); celda('D1', 'ORDEN DE CORTE · OPTIMA', {name: DIN, size: 24, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'bottom'});
+  ws.mergeCells('D3:H4'); celda('D3', 'Ingreso de medidas al optimizador · digitar en este orden', {name: FUT, size: 11, color: {argb: 'FFBFBFBF'}}, GRAF, {vertical: 'top'});
+  const logo = await b64Icono('icons/artica_logo_grafito.png'), tri = await b64Icono('icons/artica_triangulos.png');
+  if(logo) ws.addImage(wb.addImage({base64: logo, extension: 'png'}), {tl: {col: 0.3, row: 0.1}, ext: {width: 120, height: 100}});
+  if(tri) ws.addImage(wb.addImage({base64: tri, extension: 'png'}), {tl: {col: 8.75, row: 0}, ext: {width: 166, height: 99}});
+  ws.getRow(5).height = 8;
+  // 6-8 · Línea de producto (estilo del manual: V I D R I O / TEMPLADO) y datos del lote
+  const car = meta.car || {}, espaciado = t => String(t || '').split('').join(' ');
+  for(let r = 6; r <= 8; r++){ ws.getRow(r).height = r === 7 ? 30 : 18; for(let c = 1; c <= 4; c++) ws.getCell(r, c).fill = fill(GRAF); }
+  ws.mergeCells('A6:D6'); celda('A6', espaciado('VIDRIO'), {name: FUT, size: 11, color: {argb: BLANCO}}, GRAF, {vertical: 'bottom', horizontal: 'center'});
+  ws.mergeCells('A7:D7'); celda('A7', car.tipo || '', {name: FUT, size: 22, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
+  ws.mergeCells('A8:D8'); celda('A8', [car.cal, car.col].filter(Boolean).join(' · '), {name: DIN, size: 12, color: {argb: 'FFBFBFBF'}}, GRAF, {vertical: 'top', horizontal: 'center'});
+  const tot = ps.reduce((a, p) => a + (Number(cantDe(p)) || 0), 0), m2 = ps.reduce((a, p) => a + (Number(cantDe(p)) || 0) * p.ancho * p.alto / 1e6, 0);
+  const datos = [['OBRAS / CLIENTES', (meta.obras || []).join('  ·  ')], ['PIEZAS', `${fmtN(tot)} piezas  ·  ${fmtN(ps.length)} medidas (posiciones)  ·  ${fmtN(m2, 2)} m²`], ['FECHA', `${fmtD(today())}  ${nowTime()}${meta.quien ? '   ·   Exportó: ' + meta.quien : ''}`]];
+  datos.forEach(([l, v], k) => { const r = 6 + k; ws.mergeCells(`F${r}:G${r}`); ws.mergeCells(`H${r}:K${r}`);
+    celda(`F${r}`, l, {name: DIN, size: 10, bold: true, color: {argb: TXT2}}, GRIS, {vertical: 'middle', indent: 1});
+    celda(`H${r}`, v, {name: FUT, size: 11, color: {argb: GRAF}}, GRIS, {vertical: 'middle', shrinkToFit: true}); ws.getCell(`E${r}`).fill = fill(BLANCO); });
+  ws.getRow(9).height = 10;
+  // 10 · Encabezado de la tabla (se repite en cada hoja)
+  const heads = ['POS', 'CANT', 'MED X', 'MED Y', 'ÍTEM', 'PEDIDO', 'NOTAS', 'CANTO', 'OBRA / CLIENTE', 'FECHA OP', 'DIGITADO'];
+  ws.getRow(10).height = 22;
+  heads.forEach((h, i) => { const c = ws.getCell(10, i + 1); c.value = h; c.font = {name: DIN, size: 11, bold: true, color: {argb: BLANCO}}; c.fill = fill(GRAF); c.alignment = {vertical: 'middle', horizontal: 'center'}; });
+  const linea = {style: 'thin', color: {argb: 'FFD0D0D0'}};
+  ps.forEach((p, k) => { const r = 11 + k, row = ws.getRow(r); row.height = 19;
+    const v = [p._pos || p.optima_pos, Number(cantDe(p)), Number(p.ancho), Number(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), p.fecha_op ? fmtD(p.fecha_op) : '', '☐'];
+    v.forEach((x, i) => { const c = ws.getCell(r, i + 1); c.value = x;
+      c.font = i === 0 ? {name: DIN, size: 14, bold: true, color: {argb: GRAF}} : i === 10 ? {name: FUT, size: 13, color: {argb: TXT2}} : {name: FUT, size: 10.5, bold: i >= 1 && i <= 3, color: {argb: GRAF}};
+      c.alignment = {vertical: 'middle', horizontal: i === 8 ? 'left' : 'center', shrinkToFit: i === 8, indent: i === 8 ? 1 : 0};
+      c.border = {bottom: linea, left: i ? linea : undefined};
+      c.fill = fill(i === 0 ? GRIS : k % 2 ? GRIS2 : BLANCO);
+      if(i >= 1 && i <= 3) c.numFmt = '0'; }); });
+  // Total, indicaciones, firmas y pie
+  let r = 11 + ps.length; ws.getRow(r).height = 22;
+  ws.mergeCells(`A${r}:A${r}`); celda(`A${r}`, 'TOTAL', {name: DIN, size: 11, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
+  celda(`B${r}`, tot, {name: DIN, size: 13, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
+  ws.mergeCells(`C${r}:K${r}`); celda(`C${r}`, `piezas en ${fmtN(ps.length)} posiciones  ·  ${fmtN(m2, 2)} m²`, {name: FUT, size: 10.5, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', indent: 1});
+  r += 2; ws.mergeCells(`A${r}:K${r + 1}`);
+  celda(`A${r}`, 'Digita las filas en este orden: OPTIMA le da a cada medida la misma posición (POS) que lleva su etiqueta. Si una medida sale de un retal, bórrala en OPTIMA; las demás no cambian de número. Las medidas son las de la OP: OPTIMA agrega la amoladura según el calibre.',
+    {name: FUT, size: 10, italic: true, color: {argb: TXT2}}, null, {vertical: 'top', wrapText: true});
+  ws.getRow(r).height = 16; ws.getRow(r + 1).height = 16;
+  r += 5; ws.getRow(r - 1).height = 26;
+  for(const [a, b, t] of [['A', 'D', 'DIGITÓ EN OPTIMA'], ['F', 'H', 'CORTÓ'], ['I', 'K', 'REVISÓ']]){
+    ws.mergeCells(`${a}${r}:${b}${r}`); const c = celda(`${a}${r}`, t, {name: DIN, size: 10, bold: true, color: {argb: TXT2}}, null, {horizontal: 'center', vertical: 'top'});
+    c.border = {top: {style: 'medium', color: {argb: GRAF}}}; }
+  r += 2; ws.getRow(r).height = 20; for(let c = 1; c <= 11; c++) ws.getCell(r, c).fill = fill(GRAF);
+  ws.mergeCells(`A${r}:K${r}`); celda(`A${r}`, 'Cra. 16 Sur # 67-406, Interior Bodega 5-6  ·  Zona Industrial el Papayo, Ibagué – Tolima  ·  Tel. 310 210 0257  ·  www.artica.com.co',
+    {name: DIN, size: 10, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
+  ws.pageSetup.printArea = `A1:K${r}`;
+  const buf = await wb.xlsx.writeBuffer();
+  return new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+// Excel sencillo (respaldo si no carga el generador con diseño)
 function artExcelBlob(ps, cantDe){
   // Medidas exactas de la OP (OPTIMA calcula la amoladura) y la descripción del canto
   const filas = [['POS','CANT','MED X','MED Y','CLIENTE','PEDIDO','NOTAS','CANTO','OBRA / CLIENTE','VIDRIO','FECHA OP']].concat(ps.map(p =>
@@ -1676,7 +1745,8 @@ async function artExportarVid(vi){
     const ps = sel.flatMap(l => l.piezas).sort((a, b) => nat(artObra(a), artObra(b)) || nat(a.op, b.op) || nat(a.item, b.item) || a.linea - b.linea);
     ps.forEach((p, k) => { p._pos = k + 1; p._cant = artPorEnviar(p); });
     const etq = ps.flatMap(p => { const h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: p._cant}, (_, j) => ({p, n: h + j + 1})); });
-    const blob = artExcelBlob(ps, p => p._cant);
+    let blob; try{ blob = await artExcelPro(ps, p => p._cant, {car: v.car, obras: [...new Set(ps.map(artObra))], quien: (S.perfil && S.perfil.nombre) || '', nombre: `${v.car.tipo} ${v.car.cal} ${v.car.col}`}); }
+    catch(e){ console.warn(e); blob = artExcelBlob(ps, p => p._cant); }
     const obras = sel.map(l => l.obra), hhmm = new Date().toTimeString().slice(0, 5);
     const nombre = `${v.car.tipo} ${v.car.cal} ${v.car.col} · ${obras.join(' + ')} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
     const archivo = artArchivo(`OPTIMA_${v.car.tipo}_${v.car.cal}_${v.car.col}_${obras.length > 1 ? obras.length + '_obras' : obras[0]}_${today()}`) + '.xlsx';
@@ -1698,7 +1768,9 @@ async function artExcelLote(i){
   try{
     if(!window.XLSX){ toast('Preparando el Excel…'); await loadScript(XLSX_URL); }
     const ps = [...g.piezas].sort((a, b) => (a.optima_pos || 1e9) - (b.optima_pos || 1e9)); ps.forEach(p => { p._pos = p.optima_pos; });
-    artEntregar(artExcelBlob(ps, p => p.optima_pend || artEnPlan(p)), artArchivo('OPTIMA_' + g.k.replace(/^L\d+ · /, '')) + '.xlsx', 'Excel para OPTIMA', esc(g.k.replace(/^L\d+ · /, '')));
+    const cd = p => p.optima_pend || artEnPlan(p), c0 = vidrioCar(ps[0].tipo);
+    let blob; try{ blob = await artExcelPro(ps, cd, {car: c0, obras: [...new Set(ps.map(artObra))], quien: (S.perfil && S.perfil.nombre) || '', nombre: c0.txt}); }catch(e){ console.warn(e); blob = artExcelBlob(ps, cd); }
+    artEntregar(blob, artArchivo('OPTIMA_' + g.k.replace(/^L\d+ · /, '')) + '.xlsx', 'Excel para OPTIMA', esc(g.k.replace(/^L\d+ · /, '')));
   }catch(e){ toast('No se pudo generar el Excel: ' + errMsg(e), true); }
 }
 function artEtqLote(i){
