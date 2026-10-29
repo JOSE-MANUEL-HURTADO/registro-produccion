@@ -548,7 +548,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.54';
+const APP_VERSION = '7.55';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1904,8 +1904,11 @@ async function artEtqPDF(lista, nombre, soloBlob){
     if(p.optima_pos){   // posición de OPTIMA (la del plano de corte) en grande
       doc.setFillColor(0, 0, 0); doc.rect(4, 9, 16, 11, 'F'); doc.setTextColor(255);
       doc.setFontSize(String(p.optima_pos).length > 2 ? 15 : 19); doc.text(String(p.optima_pos), 12, 17.2, {align: 'center'});
-      doc.setTextColor(0); doc.setFontSize(14); doc.text(corta(p.op, qx - 24, 14), 22, 17);
-    } else { doc.setFontSize(18); doc.text(corta(p.op, qx - 6, 18), 4, 17); }
+      doc.setTextColor(0);
+      if(!p.tercero && p.item){ doc.setFontSize(10); doc.text(corta('OP ' + p.op, qx - 24, 10), 22, 13); doc.setFontSize(16); doc.text(corta('ÍTEM ' + p.item, qx - 24, 16), 22, 19.8); }
+      else { doc.setFontSize(14); doc.text(corta(p.op, qx - 24, 14), 22, 17); }
+    } else if(!p.tercero && p.item){ doc.setFontSize(10); doc.text(corta('OP ' + p.op, qx - 6, 10), 4, 13); doc.setFontSize(16); doc.text(corta('ÍTEM ' + p.item, qx - 6, 16), 4, 19.8); }
+    else { doc.setFontSize(18); doc.text(corta(p.op, qx - 6, 18), 4, 17); }
     doc.setFontSize(16); doc.text(`${p.ancho} × ${p.alto}`, 4, 26.5);
     doc.setFontSize(10); doc.text(`${n}/${p.cant}`, qx - 2, 26.5, {align: 'right'});
     // OBRA / CLIENTE: franja negra a todo lo ancho, letra lo más grande que quepa (hasta 2 líneas)
@@ -1918,7 +1921,7 @@ async function artEtqPDF(lista, nombre, soloBlob){
     doc.setTextColor(0);
     // Canto en negrilla, vidrio e ítem
     doc.setFontSize(8); doc.text(corta(artCanto(p), 40, 8), 4, 47.3);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.text(corta([p.item ? 'Ítem ' + p.item : '', p.tipo].filter(Boolean).join(' · '), W - 50, 7), 46, 47.3);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.text(corta(p.tipo, W - 50, 7), W - 4, 47.3, {align: 'right'});
     // Ruta: casillas para marcar a mano si hace falta
     doc.setFont('helvetica', 'bold');
     let x = 4; for(const e of p.ruta){ doc.setLineWidth(.3); doc.rect(x, 49, 6.5, 5.5); doc.setFontSize(8); doc.text(ART_AB[e], x + 3.25, 53, {align: 'center'}); x += 7.5; }
