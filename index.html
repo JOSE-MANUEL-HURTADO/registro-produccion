@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.48';
+const APP_VERSION = '7.49';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3872,7 +3872,7 @@ function sheetInstalacion(){
 //  (6235-3.1, 6235-3.2…): al escanear se elige cuántas / cuáles quedan registradas.
 // ════════════════════════════════════════════════════════════════
 const SC_EST = [
-  ...PROCS.map(([k,t]) => ({k, t, proc:true})),
+  ...PROCS.filter(([k]) => k !== 'programado').map(([k,t]) => ({k, t, proc:true})),   // la programación se hace desde la app, no se escanea
   {k:'ini',  t:'Inicio ensamble'},
   {k:'fin',  t:'Ensamble terminado'},
   {k:'nov',  t:'⏸ Novedad ensamble'},
