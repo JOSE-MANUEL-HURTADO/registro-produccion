@@ -549,7 +549,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.56';
+const APP_VERSION = '7.57';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1349,6 +1349,8 @@ const artHechos = (p, e) => Math.max(0, Math.min(p.cant, (p.base != null ? p.bas
 const artUltimo = p => p.ruta[p.ruta.length - 1];
 const artListas = p => artHechos(p, artUltimo(p));
 // En qué paso va: el primero de la ruta que no tiene todas las piezas
+// Cola (búfer) por estación: lo que ya salió de la estación anterior y aún no pasa por esta. Corte: todo lo que falta cortar.
+function artCola(p, acc){ let prev = p.cant; for(const e of p.ruta){ const h = artHechos(p, e); if(e in acc) acc[e] += Math.max(0, Math.min(prev, p.cant) - h); prev = h; } return acc; }
 function artPaso(p){ for(const e of p.ruta) if(artHechos(p, e) < p.cant) return e; return null; }
 
 // ── Datos ──
@@ -1407,7 +1409,7 @@ function renderArtica(){
 const artObra = p => p.obra || p.cliente || 'Sin obra';
 function artObraCard(obra, l){
   const t = l.reduce((s, p) => s + p.cant, 0), ok = l.reduce((s, p) => s + artListas(p), 0);
-  const en = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of l){ const e = artPaso(p); if(e) en[e] += p.cant - artHechos(p, e); }
+  const en = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of l) artCola(p, en);
   const ops = new Set(l.map(p => p.op)).size, ter = l.some(p => p.tercero);
   return `<button class="obra-card" onclick="A.obra=decodeURIComponent('${encodeURIComponent(obra)}');A.abierta=null;renderArtica();window.scrollTo(0,0)">
     <div><div class="oc-name">${esc(obra)}${ter ? ' <span class="badge-new">Cliente</span>' : ''}</div><div class="oc-meta">${fmtN(ops)} OP · ${fmtN(t)} piezas · ${fmtN(t - ok)} en proceso</div></div>
@@ -1425,7 +1427,7 @@ function artAvanceHTML(){
   const coincide = p => !q || [p.op, p.obra, p.cliente, p.item, p.tipo, p.ancho + 'X' + p.alto].some(v => v && normH(v).replace(/\s/g, '').includes(qn));
   const estado = p => A.filtro === 'todas' || (A.filtro === 'reproc' ? (p.rotas || 0) > 0 : A.filtro === 'pend' ? artListas(p) < p.cant : artListas(p) >= p.cant);
   const tot = base.reduce((s, p) => s + p.cant, 0), listas = base.reduce((s, p) => s + artListas(p), 0);
-  const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of base){ const e = artPaso(p); if(e) enEst[e] += p.cant - artHechos(p, e); }
+  const enEst = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of base) artCola(p, enEst);
   const filtros = `<div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><div class="search">${ICON.search}<input id="artQ" placeholder="${A.obra ? 'OP-ítem o medida (689x1133)…' : 'Obra, OP-ítem o medida…'}" value="${esc(A.q)}" autocomplete="off" autocapitalize="characters"></div>
       <select onchange="A.filtro=this.value;renderArtica()"><option value="pend" ${A.filtro==='pend'?'selected':''}>En proceso</option><option value="listas" ${A.filtro==='listas'?'selected':''}>Listas</option><option value="todas" ${A.filtro==='todas'?'selected':''}>Todas</option><option value="reproc" ${A.filtro==='reproc'?'selected':''}>Reprocesadas</option></select></div>`;
   if(!A.obra){
@@ -1441,7 +1443,7 @@ function artAvanceHTML(){
   const deObra = base.filter(p => artObra(p) === A.obra);
   const pz = deObra.filter(p => estado(p) && coincide(p));
   const t0 = deObra.reduce((s, p) => s + p.cant, 0), ok0 = deObra.reduce((s, p) => s + artListas(p), 0);
-  const en0 = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of deObra){ const e = artPaso(p); if(e) en0[e] += p.cant - artHechos(p, e); }
+  const en0 = Object.fromEntries(ART_EST.map(([e]) => [e, 0])); for(const p of deObra) artCola(p, en0);
   const porOp = new Map(); for(const p of pz){ if(!porOp.has(p.op)) porOp.set(p.op, []); porOp.get(p.op).push(p); }
   const ops = [...porOp.entries()].sort((a, b) => nat(a[0], b[0]));
   return `<button class="back" onclick="A.obra=null;A.q='';renderArtica()">${ICON.back} Obras</button>
@@ -1452,7 +1454,7 @@ function artAvanceHTML(){
     <div class="art-ley"><div class="art-ruta"><span>C<small>0/8</small></span></div> Ninguna pieza
       <div class="art-ruta"><span class="mid">C<small>3/8</small></span></div> Algunas piezas
       <div class="art-ruta"><span class="ok">C<small>8/8</small></span></div> Todas las piezas
-      <div class="art-ruta"><span class="now">C<small>3/8</small></span></div> Dónde está ahora
+      <div class="art-ruta"><span class="now">P<small>3/8</small></span></div> Piezas esperando en esa estación
       <span class="art-ley-ab">${Object.keys(ART_AB).filter(e => deObra.some(p => p.ruta.includes(e))).map(e => `<b>${ART_AB[e]}</b> ${esc(String(ART_NOM[e] || e).toLowerCase())}`).join(' · ')}</span></div>
     <div class="art-ops">${ops.map(([op, l]) => {
       const t = l.reduce((s, p) => s + p.cant, 0), ok = l.reduce((s, p) => s + artListas(p), 0), ab = A.abierta === op, p0 = l[0];
@@ -1464,7 +1466,7 @@ function artAvanceHTML(){
 function artPiezaHTML(p){
   const paso = artPaso(p);
   return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b><span> · ${esc(artCanto(p).toLowerCase())}</span> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.optima_pos ? ' · <b>POS ' + esc(artPosTxt(p)) + '</b>' : ''}${p.obs ? ' · ' + esc(p.obs) : ''}</span></div>
-    <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${e === paso ? 'now' : ''}" title="${ART_NOM[e]}: ${h} de ${p.cant}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
+    <div class="art-ruta">${(c => p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${c[e] ? 'now' : ''}" title="${ART_NOM[e] || e}: ${h} de ${p.cant} hechas${c[e] ? ' · ' + c[e] + ' esperando aquí' : ''}">${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join(''))(artCola(p, Object.fromEntries(p.ruta.map(e => [e, 0]))))}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? 'En ' + ART_NOM[paso].toLowerCase() : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
       <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
 }
