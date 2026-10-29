@@ -556,7 +556,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.60';
+const APP_VERSION = '7.61';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2349,8 +2349,7 @@ function renderHome(){
   const inp = $('#qObra');
   inp.oninput = () => { S.q = inp.value; anual ? renderAnualBox() : renderObrasBox(resumenObras()); };
   if(anual) loadAnual(); else renderObrasBox(res);
-  if(!anual) API.ensEnEspera().then(l => { const b = $('#btnNovEns'); if(!b) return; ENS_ESP = l;
-    b.innerHTML = l.length ? `⏸ Novedades de ensamble <b style="margin-left:6px;background:var(--danger);color:#fff;padding:0 7px;border-radius:9px">${fmtN(l.length)}</b>` : '⏸ Novedades de ensamble · ninguna'; }).catch(() => {});
+  if(!anual) ensNovBtn();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2426,7 +2425,7 @@ function renderPlanta(){
   $('#app').innerHTML = shell(`${respaldoHTML()}
     <div class="tabs">${homeTabs()}</div>
     <div class="home-head">
-      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div>${puedeRegistrar() ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}${!anual ? ` <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button>` : ''}</div>
+      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div>${puedeRegistrar() ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''} <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button></div>
       <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP, ensamblador o instalador…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div class="st-tiles" id="stTiles"></div>
@@ -2434,6 +2433,7 @@ function renderPlanta(){
   const inp = $('#qObra');
   inp.oninput = () => { S.q = inp.value; renderPlantaBox(); };
   renderPlantaBox();
+  ensNovBtn();
 }
 function setPlSt(k){ S.plSt = k; renderPlantaBox(); }
 
@@ -3950,6 +3950,8 @@ function ensNovSheet(items){
 }
 // Todas las novedades de ensamble abiertas (ítems EN ESPERA) de todas las obras, en una sola vista
 let ENS_ESP = null;
+function ensNovBtn(){ API.ensEnEspera().then(l => { const b = $('#btnNovEns'); if(!b) return; ENS_ESP = l;
+  b.innerHTML = l.length ? `⏸ Novedades de ensamble <b style="margin-left:6px;background:var(--danger);color:#fff;padding:0 7px;border-radius:9px">${fmtN(l.length)}</b>` : '⏸ Novedades de ensamble · ninguna'; }).catch(() => {}); }
 async function ensNovGlobal(){
   openSheet('⏸ Novedades de ensamble', 'Ítems en espera en todas las obras', '<div class="loading"><div class="spin"></div>Cargando</div>', 'Listo', async () => {});
   let l; try{ l = ENS_ESP = await API.ensEnEspera(); await ensNovCargar(l.map(i => i.ens_novedad_id)); }catch(e){ $('.sh-body').innerHTML = `<div class="warn">${esc(errMsg(e))}</div>`; return; }
