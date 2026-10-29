@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.44';
+const APP_VERSION = '7.45';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -887,7 +887,7 @@ const API = {
     }
     return out;
   },
-  async insertItems(rows, onProgress, size=500, cols='id,op_instalacion'){
+  async insertItems(rows, onProgress, size=150, cols='id,op_instalacion'){
     let out = [];
     for(let i=0; i<rows.length; i+=size){
       const {data,error} = await this.sb.from('items').insert(rows.slice(i,i+size)).select(cols);
