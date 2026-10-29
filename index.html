@@ -80,6 +80,7 @@ body.artica .sheet{background:#2e2e2e;}
 .art-pzr{display:grid;grid-template-columns:minmax(0,1.3fr) auto minmax(0,1fr);gap:6px 14px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:center;}
 @media(max-width:760px){.art-pzr{grid-template-columns:1fr;}}
 .art-pzm b{font-family:var(--art-t,var(--mono));font-size:20px;}.art-pzm span{color:var(--muted);font-size:13px;display:block;}
+.art-ley{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12px;color:var(--muted);margin:4px 0 12px}.art-ley .art-ruta span{width:30px;font-size:13px;padding:2px 0}.art-ley .art-ruta span small{font-size:8px}.art-ley-ab{flex-basis:100%;font-size:12px}.art-ley-ab b{color:var(--text)}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
 .art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#5b6a6d);border-color:var(--art-acento,#5b6a6d);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
 .art-pzs{font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
@@ -548,7 +549,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.55';
+const APP_VERSION = '7.56';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1448,6 +1449,11 @@ function artAvanceHTML(){
       <button class="btn sm ghost" onclick="A.piezas=null;artCargar()">${ICON.ref} Actualizar</button></div>
     <div class="art-est">${ART_EST.map(([e, n]) => `<div><b>${fmtN(en0[e])}</b><span>Por ${n.toLowerCase()}</span></div>`).join('')}</div>
     ${seg}${filtros}
+    <div class="art-ley"><div class="art-ruta"><span>C<small>0/8</small></span></div> Ninguna pieza
+      <div class="art-ruta"><span class="mid">C<small>3/8</small></span></div> Algunas piezas
+      <div class="art-ruta"><span class="ok">C<small>8/8</small></span></div> Todas las piezas
+      <div class="art-ruta"><span class="now">C<small>3/8</small></span></div> Dónde está ahora
+      <span class="art-ley-ab">${Object.keys(ART_AB).filter(e => deObra.some(p => p.ruta.includes(e))).map(e => `<b>${ART_AB[e]}</b> ${esc(String(ART_NOM[e] || e).toLowerCase())}`).join(' · ')}</span></div>
     <div class="art-ops">${ops.map(([op, l]) => {
       const t = l.reduce((s, p) => s + p.cant, 0), ok = l.reduce((s, p) => s + artListas(p), 0), ab = A.abierta === op, p0 = l[0];
       return `<div class="art-op ${ab ? 'on' : ''}"><button class="art-op-h" onclick="A.abierta=A.abierta==='${op}'?null:'${op}';renderArtica()">
