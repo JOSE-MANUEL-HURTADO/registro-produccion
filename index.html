@@ -537,7 +537,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.46';
+const APP_VERSION = '7.47';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1639,8 +1639,8 @@ function artOptimaHTML(){
         <div style="display:flex;justify-content:flex-end;margin:6px 0 14px"><button class="btn sm primary" ${n ? '' : 'disabled'} onclick="artExportarVid(${vi})">${ICON.down} Excel · ${fmtN(n)} piezas${sel.length > 1 ? ' · ' + sel.length + ' obras/clientes' : ''}</button></div>`; }).join('')
         : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
       ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
-        ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k.replace(/^L\d+ · /, ''))}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="artExcelLote(${i})">Excel</button><button class="btn sm" onclick="artEtqLote(${i})">Etiquetas</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver a la lista</button></div></div>`).join('')}</details>` : ''}</div></div>`;
+        ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k.replace(/^L\d+ · /, ''))}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span><span>OP ${esc([...new Set(g.piezas.map(p => p.op))].sort(nat).join(', '))}</span></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="artExcelLote(${i})">Excel</button><button class="btn sm" onclick="artEtqLote(${i})">Etiquetas</button><button class="btn sm ghost" onclick="artDevolverOPs(${i})">Devolver OP…</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver todo</button></div></div>`).join('')}</details>` : ''}</div></div>`;
 }
 function artOptSel(k, on){ const o = A.optOff || (A.optOff = new Set()); on ? o.delete(k) : o.add(k); renderArtica(); }
 // Excel para digitar en OPTIMA: POS, CANT, MED X (ancho), MED Y (alto), CLIENTE (ítem), PEDIDO, NOTAS
@@ -1706,6 +1706,24 @@ function artEtqLote(i){
   const etq = [...g.piezas].sort((a, b) => (a.optima_pos || 1e9) - (b.optima_pos || 1e9) || nat(a.op, b.op) || a.linea - b.linea).flatMap(p => { const n = artEnPlan(p), h = artHechos(p, 'corte'); return Array.from({length: n}, (_, k) => ({p, n: h + k + 1})); });
   if(!etq.length) return toast('Este lote ya está cortado', true);
   artEtqPDF(etq, `Etiquetas_${g.k}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w+.-]+/g, '_') + '.pdf');
+}
+// Devolver solo algunas OP de un lote enviado (para optimizarlas junto con otras)
+function artDevolverOPs(i){
+  const g = (A._env || [])[i]; if(!g) return;
+  const ops = [...grp(g.piezas, p => p.op).entries()].sort((a, b) => nat(a[0], b[0]));
+  const ck = 'style="width:20px;height:20px;min-height:0;padding:0;margin:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text);flex:none"';
+  const body = `<div class="sc-note" style="margin-bottom:8px">Marca las OP que vuelven a la lista de exportar. Las demás siguen en este lote con sus posiciones.</div>
+    <div style="max-height:50vh;overflow:auto">${ops.map(([op, l]) => { const n = l.reduce((a, p) => a + artEnPlan(p), 0), cort = l.reduce((a, p) => a + (p.corte_post_optima || 0), 0);
+      return `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer"><input type="checkbox" class="devOp" value="${esc(op)}" ${ck}>
+        <span style="flex:1"><b>OP ${esc(op)}</b> · ${esc(artObra(l[0]))}<br><small style="color:var(--text2)">${fmtN(l.length)} medida${l.length === 1 ? '' : 's'} · ${fmtN(n)} piezas por cortar${cort ? ' · ' + fmtN(cort) + ' ya cortadas' : ''} · POS ${esc(l.map(p => p.optima_pos).filter(Boolean).sort((a, b) => a - b).join(', '))}</small></span></label>`; }).join('')}</div>`;
+  openSheet('Devolver OP a la lista', esc(g.k.replace(/^L\d+ · /, '')), body, 'Devolver las marcadas', async () => {
+    const sel = new Set([...document.querySelectorAll('.devOp:checked')].map(c => c.value));
+    if(!sel.size){ toast('Marca al menos una OP', true); return false; }
+    const ps = g.piezas.filter(p => sel.has(p.op));
+    try{ await API.artOptimaDevolver(ps.map(p => p.id)); for(const p of ps){ p.optima_en = null; p.optima_pend = null; p.optima_lote = null; p.optima_lote_n = null; p.optima_pos = null; p.corte_post_optima = 0; }
+      toast(`✓ ${sel.size} OP devuelta${sel.size === 1 ? '' : 's'} a la lista: ${[...sel].join(', ')}`); renderArtica(); }
+    catch(e){ toast(errMsg(e), true); return false; }
+  });
 }
 async function artDevolverLote(i){
   const g = (A._env || [])[i]; if(!g) return;
