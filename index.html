@@ -85,6 +85,8 @@ body.artica .sheet{background:#2e2e2e;}
 .cola-obra{margin:0 0 14px}.cola-oh{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border2);padding:4px 0;margin-bottom:4px}.cola-oh b{font-size:15px;text-transform:uppercase;letter-spacing:.04em}.cola-oh span{font-weight:700}
 .cola-op{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:baseline;width:100%;text-align:left;background:none;border:0;border-bottom:1px dashed var(--border);padding:7px 2px;color:var(--text);cursor:pointer;font:inherit}.cola-op:hover{background:var(--surface2)}
 .cola-opn{font-weight:700;white-space:nowrap}.cola-med{font-size:12px;color:var(--muted)}.cola-med b{color:var(--text)}.cola-med i{font-style:normal;font-weight:700}.cola-n{font-weight:700;font-size:16px}
+.nov-g{border:1px solid var(--border);border-left:3px solid var(--danger);padding:10px 12px;margin:10px 0}.nov-h{display:flex;justify-content:space-between;gap:8px}.nov-h b{text-transform:uppercase}.nov-h span{color:var(--danger);font-size:12px;font-weight:700}
+.nov-m{margin-top:4px}.nov-s{font-size:12px;color:var(--muted);margin-top:2px}.nov-op{font-size:13px;margin-top:4px}.nov-op span{color:var(--muted)}
 .art-ley{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12px;color:var(--muted);margin:4px 0 12px}.art-ley .art-ruta span{width:30px;font-size:13px;padding:2px 0}.art-ley .art-ruta span small{font-size:8px}.art-ley-ab{flex-basis:100%;font-size:12px}.art-ley-ab b{color:var(--text)}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
 .art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#5b6a6d);border-color:var(--art-acento,#5b6a6d);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
@@ -554,7 +556,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.59';
+const APP_VERSION = '7.60';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -788,6 +790,7 @@ const API = {
   async ensNovedadCrear(ids, motivo, detalle){ const {data,error} = await this.sb.rpc('ens_novedad_crear', {p_items: ids, p_motivo: motivo, p_detalle: detalle || null}); if(error) throw error; return data; },
   async ensReanudar(ids, nota){ const {data,error} = await this.sb.rpc('ens_reanudar', {p_items: ids, p_nota: nota || null}); if(error) throw error; return data || []; },
   async ensNovedades(ids){ if(!ids.length) return []; const {data,error} = await this.sb.from('novedades_ensamble').select('*').in('id', ids); if(error) throw error; return data || []; },
+  async ensEnEspera(){ const {data,error} = await this.sb.from('items').select('id,obra,op,op_instalacion,item,diseno,piso,ensamblador,dia_inicio,ens_novedad_id').not('ens_novedad_id','is',null).is('dia_final',null).or('despachado.is.null,despachado.eq.false').order('obra').limit(2000); if(error) throw error; return data || []; },
   async ensOpsAbiertas(ens, op, excl){ const {data,error} = await this.sb.rpc('ens_ops_abiertas', {p_ens: ens, p_op: op, p_excluir: excl || []}); if(error) throw error; return data; },
   async novedadResolver(id, nota){ const {data,error} = await this.sb.rpc('novedad_resolver', {p_id: id, p_nota: nota || null}); if(error) throw error; return data; },
   async novedadFotoSubir(ruta, blob){ const {error} = await this.sb.storage.from('novedades').upload(ruta, blob, {contentType:'image/jpeg', upsert:false}); if(error) throw error; },
@@ -2337,7 +2340,7 @@ function renderHome(){
     <div class="tabs">${homeTabs()}
     </div>
     <div class="home-head">
-      <div><div class="h1">${anual ? 'Obras por año' : 'Obras activas'}</div><div class="h1-sub">${sub}</div>${puedeRegistrar() && !anual ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}</div>
+      <div><div class="h1">${anual ? 'Obras por año' : 'Obras activas'}</div><div class="h1-sub">${sub}</div>${puedeRegistrar() && !anual ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}${!anual ? ` <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button>` : ''}</div>
       <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra u OP (6251-7)…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div id="yearChips"></div>
@@ -2346,6 +2349,8 @@ function renderHome(){
   const inp = $('#qObra');
   inp.oninput = () => { S.q = inp.value; anual ? renderAnualBox() : renderObrasBox(resumenObras()); };
   if(anual) loadAnual(); else renderObrasBox(res);
+  if(!anual) API.ensEnEspera().then(l => { const b = $('#btnNovEns'); if(!b) return; ENS_ESP = l;
+    b.innerHTML = l.length ? `⏸ Novedades de ensamble <b style="margin-left:6px;background:var(--danger);color:#fff;padding:0 7px;border-radius:9px">${fmtN(l.length)}</b>` : '⏸ Novedades de ensamble · ninguna'; }).catch(() => {});
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2421,7 +2426,7 @@ function renderPlanta(){
   $('#app').innerHTML = shell(`${respaldoHTML()}
     <div class="tabs">${homeTabs()}</div>
     <div class="home-head">
-      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div>${puedeRegistrar() ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}</div>
+      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div>${puedeRegistrar() ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}${!anual ? ` <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button>` : ''}</div>
       <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP, ensamblador o instalador…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div class="st-tiles" id="stTiles"></div>
@@ -3942,6 +3947,34 @@ function ensNovSheet(items){
   });
   const seg = $('#nmSeg'); if(seg) seg.addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return;
     seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); window._nm = b.dataset.v; });
+}
+// Todas las novedades de ensamble abiertas (ítems EN ESPERA) de todas las obras, en una sola vista
+let ENS_ESP = null;
+async function ensNovGlobal(){
+  openSheet('⏸ Novedades de ensamble', 'Ítems en espera en todas las obras', '<div class="loading"><div class="spin"></div>Cargando</div>', 'Listo', async () => {});
+  let l; try{ l = ENS_ESP = await API.ensEnEspera(); await ensNovCargar(l.map(i => i.ens_novedad_id)); }catch(e){ $('.sh-body').innerHTML = `<div class="warn">${esc(errMsg(e))}</div>`; return; }
+  const b = $('.sh-body'); if(!b) return;
+  if(!l.length){ b.innerHTML = '<div class="empty">No hay ítems en espera por novedad de ensamble. 👍</div>'; return; }
+  const grupos = [...grp(l, i => i.ens_novedad_id).entries()].map(([id, is]) => ({id, n: ENSNOV[id] || {}, is}))
+    .sort((a, b) => String(a.n.creada || '').localeCompare(String(b.n.creada || '')));
+  const mot = [...grp(grupos, g => g.n.motivo || 'Sin motivo').entries()].map(([m, gs]) => `${esc(m)} <b>${fmtN(gs.reduce((a, g) => a + g.is.length, 0))}</b>`).join(' · ');
+  const dias = t => { const d = Math.floor((Date.now() - new Date(t)) / 864e5); return d <= 0 ? 'hoy' : `hace ${d} día${d === 1 ? '' : 's'}`; };
+  b.innerHTML = `<div class="summary"><b>${fmtN(l.length)}</b> ítem${l.length === 1 ? '' : 's'} en espera · ${fmtN(new Set(l.map(i => i.obra)).size)} obra${new Set(l.map(i => i.obra)).size === 1 ? '' : 's'} · ${fmtN(grupos.length)} novedad${grupos.length === 1 ? '' : 'es'}<br><small>${mot}</small></div>
+    ${grupos.map((g, k) => { const o = [...new Set(g.is.map(i => i.obra))].join(', '), ops = [...grp(g.is, i => i.op).entries()].sort((a, b) => nat(a[0], b[0]));
+      return `<div class="nov-g"><div class="nov-h"><b>${esc(o)}</b><span>${g.n.creada ? dias(g.n.creada) : ''}</span></div>
+        <div class="nov-m">⏸ <b>${esc(g.n.motivo || 'Novedad')}</b>${g.n.detalle ? ' · ' + esc(g.n.detalle) : ''}</div>
+        <div class="nov-s">${g.n.creada ? fechaHora(g.n.creada) : ''}${g.n.quien ? ' · reportó ' + esc(g.n.quien) : ''}${g.is[0].ensamblador ? ' · ensamblador <b>' + esc([...new Set(g.is.map(i => i.ensamblador))].join(', ')) + '</b>' : ''}</div>
+        ${ops.map(([op, is]) => `<div class="nov-op">OP <b>${esc(op)}</b> · ${is.map(i => esc(i.op_instalacion || i.item || '')).sort(nat).join(', ')}${is[0].diseno ? ` <span>· ${esc(is[0].diseno)}</span>` : ''}</div>`).join('')}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn sm" onclick="ensNovIr(${k})">Ver en la obra</button>${puedeRegistrar() ? `<button class="btn sm ghost" onclick="ensNovReanudarG(${k})">▶ Reanudar ${fmtN(g.is.length)}</button>` : ''}</div></div>`; }).join('')}`;
+  window._novG = grupos;
+}
+function ensNovIr(k){ const g = (window._novG || [])[k]; if(!g) return; const i0 = g.is[0]; closeSheet(); openObra(i0.obra, false, '', {estado: 'ESPERA', op: '', q: ''}); }
+async function ensNovReanudarG(k){
+  const g = (window._novG || [])[k]; if(!g) return; const ids = g.is.map(i => i.id);
+  if(await ensChkUnaOp(g.is[0].ensamblador, g.is[0].op, ids) === false) return;
+  const nota = prompt('¿Qué se hizo? (opcional, ej. llegó el vidrio nuevo)', ''); if(nota === null) return;
+  try{ const rows = await API.ensReanudar(ids, nota); if(typeof mergeRows === 'function') mergeRows(rows); toast('▶ Ensamble reanudado · ' + fmtN(ids.length) + ' ítems'); ensNovGlobal(); }
+  catch(e){ toast(errMsg(e), true); }
 }
 async function ensReanudarUI(ids){
   const l = ids.map(byId).filter(Boolean).filter(enEspera); if(!l.length) return;
