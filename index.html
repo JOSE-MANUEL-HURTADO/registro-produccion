@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.84';
+const APP_VERSION = '7.85';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2080,7 +2080,10 @@ function docMostrar(html, titulo, pie, hist){
 const MO_SMMLV = {2023: [1160000, 140606], 2024: [1300000, 162000], 2025: [1423500, 200000], 2026: [1750905, 249095]};
 const moSM = y => MO_SMMLV[y] || MO_SMMLV[y < 2023 ? 2023 : 2026];
 const MO_DEF = {exonerado: true, arl: 4.35, prima: 8.33, ces: 8.33, intCes: 1, vac: 4.17, pension: 12, caja: 4, salud: 8.5, sena: 2, icbf: 3,
-  est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null}, indirectos: ['JOHANA HERRERA']};
+  est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null}, indirectos: ['JOHANA HERRERA'], direccion: ['JOSE MANUEL HURTADO'],
+  // Operarios de Ártica por estación (el día de cada uno se reparte por los m² que pasaron por su estación)
+  artCrew: {corte: ['DEIVIS VERGARA', 'WILMAR ORTEGON'], pulido: ['EIMER ADRIAN'], mecanizado: ['JAVIER PARRA'], templado: ['JAVIER PARRA'],
+    lavado: ['FERNANDO CARDOZO', 'ALVARO ALDANA'], forrado: ['FERNANDO CARDOZO', 'ALVARO ALDANA']}};
 const MO_TRES = ['cortado', 'troquelado', 'mecanizado'];
 const MO_PROC = [['cortado', 'Corte'], ['troquelado', 'Troquelado'], ['mecanizado', 'Mecanizado'], ['vidrio_proc', 'Vidrio']];
 // Ventanas de la jornada (horas decimales) y horas de un intervalo de trabajo que caen dentro de la jornada de un día
@@ -2104,7 +2107,7 @@ const moHorasDia = d => { const w = new Date(d + 'T12:00:00').getDay(); if(w ===
 const moHorasMes = (() => { const c = {}; return ym => { if(c[ym] != null) return c[ym]; const [y, m] = ym.split('-').map(Number); let h = 0;
   for(let d = 1; d <= new Date(y, m, 0).getDate(); d++) h += moHorasDia(`${ym}-${String(d).padStart(2, '0')}`); return c[ym] = h; }; })();
 const moSig = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
-const moPar = () => { const p = {...MO_DEF, ...(MO.par || {})}; p.est = {...MO_DEF.est, ...((MO.par || {}).est || {})}; return p; };
+const moPar = () => { const p = {...MO_DEF, ...(MO.par || {})}; p.est = {...MO_DEF.est, ...((MO.par || {}).est || {})}; p.artCrew = {...MO_DEF.artCrew, ...((MO.par || {}).artCrew || {})}; return p; };
 const moCarga = (p = moPar()) => p.prima + p.ces + p.intCes + p.vac + p.pension + p.caja + (+p.arl || 0) + (p.exonerado ? 0 : p.salud + p.sena + p.icbf);
 const moSinTilde = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
 // Persona de la nómina que corresponde a un nombre de la app: la que se eligió, o la única cuyo nombre contiene todas las palabras
@@ -2140,7 +2143,7 @@ async function moDatos(obra){
   const propios = await API.all(o => API.sb.from('items').select(MO_COLS, o).eq('obra', obra).order('id'));
   if(!propios.length) throw new Error('La obra no tiene ítems');
   const fechas = propios.flatMap(i => [i.dia_inicio, i.dia_final, i.instalado && i.fecha_instalacion, ...[...MO_PROC, ['prealistado']].map(([k]) => moDiaEn(i[k + '_en']))]).filter(Boolean).sort();
-  if(!fechas.length) return {propios, todos: propios, asis: [], desde: null, hasta: null};
+  if(!fechas.length) return {propios, todos: propios, asis: [], art: [], artObraM2: 0, desde: null, hasta: null};
   const desde = fechas[0], hasta = fechas[fechas.length - 1] > today() ? today() : fechas[fechas.length - 1];
   const t0 = new Date(desde + 'T00:00:00-05:00').toISOString(), t1 = new Date(moSig(hasta) + 'T00:00:00-05:00').toISOString();
   const [ens, ins, pro, asis] = await Promise.all([
@@ -2149,16 +2152,22 @@ async function moDatos(obra){
     API.all(o => API.sb.from('items').select(MO_COLS, o).or([...MO_PROC, ['prealistado']].map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
     API.sb.from('asistencia').select('*').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || [])]);
   const m = new Map(); for(const i of [...ens, ...ins, ...pro, ...propios]) m.set(i.id, i);
-  return {propios, todos: [...m.values()], asis, desde, hasta};
+  // Ártica: escaneos por estación (rango de la obra y últimos 90 días para medir el costo por m²) y lo escaneado de esta obra
+  const a0 = new Date(Math.min(new Date(t0).getTime(), Date.now() - 90 * 864e5)).toISOString();
+  const art = await API.all(o => API.sb.from('art_registros').select('estacion,creado,n,p:art_piezas(obra,cliente,tercero,ancho,alto)', o).gte('creado', a0).order('id')).catch(() => []);
+  const artObra = await API.all(o => API.sb.from('art_registros').select('n,p:art_piezas!inner(obra,ancho,alto,tercero)', o).eq('estacion', 'corte').eq('p.obra', obra).eq('p.tercero', false).order('id')).catch(() => []);
+  return {propios, todos: [...m.values()], asis, desde, hasta, art, artObraM2: artObra.reduce((a, r) => a + (r.p ? (+r.p.ancho || 0) * (+r.p.alto || 0) / 1e6 * (+r.n || 1) : 0), 0)};
 }
 function moCalcular(D, obra){
   const p = moPar(), hoy = today(), ahora = (() => { const n = new Date(); return n.getHours() + n.getMinutes() / 60; })();
-  const R = {obra, comp: {ens: 0, inst: 0, proc: 0, est: 0, cargue: 0, ind: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
+  const R = {obra, comp: {ens: 0, inst: 0, proc: 0, est: 0, cargue: 0, art: 0, artEst: 0, ind: 0, dir: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
   const dias = {};   // persona → día → {ens:[], inst:[], proc:[], cargue:[]}
   const planta = {}; // día → obra → costo de planta (ensamble + procesos), para repartir el apoyo de planta
   const claim = (nom, d, rol, ob, w, extra) => { if(!d || !nom || !(w > 0)) return; const per = moPersona(nom); if(per.tipo === 'ignorar') return;
     if(per.tipo === 'contratista'){ if(ob === obra && extra){ const c = R.contr[per.k] = R.contr[per.k] || {u: 0, m2: 0, rol}; c.u += 1; c.m2 += +extra.m2 || 0; } return; }
-    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: [], cargue: []}; x[rol].push({ob, w}); };
+    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: [], cargue: [], art: []}; x[rol].push({ob, w}); };
+  const directo = {}; // día → obra → costo directo de todo (para repartir la dirección de operaciones)
+  const artKey = pz => pz.tercero ? 'Cliente Ártica · ' + (pz.cliente || '—') : pz.obra;
   const asisDia = {}; for(const a of D.asis) asisDia[a.fecha + '|' + a.tipo + '|' + normNom(a.clave)] = a;
   const fuera = (nom, d) => { const a = asisDia[d + '|ensamble|' + normNom(nom)]; return a && !['planta'].includes(a.estado); };
   const obras = [...new Set(D.todos.map(i => i.obra))];
@@ -2179,6 +2188,10 @@ function moCalcular(D, obra){
       const op = (a && a.operario) || AS_OPER[k]; if(op) claim(op, d, 'proc', i.obra, Math.max(0.5, +i.m2 || 0)); }
     { const d = moDiaEn(i.prealistado_en), e = i.ensamblador || i.ens_asignado; if(d && e) claim(e, d, 'ens', i.obra, 0.5); }
   }
+  // Ártica: cada escaneo reparte el día de los operarios de esa estación por m²
+  for(const g of D.art || []){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(d < D.desde || d > D.hasta) continue;
+    const m2 = Math.max(0.05, (+pz.ancho || 0) * (+pz.alto || 0) / 1e6 * (+g.n || 1));
+    for(const q of p.artCrew[g.estacion] || []) claim(q, d, 'art', artKey(pz), m2); }
   for(const a of D.asis){
     // Asistencia "en obra": si el motivo es una obra, ese día es de la obra
     if(a.tipo === 'ensamble' && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
@@ -2192,18 +2205,37 @@ function moCalcular(D, obra){
     const H = moHorasDia(d); if(!H) continue;
     const ym = d.slice(0, 7), ch = moCostoHora(P.per, ym).hora;
     const hc = Math.min(H, x.cargue.reduce((a, c) => a + c.w, 0));
-    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); if(c.ob === obra) sum(P.per, 'cargue', h * ch, h, ym); }
-    const roles = ['ens', 'inst', 'proc'].filter(r => x[r].length), Hr = H - hc;
+    const dd = directo[d] = directo[d] || {};
+    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); dd[c.ob] = (dd[c.ob] || 0) + h * ch; if(c.ob === obra) sum(P.per, 'cargue', h * ch, h, ym); }
+    const roles = ['ens', 'inst', 'proc', 'art'].filter(r => x[r].length), Hr = H - hc;
     for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0);
       const porOb = {}; for(const c of x[r]) porOb[c.ob] = (porOb[c.ob] || 0) + c.w;
       for(const [ob, w] of Object.entries(porOb)){ const h = Hr / roles.length * w / tot;
-        if(r !== 'inst'){ const pd = planta[d] = planta[d] || {}; pd[ob] = (pd[ob] || 0) + h * ch; }
+        if(r === 'ens' || r === 'proc'){ const pd = planta[d] = planta[d] || {}; pd[ob] = (pd[ob] || 0) + h * ch; }
+        dd[ob] = (dd[ob] || 0) + h * ch;
         if(ob === obra) sum(P.per, r, h * ch, h, ym); } }
   }
   // Apoyo de planta (asistente que escanea): su día se reparte según el costo de planta de cada obra ese día
   for(const nom of (p.indirectos || [])){ const per = moPersona(nom); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
     for(const [d, pd] of Object.entries(planta)){ const H = moHorasDia(d), tot = Object.values(pd).reduce((a, b) => a + b, 0); if(!H || !tot || !pd[obra]) continue;
       const ym = d.slice(0, 7), h = H * pd[obra] / tot; sum(per, 'ind', h * moCostoHora(per, ym).hora, h, ym); } }
+  // Dirección de operaciones: el día del director se reparte según el costo directo de cada obra (y clientes de Ártica) ese día
+  for(const nom of (p.direccion || [])){ const per = moPersona(nom); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
+    for(const [d, pd] of Object.entries(directo)){ const H = moHorasDia(d), tot = Object.values(pd).reduce((a, b) => a + b, 0); if(!H || !tot || !pd[obra]) continue;
+      const ym = d.slice(0, 7), h = H * pd[obra] / tot; sum(per, 'dir', h * moCostoHora(per, ym).hora, h, ym); } }
+  // Ártica antes del escáner: costo por m² medido con el escáner (últimos 90 días) × m² de vidrio de la obra que no pasó por el escáner
+  { const med = {c: 0, m2: 0, dias: new Set()};
+    const porDia = {}; for(const g of D.art || []){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(!moHorasDia(d)) continue;
+      const x = porDia[d] = porDia[d] || {gente: new Set(), m2: 0}; for(const q of p.artCrew[g.estacion] || []) x.gente.add(q);
+      if(g.estacion === 'corte') x.m2 += (+pz.ancho || 0) * (+pz.alto || 0) / 1e6 * (+g.n || 1); }
+    for(const [d, x] of Object.entries(porDia)){ if(!x.m2) continue; med.dias.add(d); med.m2 += x.m2;
+      for(const q of x.gente){ const per = moPersona(q); if(['nomina', 'minimo'].includes(per.tipo)) med.c += moHorasDia(d) * moCostoHora(per, d.slice(0, 7)).hora; } }
+    R.artMed = {cm2: med.m2 ? med.c / med.m2 : 0, dias: med.dias.size, m2: med.m2};
+    const fab = D.propios.filter(i => i.dia_final), fabM2 = fab.reduce((a, i) => a + (+i.m2 || 0), 0), falta = fabM2 > 0 ? Math.max(0, 1 - (D.artObraM2 || 0) / fabM2) : 0;
+    R.artEstM2 = fabM2 * falta;
+    if(R.artMed.cm2 > 0 && falta > 0) for(const i of fab){ const y = +i.dia_final.slice(0, 4), f = moSM(y)[0] / MO_SMMLV[2026][0], c = (+i.m2 || 0) * falta * R.artMed.cm2 * f;
+      if(c > 0){ R.comp.artEst += c; const ym = i.dia_final.slice(0, 7); R.mes[ym] = (R.mes[ym] || 0) + c; } }
+  }
   // Procesos antes del escáner: minutos estimados por unidad × costo hora del operario habitual
   for(const i of D.propios) for(const [k] of MO_PROC){
     if(!['X', '+'].includes(i[k]) || i[k + '_en']) continue;
@@ -2219,7 +2251,7 @@ function moCalcular(D, obra){
   return R;
 }
 const moCOP = v => '$ ' + fmtN(Math.round(v || 0));
-const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', ind: 'Apoyo de planta'};
+const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', art: 'Vidrio Ártica', ind: 'Apoyo de planta', dir: 'Dirección de operaciones'};
 function moHTML(R){
   const p = moPar(), carga = moCarga(p), hoy = today();
   const pers = Object.values(R.per).sort((a, b) => b.c - a.c);
@@ -2228,7 +2260,10 @@ function moHTML(R){
     ['proc', 'Procesos con escáner', 'Días del operario de cada proceso repartidos por los m² procesados ese día.'],
     ['est', 'Procesos antes del escáner', `Tiempo estimado${p.estItem ? ' (' + fmtN(p.estItem) + ' min por ítem entre corte, troquelado y mecanizado)' : ''} × costo hora del operario habitual de cada proceso.`],
     ['cargue', 'Cargue de camión', 'Horas de cargue registradas en la asistencia para esta obra.'],
-    ['ind', 'Apoyo de planta', 'Asistente de planta: su día se reparte entre las obras según el trabajo de planta de cada una ese día.']];
+    ['art', 'Vidrio Ártica (escáner)', 'Días de los operarios de cada estación de Ártica repartidos por los m² de vidrio que pasaron por su estación ese día.'],
+    ['artEst', 'Vidrio Ártica (estimado)', R.artMed && R.artMed.cm2 ? `${fmtN(R.artEstM2, 1)} m² de vidrio sin registro de escáner × ${moCOP(R.artMed.cm2)}/m² (costo medido con el escáner en ${fmtN(R.artMed.dias)} día${R.artMed.dias === 1 ? '' : 's'}).` : 'Sin medición del escáner de Ártica todavía.'],
+    ['ind', 'Apoyo de planta', 'Asistente de planta: su día se reparte entre las obras según el trabajo de planta de cada una ese día.'],
+    ['dir', 'Dirección de operaciones', 'El día del director se reparte entre todas las obras (y clientes de Ártica) según el costo directo de cada una ese día.']];
   const meses = Object.entries(R.mes).sort();
   const mx = Math.max(1, ...meses.map(m => m[1]));
   const fu = {asignado: 'Nómina', auto: 'Nómina', minimo: 'Salario mínimo*'};
@@ -2283,7 +2318,8 @@ async function moCfgCargar(){
     const [e, i] = await Promise.all([API.all(o => API.sb.from('items').select('ensamblador', o).gte('dia_inicio', desde).not('ensamblador', 'is', null).order('id')),
       API.all(o => API.sb.from('items').select('instalador', o).gte('fecha_instalacion', desde).not('instalador', 'is', null).order('id'))]);
     const c = {}; const add = (n, r) => { const k = normNom(n); if(!k) return; c[k] = c[k] || {n: 0, r: new Set()}; c[k].n++; c[k].r.add(r); };
-    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1])); (moPar().indirectos || []).forEach(n => add(n, 'Apoyo de planta'));
+    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1])); (moPar().indirectos || []).forEach(n => add(n, 'Apoyo de planta')); (moPar().direccion || []).forEach(n => add(n, 'Dirección de operaciones'));
+    Object.entries(moPar().artCrew).forEach(([k, l]) => l.forEach(n => add(n, 'Ártica ' + k)));
     MO.app = Object.entries(c).sort((a, b) => b[1].n - a[1].n);
   }catch(err){ MO.err = /mo_|PGRST205|42P01/.test(errMsg(err) + (err.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(err); }
   renderMO();
@@ -2306,6 +2342,9 @@ function renderMO(){
       <div class="field"><span class="lbl">Promedio por ítem (corte + troquelado + mecanizado, se reparte en partes iguales)</span><input type="number" step="1" min="0" id="moEstItem" value="${p.estItem ?? ''}" placeholder="Ej. 20"></div>
       <div class="cot-d">Si escribe un tiempo propio para un proceso, ese reemplaza el promedio en ese proceso.</div>
       <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
+      <div class="field" style="margin-top:8px"><span class="lbl">Dirección de operaciones (separados por coma) · su costo se reparte entre todas las obras según el costo directo del día</span><input id="moDir" value="${esc((p.direccion || []).join(', '))}"></div>
+      <div class="cot-h" style="margin-top:12px">Operarios de Ártica por estación (separados por coma)</div>
+      <div class="fgrid">${ART_EST.map(([k, n]) => `<div class="field"><span class="lbl">${n}</span><input class="moCrew" data-k="${k}" value="${esc((p.artCrew[k] || []).join(', '))}"></div>`).join('')}</div>
       <div class="field" style="margin-top:8px"><span class="lbl">Apoyo de planta (separados por coma) · su costo se reparte entre las obras según el trabajo de planta del día</span><input id="moInd" value="${esc((p.indirectos || []).join(', '))}"></div>
       <button class="btn primary" style="margin-top:8px" onclick="moGuardarPar()">Guardar parámetros</button></div>
     <div class="cot-box"><div class="cot-h">Personas en la app → nómina</div><div class="cot-d">Cómo aparece cada ensamblador, instalador u operario en la app y a quién de la nómina corresponde. Los contratistas no suman costo de nómina (se muestran aparte con lo que instalaron).</div>
@@ -2317,7 +2356,8 @@ function renderMO(){
 }
 async function moGuardarPar(){
   const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
-  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, estItem: $('#moEstItem').value === '' ? null : +$('#moEstItem').value, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean)};
+  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, estItem: $('#moEstItem').value === '' ? null : +$('#moEstItem').value, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean), direccion: $('#moDir').value.split(',').map(normNom).filter(Boolean),
+    artCrew: Object.fromEntries([...document.querySelectorAll('.moCrew')].map(i => [i.dataset.k, i.value.split(',').map(normNom).filter(Boolean)]))};
   const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
   MO.par = par; toast('✓ Parámetros guardados'); renderMO();
 }
