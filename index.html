@@ -556,7 +556,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.61';
+const APP_VERSION = '7.62';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2105,7 +2105,7 @@ async function artVidriosItem(op){
 // ── Faltantes de material en corte: al marcar el corte parcial (+) se elige el perfil HSP que no alcanzó ──
 const faltDe = id => (S.falt || []).filter(f => !f.resuelta && (f.item_ids || []).map(Number).includes(Number(id)));
 async function cargarFaltantes(obra){ try{ S.falt = await API.faltantes(obra); }catch(e){ S.falt = null; } }
-const PERF = new Map();   // OP → perfiles HSP leídos de la orden PDF
+const PERF = new Map(), ACCS = new Map();   // OP → perfiles HSP y accesorios HSA leídos de la orden PDF
 async function perfilesDeOp(op){
   if(PERF.has(op)) return PERF.get(op);
   const num = String(op).split('-')[0];
@@ -2116,10 +2116,85 @@ async function perfilesDeOp(op){
     for(const o of r.ops){
       const m = new Map(); for(const x of (o.perfiles || [])){ const k = x.ref + '|' + (x.medida || ''); if(!m.has(k)) m.set(k, x); }
       PERF.set(o.op, [...m.values()].sort((a, b) => nat(a.ref, b.ref) || (a.medida || 0) - (b.medida || 0)));
+      const ma = new Map(); for(const x of (o.accesorios || [])){ const k = x.ref + '|' + (x.medida || ''); if(!ma.has(k)) ma.set(k, x); }
+      ACCS.set(o.op, [...ma.values()]);
     }
   }catch(e){ console.warn('perfiles', e); }
   if(!PERF.has(op)) PERF.set(op, []);
+  if(!ACCS.has(op)) ACCS.set(op, []);
   return PERF.get(op);
+}
+async function accesoriosDeOp(op){ if(!ACCS.has(op)) await perfilesDeOp(op); return ACCS.get(op) || []; }
+
+// ── Falta material en ENSAMBLE: se elige el accesorio (HSA) de la OP que faltó; solo las unidades a las que no les alcanza quedan EN ESPERA ──
+const NOV_FALTA = 'Falta material';
+async function accFaltaSheet(rows, alFinal){
+  const porOp = [...grp(rows.filter(r => r.op), r => r.op).entries()];
+  if(!porOp.length) return;
+  const [op, l0] = porOp[0], l = [...l0].sort((a, b) => nat(a.op_instalacion, b.op_instalacion)), resto = porOp.slice(1).flatMap(x => x[1]);
+  const seguir = () => { if(resto.length) setTimeout(() => accFaltaSheet(resto, alFinal), 300); else if(alFinal) alFinal(); };
+  openSheet('⏸ Falta material en ensamble', `OP ${esc(op)} · ${fmtN(l.length)} unidad${l.length === 1 ? '' : 'es'} en ensamble`,
+    `<div id="afBody"><div class="loading"><div class="spin"></div>Leyendo los accesorios de la orden ${esc(op)}…</div></div>`, 'Poner en espera', async () => {
+      const num = id => { const v = parseFloat(String(($('#' + id) || {}).value || '').replace(',', '.')); return isFinite(v) && v > 0 ? v : null; };
+      const sel = [];
+      for(const c of document.querySelectorAll('.afCk:checked')){ const k = +c.value, x = window._acc[k], n = num('afN' + k);
+        if(n == null){ toast(`Escribe cuántas faltaron de ${x.ref}`, true); const i = $('#afN' + k); if(i) i.focus(); return false; }
+        sel.push({...x, cant: n}); }
+      const otro = String(($('#afOtro') || {}).value || '').trim().toUpperCase();
+      if(otro){ const n = num('afOtroN'); if(n == null){ toast('Escribe cuántas faltaron de ' + otro, true); return false; } sel.push({ref: otro, desc: null, cant: n, medida: null}); }
+      if(!sel.length){ toast('Marca el accesorio que faltó, o escribe cuál en "Otro"', true); return false; }
+      const afect = l.filter(i => ($('#afU' + i.id) || {}).checked);
+      if(!afect.length){ toast('Marca al menos una unidad que queda en espera', true); return false; }
+      const nota = String(($('#afNota') || {}).value || '').trim() || null;
+      const det = sel.map(x => `${x.ref}${x.desc ? ' ' + x.desc : ''} ×${fmtN(x.cant)}`).join(' · ') + (nota ? ' · ' + nota : '');
+      try{
+        const r = await API.ensNovedadCrear(afect.map(i => i.id), NOV_FALTA, det); ENSNOV[r.id] = r;
+        for(const it of afect){ it.ens_novedad_id = r.id; const x = S.items && S.items.find(y => y.id === it.id); if(x) x.ens_novedad_id = r.id; }
+        const subA = afect.map(i => i.op_instalacion).filter(Boolean);
+        try{ const nuevos = await API.faltanteCrear(sel.map(x => ({obra: l[0].obra, op, item_ids: afect.map(i => i.id), op_inst: subA, proceso: 'ensamble', novedad_id: r.id,
+            ref: x.ref, descripcion: x.desc, cant: x.cant, medida: x.medida, nota, quien: (S.perfil && S.perfil.nombre) || null})));
+          if(S.falt && S.obra === l[0].obra) S.falt = nuevos.concat(S.falt); }
+        catch(e){ console.warn(e); toast('Quedó en espera, pero no se guardó el detalle del faltante: ' + errMsg(e), true); }
+        if(typeof SC !== 'undefined' && SC.log && S.view === 'scan'){ SC.log.unshift({hora: nowTime(), op: subA.length === 1 ? subA[0] : op, est: '⏸ Falta ' + sel.map(x => x.ref).join(', '), n: afect.length, tot: l.length, obra: l[0].obra}); try{ renderScanLog(); }catch(e){} }
+        toast(`⏸ En espera por falta de ${sel.map(x => x.ref).join(', ')}: ${subA.join(', ')}${afect.length < l.length ? ' · las demás siguen en ensamble' : ''}`);
+        try{ faltRefrescar(); }catch(e){}
+      }catch(e){ toast(/ens_novedad|function/.test(errMsg(e)) ? 'Falta correr el SQL 72 en Supabase (' + errMsg(e) + ')' : errMsg(e), true); return false; }
+      seguir();
+    });
+  const acc = await accesoriosDeOp(op); window._acc = acc;
+  try{ const {count} = await API.sb.from('items').select('id', {count: 'exact', head: true}).eq('op', op); window._afNU = count || l.length; }catch(e){ window._afNU = l.length; }
+  window._afL = l;
+  const N = Math.max(1, window._afNU), box = $('#afBody'); if(!box) return;
+  const pu = x => x.cant != null ? x.cant / N : null;
+  box.innerHTML = `${acc.length ? `<div class="sc-note" style="margin-bottom:6px">Marca el accesorio que faltó y escribe <b>cuántos faltaron</b>. La OP ${esc(op)} es de <b>${fmtN(N)} unidad${N === 1 ? '' : 'es'}</b>: al lado de cada uno sale cuánto lleva <b>cada unidad</b>.</div>
+      <input id="afQ" placeholder="Buscar accesorio (ej. HSA005 o cierre)…" autocomplete="off" oninput="accFaltFiltro(this.value)" style="margin-bottom:4px">
+      <div style="max-height:38vh;overflow:auto;flex:none">${acc.map((x, k) => `<div class="af-row" data-t="${esc((x.ref + ' ' + (x.desc || '')).toUpperCase())}" style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px">
+        <input type="checkbox" class="afCk" id="afCk${k}" value="${k}" onchange="const i=document.getElementById('afN${k}'); i.style.visibility=this.checked?'visible':'hidden'; if(this.checked) i.focus(); accFaltPintar()">
+        <label for="afCk${k}" style="flex:1;cursor:pointer"><b>${esc(x.ref)}</b> ${esc(x.desc || '')}<br><small class="mono" style="color:var(--text2)">${pu(x) != null ? `<b>${fmtN(pu(x), 2)}</b> por unidad · ${fmtN(x.cant)} en la OP` : 'En la OP: —'}${x.medida ? ' · ' + fmtN(x.medida) + ' mm' : ''}</small></label>
+        <input id="afN${k}" type="number" inputmode="decimal" min="0" step="any" placeholder="¿Cuántos?" style="width:96px;visibility:hidden" oninput="accFaltPintar()"></div>`).join('')}</div>`
+      : `<div class="warn">No encontré los accesorios en la orden PDF de la OP ${esc(op)} (puede que la orden no esté cargada). Escribe la referencia abajo.</div>`}
+    <div class="fgrid" style="margin-top:10px"><div class="field"><span class="lbl">Otro (si no está en la lista)</span><input id="afOtro" placeholder="Ej. HSA005" autocapitalize="characters" autocomplete="off" oninput="accFaltPintar()"></div>
+      <div class="field"><span class="lbl">Cuántos faltaron</span><input id="afOtroN" type="number" inputmode="decimal" min="0" step="any" placeholder="¿Cuántos?" oninput="accFaltPintar()"></div>
+      <div class="field"><span class="lbl">Nota (opcional)</span><input id="afNota" placeholder="Ej. el almacén no tenía"></div></div>
+    <div class="field" style="margin-top:6px"><span class="lbl">Unidades que quedan en espera</span><div id="afUs" style="display:flex;flex-wrap:wrap;gap:6px 14px">${l.map(i => `<label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="checkbox" id="afU${i.id}" onchange="window._afMan=true;accFaltPintar(true)"> ${esc(i.op_instalacion || i.op)}</label>`).join('')}</div></div>
+    <div id="afRes" class="summary" style="margin-top:8px"></div>`;
+  window._afMan = false; accFaltPintar();
+}
+function accFaltFiltro(q){ q = String(q || '').toUpperCase().trim(); document.querySelectorAll('.af-row').forEach(r => { r.style.display = !q || r.dataset.t.includes(q) || r.querySelector('.afCk').checked ? '' : 'none'; }); }
+// Unidades sin material: lo que faltó ÷ lo que lleva cada unidad (cantidad de la OP ÷ unidades de la OP)
+function accFaltPintar(manual){
+  const l = window._afL, box = $('#afRes'); if(!l || !box) return;
+  const N = Math.max(1, window._afNU || l.length), v = id => { const n = parseFloat(String(($('#' + id) || {}).value || '').replace(',', '.')); return isFinite(n) && n > 0 ? n : 0; };
+  const sel = [...document.querySelectorAll('.afCk:checked')].map(c => ({...window._acc[+c.value], falta: v('afN' + c.value)}));
+  if(v('afOtroN') && ($('#afOtro') || {}).value) sel.push({ref: $('#afOtro').value.trim().toUpperCase(), cant: null, falta: v('afOtroN')});
+  let k = 0, txt = [];
+  for(const x of sel){ if(!x.falta) continue; const porU = x.cant ? x.cant / N : null, u = porU ? Math.ceil(x.falta / porU - 1e-9) : l.length;
+    k = Math.max(k, u); txt.push(`${esc(x.ref)}: faltan ${fmtN(x.falta)}${porU ? ` (lleva ${fmtN(porU, 2)} por unidad) → <b>${fmtN(Math.min(u, l.length))} unidad${u === 1 ? '' : 'es'}</b>` : ''}`); }
+  k = Math.min(l.length, k);
+  if(!manual && !window._afMan) l.forEach((i, j) => { const c = $('#afU' + i.id); if(c) c.checked = j >= l.length - k; });
+  const n = l.filter(i => ($('#afU' + i.id) || {}).checked).length;
+  box.innerHTML = !txt.length ? `Marca el accesorio y cuántos faltaron. Hay <b>${fmtN(l.length)}</b> unidad${l.length === 1 ? '' : 'es'} de esta OP en ensamble.`
+    : `${txt.join('<br>')}<br>Quedan <b>en espera</b>: <b>${fmtN(n)}</b> de ${fmtN(l.length)}${n < l.length ? ' · las demás siguen en ensamble' : ''}${window._afMan ? ' <small>(elegidas a mano)</small>' : ''}`;
 }
 async function faltanteSheet(rows){
   if(!rows || !rows.length || !(puedeRegistrar() || esPlanta())) return;
@@ -3941,6 +4016,7 @@ function ensNovSheet(items){
     const mot = window._nm, det = $('#nmDet').value.trim();
     if(!mot){ toast('Elige el motivo', true); return false; }
     if(mot === 'Otro' && !det){ toast('Escribe el detalle', true); return false; }
+    if(mot === NOV_FALTA){ setTimeout(() => accFaltaSheet(ok, () => { renderList(); if(S.detailId) renderDetail(); }), 50); return; }
     try{ const r = await API.ensNovedadCrear(ok.map(i => i.id), mot, det); ENSNOV[r.id] = r;
       for(const it of ok){ it.ens_novedad_id = r.id; } toast(`⏸ ${fmtN(ok.length)} en espera · ${mot}`); renderList(); if(S.detailId) renderDetail(); }
     catch(e){ toast(/ens_novedad|function/.test(errMsg(e)) ? 'Falta correr el SQL 72 en Supabase (' + errMsg(e) + ')' : errMsg(e), true); return false; }
@@ -4460,6 +4536,7 @@ async function scAplicar(l, tot, e){
     SC.log.unshift({hora: nowTime(), op: l.length === 1 ? l[0].op_instalacion : (l[0].op || ''), est: e.t + ' → acta ' + ac.num, n: l.length, tot: l.length === 1 ? 1 : tot, obra: l[0].obra, prev: [], entr: ids, acta: ac.acta_id});
     renderScanLog(); renderScanParams(); return;
   }
+  if(e.k === 'nov' && SC.novMot === NOV_FALTA){ accFaltaSheet(l, () => renderScanParams()); return; }
   if(e.k === 'nov'){
     const r = await API.ensNovedadCrear(l.map(it => it.id), SC.novMot, SC.novDet);
     for(const it of l){ it.ens_novedad_id = r.id; const x = S.items && S.items.find(y => y.id === it.id); if(x) x.ens_novedad_id = r.id; }
@@ -6488,7 +6565,7 @@ async function leerOPsPDF(data, nombre){
     const nm = one(/^N[uú]mero\s*:/i), m = nm && nm.s.match(/(\d{3,6})-(\d+)/);
     if(m){
       const op = m[1].replace(/^0+(?=\d)/, '') + '-' + m[2];
-      if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = nombre; actual.vidrios = []; actual.perfiles = []; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
+      if(!actual || actual.op !== op){ actual = ordenPagina(it, op); actual.archivo = nombre; actual.vidrios = []; actual.perfiles = []; actual.accesorios = []; ops.push(actual); num = m[1].replace(/^0+(?=\d)/, ''); }
     }
     else if(!m){
       // OP de clientes de Ártica: "ORDEN DE PRODUCCION 6585-1", cliente y medidas en metros
@@ -6601,10 +6678,21 @@ function vidriosPagina(it, o){
   for(const t of [...it].sort((a, b) => b.y - a.y || a.x - b.x)){ let f = filas.find(r => Math.abs(r.y - t.y) < 2.5); if(!f){ f = {y: t.y, t: []}; filas.push(f); } f.t.push(t); }
   const norm = x => String(x || '').toUpperCase().replace(/\s+/g, ' ').trim();
   const heads = [o.vidrioCorto, o.vidrio2Corto].filter(Boolean).map(norm);
+  // Columnas de la lista de materiales (Referencia · Cantidad · Medidas · Corte) para leer los accesorios por posición
+  const rf = it.find(t => /^Referencia$/i.test(t.s)), hx = re => (it.find(t => re.test(t.s) && (!rf || Math.abs(t.y - rf.y) < 3)) || {}).x;
+  const xCant = hx(/^Cantidad$/i), xMed = hx(/^Medidas$/i), xCor = hx(/^Corte$/i);
   for(const f of filas){
     const s = f.t.sort((a, b) => a.x - b.x).map(t => t.s).join(' ').replace(/\s+/g, ' ').trim();
     if(/^(HS[PA]\d|RECTA|RETIC)/i.test(s) || /^[A-Z]{2,}\d{3,}\b/.test(s)){
       o.alum = true;
+      // Accesorios (HSA…): referencia y descripción en la primera columna; cantidad y medida por su columna
+      const ma = f.t[0] && f.t[0].s.match(/^(HSA\d+[A-Z]?)\s+(.*)$/i);
+      if(ma && o.accesorios){
+        const c1 = xCant != null ? xCant - 30 : 140, c2 = xMed != null ? xMed - 35 : 200, c3 = xCor != null ? xCor - 20 : 300;
+        const cant = f.t.find(t => t.x >= c1 && t.x < c2 && /^\d+([.,]\d+)?$/.test(t.s)), med = f.t.find(t => t.x >= c2 && t.x < c3 && /^\d+$/.test(t.s));
+        o.accesorios.push({ref: ma[1].toUpperCase(), desc: ma[2].trim(), cant: cant ? +cant.s.replace(',', '.') : null, medida: med ? +med.s : null});
+        continue;
+      }
       // Perfiles de aluminio (HSP…): referencia, descripción, cantidad y medida de corte
       const mp = s.match(/^(HSP\d+[A-Z]?)\s+(.+?)\s+(\d{1,4})(?:\s+(\d{2,6}))?(?:\s|$)/i);
       if(mp && o.perfiles) o.perfiles.push({ref: mp[1].toUpperCase(), desc: mp[2].trim(), cant: +mp[3], medida: mp[4] ? +mp[4] : null});

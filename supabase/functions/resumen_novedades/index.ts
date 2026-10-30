@@ -1,5 +1,5 @@
 // ELÍPTICA · Edge Function "resumen_novedades"
-// También envía cada 2 horas (pg_cron, body {tipo:"faltante"}) UN correo con los faltantes de material en corte nuevos a compras e inventario.
+// También envía cada 2 horas (pg_cron, body {tipo:"faltante"}) UN correo con los faltantes de material nuevos (corte y ensamble) a compras e inventario.
 // Al final de la jornada (6:00 p. m., la llama la base con pg_cron) envía a cobros UN correo por obra
 // con el PDF de las novedades de instalación del día (fecha y hora del servidor, motivo, ítems y fotos).
 // Secretos necesarios (Edge Functions → Secrets): GMAIL_USER y GMAIL_APP_PASSWORD.
@@ -84,7 +84,7 @@ export async function pdfObra(obra: string, novs: Nov[], items: Map<number, It>,
 }
 
 // ── Faltantes de material en corte: correo inmediato a compras e inventario (SQL 81) ──
-type Falt = { id: number; obra: string | null; op: string; op_inst: string[]; ref: string; descripcion: string | null; cant: number | null; medida: number | null; nota: string | null; quien: string | null; creada: string };
+type Falt = { id: number; obra: string | null; op: string; proceso?: string | null; op_inst: string[]; ref: string; descripcion: string | null; cant: number | null; medida: number | null; nota: string | null; quien: string | null; creada: string };
 const e = (t: unknown) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const n0 = (v: number | null) => v == null ? "" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 2 });
 async function correoFaltantes(ids: number[] | null, usuario: string, clave: string) {
@@ -103,19 +103,19 @@ async function correoFaltantes(ids: number[] | null, usuario: string, clave: str
   const abiertos = ((ab || []) as Falt[]).filter((f) => !l.some((x) => x.id === f.id));
   const tabla = (fs: Falt[]) => {
     const g = new Map<string, Falt[]>();
-    for (const f of fs) { const k = (f.obra || "") + "|" + f.op; if (!g.has(k)) g.set(k, []); g.get(k)!.push(f); }
+    for (const f of fs) { const k = (f.obra || "") + "|" + f.op + "|" + (f.proceso || "corte"); if (!g.has(k)) g.set(k, []); g.get(k)!.push(f); }
     return [...g.values()].map((x) => { const f0 = x[0], subs = [...new Set(x.flatMap((f) => f.op_inst || []))];
-      return `<h3 style="font-family:Arial,sans-serif;font-size:14px;margin:18px 0 6px">${e(f0.obra || "")} · OP ${e(f0.op)}${subs.length ? ` <span style="font-weight:normal;color:#555">· unidades ${e(subs.join(", "))}</span>` : ""}</h3>
-        <table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px"><tr style="background:#1e1f20;color:#fff"><th style="padding:6px 10px;text-align:left">Perfil</th><th style="padding:6px 10px;text-align:left">Descripción</th><th style="padding:6px 10px">Cantidad faltante</th><th style="padding:6px 10px">Medida de corte</th><th style="padding:6px 10px;text-align:left">Reportó</th><th style="padding:6px 10px;text-align:left">Nota</th></tr>
+      return `<h3 style="font-family:Arial,sans-serif;font-size:14px;margin:18px 0 6px">${e(f0.obra || "")} · OP ${e(f0.op)} · <span style="color:#b3261e">${f0.proceso === "ensamble" ? "ENSAMBLE (accesorios)" : "CORTE"}</span>${subs.length ? ` <span style="font-weight:normal;color:#555">· unidades ${e(subs.join(", "))}</span>` : ""}</h3>
+        <table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px"><tr style="background:#1e1f20;color:#fff"><th style="padding:6px 10px;text-align:left">Referencia</th><th style="padding:6px 10px;text-align:left">Descripción</th><th style="padding:6px 10px">Cantidad faltante</th><th style="padding:6px 10px">Medida</th><th style="padding:6px 10px;text-align:left">Reportó</th><th style="padding:6px 10px;text-align:left">Nota</th></tr>
         ${x.map((f) => `<tr><td style="padding:6px 10px;border:1px solid #ccc"><b>${e(f.ref)}</b></td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.descripcion || "")}</td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right"><b>${n0(f.cant)}</b></td><td style="padding:6px 10px;border:1px solid #ccc;text-align:right">${f.medida ? n0(f.medida) + " mm" : ""}</td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.quien || "")} · ${fh(f.creada)}</td><td style="padding:6px 10px;border:1px solid #ccc">${e(f.nota || "")}</td></tr>`).join("")}</table>`; }).join("");
   };
   const obras = [...new Set(l.map((f) => f.obra || ""))].filter(Boolean);
-  const html = `<p style="font-family:Arial,sans-serif">Faltantes de material registrados en corte (<b>${l.length}</b> nuevo${l.length === 1 ? "" : "s"}):</p>${tabla(l)}
+  const html = `<p style="font-family:Arial,sans-serif">Faltantes de material registrados en corte y ensamble (<b>${l.length}</b> nuevo${l.length === 1 ? "" : "s"}):</p>${tabla(l)}
     ${abiertos.length ? `<p style="font-family:Arial,sans-serif;margin-top:24px;color:#555">Siguen abiertos de reportes anteriores (${abiertos.length}):</p>${tabla(abiertos)}` : ""}
     <p style="font-family:Arial,sans-serif;color:#555;margin-top:20px">Elíptica Cerramientos Translúcidos · Registro de producción · se envía cada 2 horas cuando hay faltantes nuevos</p>`;
   const smtp = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: usuario, pass: clave } });
   await smtp.sendMail({ from: `"Elíptica · Faltantes de material" <${usuario}>`, to: para.join(", "), ...(cc.length ? { cc: cc.join(", ") } : {}),
-    subject: `Faltantes de material en corte · ${l.length} nuevo${l.length === 1 ? "" : "s"}${obras.length ? " · " + obras.join(", ") : ""}`, html });
+    subject: `Faltantes de material · ${l.length} nuevo${l.length === 1 ? "" : "s"}${obras.length ? " · " + obras.join(", ") : ""}`, html });
   await db.from("faltantes").update({ correo_en: new Date().toISOString() }).in("id", l.map((f) => f.id));
   return { enviados: 1, faltantes: l.length };
 }
