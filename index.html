@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.73';
+const APP_VERSION = '7.74';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2003,24 +2003,30 @@ async function docPDF(pag, pie){
     pdf.text(pie, 15, PH - 4.5); pdf.text(`Página ${i} de ${N}`, PW - 15, PH - 4.5, {align: 'right'}); }
   return pdf.output('blob');
 }
-function pdfEntregar(blob, nombre){
+function pdfEntregar(blob, nombre, imprimir){
   const url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
   window._docArch = file;
   const puede = !!(navigator.canShare && navigator.canShare({files: [file]}));
-  openSheet('PDF listo', esc(nombre), `<div style="display:flex;flex-direction:column;gap:8px">
-    ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_docArch], title:_docArch.name}).catch(()=>{})">Compartir (WhatsApp, correo, Guardar en Archivos…)</button>` : ''}
-    <a class="btn ${puede ? '' : 'primary'}" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
-    <a class="btn" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a></div>`, 'Listo', async () => {});
+  window._docUrl = url;
+  window._docPrint = () => { try{ const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0'; f.src = url; document.body.appendChild(f);
+    f.onload = () => { try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ window.open(url, '_blank'); } setTimeout(() => f.remove(), 60000); }; }catch(e){ window.open(url, '_blank'); } };
+  openSheet(imprimir ? 'Imprimir' : 'PDF listo', esc(nombre), `<div style="display:flex;flex-direction:column;gap:8px">
+    ${imprimir ? `<a class="btn primary" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir el PDF para imprimir</a>
+      ${esIOS() ? '' : `<button class="btn" onclick="_docPrint()">Imprimir directo</button>`}
+      <div class="sc-note">Se abre el PDF; usa el botón de imprimir del visor${esIOS() ? ' (en iPhone/iPad: Compartir → Imprimir)' : ' (o ⌘P / Ctrl+P)'}.</div>` : ''}
+    ${puede ? `<button class="btn ${imprimir ? '' : 'primary'}" onclick="navigator.share({files:[_docArch], title:_docArch.name}).catch(()=>{})">Compartir (WhatsApp, correo, Imprimir…)</button>` : ''}
+    <a class="btn ${puede || imprimir ? '' : 'primary'}" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
+    ${imprimir ? '' : `<a class="btn" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>`}</div>`, 'Listo', async () => {});
 }
-async function docGuardarPDF(){
+async function docGuardarPDF(imprimir){
   const pag = $('#infRoot .inf-pag'); if(!pag) return;
   const b = $('#docPdfBtn'); if(b){ b.disabled = true; b.textContent = 'Generando PDF…'; }
   try{ const blob = await docPDF(pag, window._docPie || '');
-    pdfEntregar(blob, artArchivo(window._docTitulo || 'Documento') + '.pdf'); }
+    pdfEntregar(blob, artArchivo(window._docTitulo || 'Documento') + '.pdf', imprimir); }
   catch(e){ toast('No se pudo generar el PDF: ' + errMsg(e), true); }
   finally{ if(b){ b.disabled = false; b.innerHTML = `${ICON.down} Guardar PDF`; } }
 }
-const DOC_BAR = () => `<div class="inf-bar"><button class="btn primary" id="docPdfBtn" onclick="docGuardarPDF()">${ICON.down} Guardar PDF</button><button class="btn" onclick="informeImprimir()">Imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>`;
+const DOC_BAR = () => `<div class="inf-bar"><button class="btn primary" id="docPdfBtn" onclick="docGuardarPDF()">${ICON.down} Guardar PDF</button><button class="btn" onclick="docGuardarPDF(true)">Imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>`;
 function docMostrar(html, titulo, pie, hist){
   let st = $('#infCss'); if(!st){ st = document.createElement('style'); st.id = 'infCss'; st.textContent = INF_CSS; document.head.appendChild(st); }
   const old = $('#infRoot'); if(old) old.remove();
