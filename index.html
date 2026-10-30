@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.71';
+const APP_VERSION = '7.72';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1587,7 +1587,7 @@ function cotEditorHTML(){
     <div class="art-head"><div><div class="h1">${c.id ? cotNum(c) : 'Nueva cotización'}</div><div class="h1-sub">${c.op ? 'Convertida en la OP ' + esc(c.op) + ' · ' : ''}Vidrio por m², agrupado por tipo de vidrio</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap"><select onchange="cotSet('estado',this.value)">${est.map(x => `<option value="${x}" ${c.estado === x ? 'selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select>
       <button class="btn primary" onclick="cotGuardar()">Guardar</button><button class="btn" onclick="cotPDF()">${ICON.down} PDF</button><button class="btn" onclick="cotExcel()">${ICON.down} Excel</button>
-      <button class="btn" onclick="cotAOP()">Convertir en OP</button></div></div>
+      <button class="btn" onclick="cotAOP()">Convertir en OP</button>${isGerente() && c.id ? `<button class="btn ghost" style="color:var(--danger)" onclick="cotBorrar()">Borrar</button>` : ''}</div></div>
     <div class="cot-cards">
       <div class="cot-box"><div class="cot-h">Cliente</div><div class="fgrid">
         <div class="field"><span class="lbl">Nombre</span>${inp('cliente.nombre', cl.nombre, 'Nombre o razón social')}</div><div class="field"><span class="lbl">NIT / C.C.</span>${inp('cliente.nit', cl.nit)}</div>
@@ -1823,6 +1823,24 @@ function cotEntregar(blob, nombre){
     <a class="btn ${puede && esIOS() ? '' : 'primary'}" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar Excel</a>
     ${puede ? `<button class="btn ${esIOS() ? 'primary' : ''}" onclick="navigator.share({files:[_cotArch], title:_cotArch.name}).catch(()=>{})">Compartir</button>` : ''}
     <div class="sc-note">Las celdas de m², valores, IVA y total tienen fórmulas: si cambias una medida o un precio en el Excel, se recalcula.</div></div>`, 'Listo', async () => {});
+}
+// ── Borrar cotización (y su OP) · solo el director (SQL 92) ──
+async function cotBorrar(){
+  const c = A.cot; if(!c || !c.id || !isGerente()) return;
+  if(!confirm(`¿Borrar la cotización ${cotNum(c)} de ${(c.cliente || {}).nombre || 'sin cliente'}?\n\nEsto no se puede deshacer.`)) return;
+  let conOp = false;
+  if(c.op) conOp = confirm(`Esta cotización creó la OP ${c.op}.\n\n¿Borrar también la OP ${c.op} de Ártica?\n(Aceptar = borrar la OP · Cancelar = dejar la OP)`);
+  try{ const {data, error} = await API.sb.rpc('art_borrar_cot', {p_id: c.id, p_con_op: conOp}); if(error) throw error;
+    toast(`✓ Cotización ${cotNum(c)} borrada${conOp ? ' · OP ' + c.op + ' borrada (' + fmtN(data.piezas_borradas) + ' medidas)' : ''}`);
+    A.cot = null; A.cotSucio = false; A.cots = null; if(conOp) A.piezas = null; renderArtica(); }
+  catch(e){ toast(/art_borrar|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el borrado en la base (SQL 92)' : errMsg(e), true); }
+}
+async function artBorrarOP(op){
+  if(!isGerente()) return;
+  if(!confirm(`¿Borrar la OP ${op} de clientes de Ártica con todas sus medidas?\n\nSi ya la digitaste en OPTIMA, bórrala también allá. Esto no se puede deshacer.`)) return;
+  try{ const {data, error} = await API.sb.rpc('art_borrar_op', {p_op: op}); if(error) throw error;
+    toast(`✓ OP ${op} borrada (${fmtN(data)} medidas)`); A.abierta = null; A.cots = null; A.piezas = null; artCargar(); }
+  catch(e){ toast(/art_borrar|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el borrado en la base (SQL 92)' : errMsg(e), true); }
 }
 // ── Aprobada → OP de clientes de Ártica con las mismas líneas ──
 async function cotAOP(){
@@ -2186,7 +2204,7 @@ function artAvanceHTML(){
       return `<div class="art-op ${ab ? 'on' : ''}"><button class="art-op-h" onclick="A.abierta=A.abierta==='${op}'?null:'${op}';renderArtica()">
           <span class="art-op-n">${esc(op)}</span><span class="art-op-i">${esc(p0.item || '')} · ${fmtN(l.length)} medida${l.length === 1 ? '' : 's'}</span>
           <span class="art-op-c"><b>${fmtN(ok)}</b> / ${fmtN(t)}</span><span class="art-bar"><i style="width:${t ? ok / t * 100 : 0}%"></i></span></button>
-        ${ab ? `<div class="art-pz">${l.map(p => artPiezaHTML(p)).join('')}</div>` : ''}</div>`; }).join('') || '<div class="empty">Ninguna OP coincide con el filtro.</div>'}</div>`;
+        ${ab ? `<div class="art-pz">${l.map(p => artPiezaHTML(p)).join('')}${isGerente() && l.every(p => p.tercero) ? `<div style="display:flex;justify-content:flex-end;padding:8px 12px"><button class="btn sm ghost" style="color:var(--danger)" onclick="artBorrarOP(decodeURIComponent('${encodeURIComponent(op)}'))">Borrar OP ${esc(op)}</button></div>` : ''}</div>` : ''}</div>`; }).join('') || '<div class="empty">Ninguna OP coincide con el filtro.</div>'}</div>`;
 }
 // Al tocar "Por <estación>": obras, OP y medidas que tienen piezas esperando en esa estación
 function artColaSheet(e){
