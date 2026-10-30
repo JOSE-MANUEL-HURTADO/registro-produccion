@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.80';
+const APP_VERSION = '7.81';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2135,6 +2135,8 @@ const AS = {fecha: null, ens: [], filas: {}, mesa: {}, err: null, cargando: fals
 const AS_PROC = () => PROCS.filter(([k]) => k !== 'programado');
 const AS_MOT = ['Ausencia del operario', 'Incapacidad', 'Permiso', 'Vacaciones', 'Daño de máquina', 'Sin material', 'Otro'];
 const asKey = (t, c) => t + '|' + c;
+// Operario habitual de cada proceso (se precarga; se puede cambiar el día que lo cubra otro)
+const AS_OPER = {cortado: 'GERSON BERNAL', troquelado: 'CRISTIAN ROJAS', mecanizado: 'WILLIAM BERMUDEZ'};
 async function asHoyRegistrada(){
   try{ const {count} = await API.sb.from('asistencia').select('id', {count: 'exact', head: true}).eq('fecha', today()).eq('tipo', 'ensamble'); AS.hoyOk = (count || 0) > 0; }catch(e){ AS.hoyOk = null; }
   const b = $('#btnAsis'); if(b) b.outerHTML = asBtnHTML();
@@ -2193,7 +2195,7 @@ function asTodosPlanta(){ for(const n of AS.ens){ const k = asKey('ensamble', n)
   for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]) asSet('proceso', p, 'estado', 'activo'); } renderAsis(); }
 async function asGuardar(){
   const rows = Object.values(AS.filas).filter(f => f._cambio).map(f => ({fecha: AS.fecha, tipo: f.tipo, clave: f.clave, estado: f.estado,
-    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (f.operario || null) : null}));
+    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : null}));
   const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
   if(!rows.length) return toast('No hay cambios');
   try{ const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'}); if(error) throw error;
@@ -2214,7 +2216,7 @@ function renderAsis(){
         ${['obra', 'ausente'].includes(f.estado) ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="${f.estado === 'obra' ? '¿En qué obra?' : 'Motivo (incapacidad, permiso…)'}" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">` : ''}</div>`; }).join('');
     const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {};
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b></div>${seg('proceso', k, [['activo', 'Con operario'], ['sin_operario', 'Sin operario']], f.estado)}
-        <input class="as-mot" value="${esc(f.operario || '')}" placeholder="Operario" oninput="asSet('proceso', '${k}', 'operario', this.value)" style="max-width:180px">
+        <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" oninput="asSet('proceso', '${k}', 'operario', this.value)" style="max-width:180px">
         ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : ''}</div>`; }).join('');
     body = `${AS.mesaHoy && sinMesa.length ? `<div class="warn" style="margin-bottom:12px"><b>${sinMesa.length === 1 ? sinMesa[0] + ' está' : sinMesa.join(', ') + ' están'} en planta sin una OP en mesa.</b> Asígnales trabajo o registra su inicio de ensamble.</div>` : ''}
       <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
