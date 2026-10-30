@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.75';
+const APP_VERSION = '7.76';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1963,11 +1963,13 @@ function renderProd(){
 }
 
 // ── PDF real (archivo) a partir de la vista previa: sirve en iPhone, iPad, Mac y en la app instalada ──
-const H2C_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'];
+const H2C_URLS = ['lib/html2canvas.js', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'];
 async function cargarH2C(){ if(window.html2canvas) return; for(const u of H2C_URLS){ try{ await loadScript(u); if(window.html2canvas) return; }catch(e){} } throw new Error('No se pudo cargar el generador de PDF (revisa la conexión)'); }
+const conTiempo = (pr, ms, que) => Promise.race([pr, new Promise((_, ko) => setTimeout(() => ko(new Error('se demoró demasiado ' + que)), ms))]);
+const docPaso = t => { const b = $('#docPdfBtn'); if(b) b.textContent = t; };
 async function docPDF(pag, pie){
-  await cargarH2C(); if(!window.jspdf) await loadScript('lib/jspdf.js');
-  try{ await document.fonts.ready; }catch(e){}
+  docPaso('Cargando generador…'); await conTiempo(cargarH2C(), 20000, 'cargando el generador'); if(!window.jspdf) await conTiempo(loadScript('lib/jspdf.js'), 20000, 'cargando jsPDF');
+  try{ await conTiempo(document.fonts.ready, 3000, ''); }catch(e){}
   const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:-12000px;top:0;width:216mm;background:#fff';
   document.body.appendChild(host);
   const hoja = pag.querySelector('.i-hoja'), pages = [];
@@ -1982,12 +1984,13 @@ async function docPDF(pag, pie){
     }
   }
   host.querySelectorAll('.inf-pie').forEach(e => e.remove());
-  for(const im of host.querySelectorAll('img')) if(!im.complete) await new Promise(r => { im.onload = im.onerror = r; });
+  for(const im of host.querySelectorAll('img')) if(!im.complete) await Promise.race([new Promise(r => { im.onload = im.onerror = r; }), new Promise(r => setTimeout(r, 3000))]);
   const pdf = new jspdf.jsPDF({unit: 'mm', format: 'letter'}), PW = 215.9, PH = 279.4, PIE = pie ? 9 : 0;
   let primera = true;
   try{
-    for(const d of pages){
-      const cv = await html2canvas(d, {scale: esIOS() ? 1.5 : 2, backgroundColor: '#ffffff', useCORS: true, logging: false});
+    for(const [k, d] of pages.entries()){
+      docPaso(`Generando página ${k + 1} de ${pages.length}…`);
+      const cv = await conTiempo(html2canvas(d, {scale: esIOS() ? 1.5 : 2, backgroundColor: '#ffffff', useCORS: true, logging: false, imageTimeout: 5000}), 45000, `en la página ${k + 1}`);
       const pxmm = cv.width / PW, alto = Math.floor((PH - PIE) * pxmm);
       for(let y = 0; y < cv.height; y += alto){
         const h = Math.min(alto, cv.height - y); if(h < 30 * pxmm / 10 && y > 0) break;
@@ -2032,7 +2035,7 @@ async function docGuardarPDF(imprimir){
   const b = $('#docPdfBtn'); if(b){ b.disabled = true; b.textContent = 'Generando PDF…'; }
   try{ const blob = await docPDF(pag, window._docPie || '');
     pdfEntregar(blob, artArchivo(window._docTitulo || 'Documento') + '.pdf', imprimir); }
-  catch(e){ toast('No se pudo generar el PDF: ' + errMsg(e), true); }
+  catch(e){ const paso = b ? b.textContent : ''; openSheet('No se pudo generar el PDF', '', `<div class="warn">${esc(errMsg(e))}</div><div class="sc-note" style="margin-top:8px">Paso: ${esc(paso)} · ${esc(navigator.userAgent.slice(0, 120))}</div>`, 'Cerrar', async () => {}); }
   finally{ if(b){ b.disabled = false; b.innerHTML = `${ICON.down} Guardar PDF`; } }
 }
 const DOC_BAR = () => `<div class="inf-bar"><button class="btn primary" id="docPdfBtn" onclick="docGuardarPDF()">${ICON.down} Guardar PDF</button><button class="btn" onclick="docGuardarPDF(true)">Imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>`;
