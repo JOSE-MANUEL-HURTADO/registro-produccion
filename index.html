@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.86';
+const APP_VERSION = '7.87';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1542,7 +1542,7 @@ function artCotHTML(){
   const est = {borrador: 'Borrador', enviada: 'Enviada', aprobada: 'Aprobada', rechazada: 'Rechazada'};
   return `${A.cotErr ? `<div class="warn">${esc(A.cotErr)}</div>` : ''}
     <div class="art-head"><div><div class="h1">Cotizaciones</div><div class="h1-sub">Vidrio para clientes · por m² · se convierten en OP al aprobarse</div></div>
-      <button class="btn primary" onclick="cotNueva()">+ Nueva cotización</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${isGerente() ? '<button class="btn ghost" onclick="moArtCli()">Mano de obra clientes</button>' : ''}<button class="btn primary" onclick="cotNueva()">+ Nueva cotización</button></div></div>
     <div class="filters" style="grid-template-columns:1fr"><div class="search">${ICON.search}<input id="cotQ" placeholder="Cliente, referencia, número u OP…" value="${esc(A.cotQ || '')}" oninput="A.cotQ=this.value;const p=this.selectionStart;renderArtica();const j=document.getElementById('cotQ');if(j){j.focus();j.setSelectionRange(p,p);}"></div></div>
     ${l.length ? `<div class="art-ops">${l.map(c => `<button class="art-lote" style="width:100%;text-align:left;cursor:pointer" onclick="cotAbrir(${c.id})">
       <div><b>${cotNum(c)} · ${esc((c.cliente || {}).nombre || 'Sin cliente')}</b><span>${fmtD(c.fecha)}${(c.proyecto || {}).referencia ? ' · ' + esc(c.proyecto.referencia) : ''}${c.op ? ' · OP ' + esc(c.op) : ''}</span></div>
@@ -2081,6 +2081,7 @@ const MO_SMMLV = {2023: [1160000, 140606], 2024: [1300000, 162000], 2025: [14235
 const moSM = y => MO_SMMLV[y] || MO_SMMLV[y < 2023 ? 2023 : 2026];
 const MO_DEF = {exonerado: true, arl: 4.35, prima: 8.33, ces: 8.33, intCes: 1, vac: 4.17, pension: 12, caja: 4, salud: 8.5, sena: 2, icbf: 3,
   est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null}, indirectos: ['JOHANA HERRERA'], direccion: ['JOSE MANUEL HURTADO'],
+  comercial: ['JUAN SEBASTIAN HURTADO', 'MARIA FERNANDA SANABRIA'], comercialDed: 100, dirArtCli: 20,
   // Operarios de Ártica por estación (el día de cada uno se reparte por los m² que pasaron por su estación)
   artCrew: {corte: ['DEIVIS VERGARA', 'WILMAR ORTEGON'], pulido: ['EIMER ADRIAN'], mecanizado: ['JAVIER PARRA'], templado: ['JAVIER PARRA'],
     lavado: ['FERNANDO CARDOZO', 'ALVARO ALDANA'], forrado: ['FERNANDO CARDOZO', 'ALVARO ALDANA']}};
@@ -2324,7 +2325,7 @@ async function moCfgCargar(){
     const [e, i] = await Promise.all([API.all(o => API.sb.from('items').select('ensamblador', o).gte('dia_inicio', desde).not('ensamblador', 'is', null).order('id')),
       API.all(o => API.sb.from('items').select('instalador', o).gte('fecha_instalacion', desde).not('instalador', 'is', null).order('id'))]);
     const c = {}; const add = (n, r) => { const k = normNom(n); if(!k) return; c[k] = c[k] || {n: 0, r: new Set()}; c[k].n++; c[k].r.add(r); };
-    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1])); (moPar().indirectos || []).forEach(n => add(n, 'Apoyo de planta')); (moPar().direccion || []).forEach(n => add(n, 'Dirección de operaciones'));
+    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1])); (moPar().indirectos || []).forEach(n => add(n, 'Apoyo de planta')); (moPar().direccion || []).forEach(n => add(n, 'Dirección de operaciones')); (moPar().comercial || []).forEach(n => add(n, 'Comercial Ártica'));
     Object.entries(moPar().artCrew).forEach(([k, l]) => l.forEach(n => add(n, 'Ártica ' + k)));
     MO.app = Object.entries(c).sort((a, b) => b[1].n - a[1].n);
   }catch(err){ MO.err = /mo_|PGRST205|42P01/.test(errMsg(err) + (err.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(err); }
@@ -2349,6 +2350,10 @@ function renderMO(){
       <div class="cot-d">Si escribe un tiempo propio para un proceso, ese reemplaza el promedio en ese proceso.</div>
       <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
       <div class="field" style="margin-top:8px"><span class="lbl">Dirección de operaciones (separados por coma) · su costo se reparte entre todas las obras según el costo directo del día</span><input id="moDir" value="${esc((p.direccion || []).join(', '))}"></div>
+      <div class="cot-h" style="margin-top:12px">Ártica · clientes</div>
+      <div class="fgrid"><div class="field"><span class="lbl">Comercial de Ártica (separados por coma)</span><input id="moCom" value="${esc((p.comercial || []).join(', '))}"></div>
+        <div class="field"><span class="lbl">Dedicación del comercial a clientes (%)</span><input id="moComD" type="number" min="0" max="100" value="${p.comercialDed ?? 100}"></div>
+        <div class="field"><span class="lbl">Dedicación del director a clientes de Ártica (%)</span><input id="moDirA" type="number" min="0" max="100" value="${p.dirArtCli ?? 20}"></div></div>
       <div class="cot-h" style="margin-top:12px">Operarios de Ártica por estación (separados por coma)</div>
       <div class="fgrid">${ART_EST.map(([k, n]) => `<div class="field"><span class="lbl">${n}</span><input class="moCrew" data-k="${k}" value="${esc((p.artCrew[k] || []).join(', '))}"></div>`).join('')}</div>
       <div class="field" style="margin-top:8px"><span class="lbl">Apoyo de planta (separados por coma) · su costo se reparte entre las obras según el trabajo de planta del día</span><input id="moInd" value="${esc((p.indirectos || []).join(', '))}"></div>
@@ -2368,6 +2373,7 @@ function renderMO(){
 async function moGuardarPar(){
   const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
   const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, estItem: $('#moEstItem').value === '' ? null : +$('#moEstItem').value, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean), direccion: $('#moDir').value.split(',').map(normNom).filter(Boolean),
+    comercial: $('#moCom').value.split(',').map(normNom).filter(Boolean), comercialDed: +$('#moComD').value || 0, dirArtCli: +$('#moDirA').value || 0,
     artCrew: Object.fromEntries([...document.querySelectorAll('.moCrew')].map(i => [i.dataset.k, i.value.split(',').map(normNom).filter(Boolean)]))};
   const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
   MO.par = par; toast('✓ Parámetros guardados'); renderMO();
@@ -2421,6 +2427,87 @@ function moConfirmar(l){
       if(salen.length){ const r = await API.sb.from('mo_nomina').update({activo: false}).in('id', salen.map(n => n.id)); if(r.error) toast(errMsg(r.error), true); }
       toast('✓ Nómina actualizada'); moCfgCargar();
     });
+}
+// ── Mano de obra de Ártica para CLIENTES (por OP de cliente) ──
+//  Directo: operarios de cada estación; con escáner, su día se reparte por los m² que pasaron por su estación (clientes y obras de Elíptica);
+//  sin escáner, m² × estaciones de la ruta × costo por m²-estación medido con el escáner (últimos 90 días).
+//  Comercial: gerente comercial y su asistente, sus horas del periodo × dedicación, repartidas por m² entre las OP del periodo.
+//  Dirección: el director × su dedicación a clientes de Ártica, repartida por m².
+async function moArtCli(){
+  if(!isGerente()) return;
+  const hoy = today(), ini = hoy.slice(0, 8) + '01', d = new Date(hoy + 'T12:00:00'); d.setDate(0); const mAntF = d.toISOString().slice(0, 10), mAntI = mAntF.slice(0, 8) + '01';
+  const d90 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+  openSheet('Mano de obra · clientes de Ártica', 'OP de clientes por fecha de la OP', `<div style="display:flex;flex-direction:column;gap:8px">
+    <button class="btn primary" onclick="closeSheet();moArtCliVer('${ini}','${hoy}')">Este mes</button>
+    <button class="btn" onclick="closeSheet();moArtCliVer('${mAntI}','${mAntF}')">Mes anterior</button>
+    <button class="btn" onclick="closeSheet();moArtCliVer('${d90}','${hoy}')">Últimos 90 días</button>
+    <div class="fgrid"><div class="field"><span class="lbl">Desde</span><input type="date" id="macD" value="${ini}"></div><div class="field"><span class="lbl">Hasta</span><input type="date" id="macH" value="${hoy}"></div></div>
+    <button class="btn ghost" onclick="const a=$('#macD').value,b=$('#macH').value;closeSheet();moArtCliVer(a,b)">Ver periodo</button></div>`, 'Cerrar', async () => {});
+}
+async function moArtCliVer(desde, hasta){
+  toast('Calculando la mano de obra de clientes…');
+  try{ await moCargarConfig();
+    const p = moPar();
+    const pzs = await API.all(o => API.sb.from('art_piezas').select('id,op,cliente,ancho,alto,cant,ruta,fecha_op,creada', o).eq('tercero', true).order('id'));
+    const a0 = new Date(Math.min(new Date(desde + 'T00:00:00-05:00').getTime(), Date.now() - 90 * 864e5)).toISOString();
+    const regs = await API.all(o => API.sb.from('art_registros').select('estacion,creado,n,p:art_piezas(op,obra,cliente,tercero,ancho,alto)', o).gte('creado', a0).order('id'));
+    const cots = await API.sb.from('art_cotizaciones').select('num,op,total').not('op', 'is', null).then(r => r.data || []).catch(() => []);
+    const m2pz = (pz, n) => (+pz.ancho || 0) * (+pz.alto || 0) / 1e6 * (n == null ? (+pz.cant || 1) : (+n || 1));
+    const key = pz => pz.tercero ? 'OP ' + pz.op : pz.obra;
+    // 1. Día de cada operario repartido por m² de su(s) estación(es)
+    const dias = {}, med = {c: 0, m2: 0, d: new Set()};
+    for(const g of regs){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(!moHorasDia(d)) continue; const m = Math.max(0.05, m2pz(pz, g.n));
+      for(const q of p.artCrew[g.estacion] || []){ const x = (dias[q] = dias[q] || {})[d] = (dias[q] || {})[d] || {}; x[key(pz)] = (x[key(pz)] || 0) + m; }
+      med.m2 += m; med.d.add(d); }
+    const dir = {}, scanM2 = {};
+    for(const g of regs){ const pz = g.p; if(pz && pz.tercero) scanM2[pz.op] = (scanM2[pz.op] || 0) + m2pz(pz, g.n); }
+    for(const [q, dd] of Object.entries(dias)){ const per = moPersona(q); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
+      for(const [d, x] of Object.entries(dd)){ const c = moHorasDia(d) * moCostoHora(per, d.slice(0, 7)).hora, tot = Object.values(x).reduce((a, b) => a + b, 0); med.c += c;
+        for(const [k, m] of Object.entries(x)) if(k.startsWith('OP ')) dir[k] = (dir[k] || 0) + c * m / tot; } }
+    const cms = med.m2 ? med.c / med.m2 : 0;   // costo por m² por estación
+    // 2. OP de clientes del periodo
+    const fop = z => z.fecha_op || String(z.creada || '').slice(0, 10);
+    const ops = [...grp(pzs.filter(z => fop(z) >= desde && fop(z) <= hasta), z => z.op).entries()].map(([op, l]) => {
+      const m2 = l.reduce((a, z) => a + m2pz(z), 0), rm2 = l.reduce((a, z) => a + m2pz(z) * Math.max(1, (z.ruta || []).length), 0);
+      const est = Math.max(0, rm2 - (scanM2[op] || 0)) * cms, cot = cots.find(c => c.op === op);
+      return {op, cli: l[0].cliente, f: fop(l[0]), m2, ruta: [...new Set(l.flatMap(z => z.ruta || []))], dir: dir['OP ' + op] || 0, est, venta: cot ? +cot.total || 0 : null, cot: cot ? cot.num : null};
+    }).sort((a, b) => nat(a.op, b.op));
+    const M2 = ops.reduce((a, o) => a + o.m2, 0);
+    // 3. Comercial y dirección del periodo (horas laborables × costo hora × dedicación), repartidos por m²
+    const pool = (noms, ded) => { const r = []; for(const n of noms){ const per = moPersona(n); if(!['nomina', 'minimo'].includes(per.tipo)) continue; let c = 0, h = 0;
+      for(let d = desde; d <= hasta; d = moSig(d)){ const H = moHorasDia(d); if(H){ h += H; c += H * moCostoHora(per, d.slice(0, 7)).hora; } } r.push({n: per.k, c: c * ded / 100, h: h * ded / 100}); } return r; };
+    const com = pool(p.comercial || [], +p.comercialDed || 0), dirG = pool(p.direccion || [], +p.dirArtCli || 0);
+    const cCom = com.reduce((a, x) => a + x.c, 0), cDir = dirG.reduce((a, x) => a + x.c, 0);
+    for(const o of ops){ o.com = M2 ? cCom * o.m2 / M2 : 0; o.dg = M2 ? cDir * o.m2 / M2 : 0; o.tot = o.dir + o.est + o.com + o.dg; }
+    const R = {desde, hasta, ops, M2, com, dirG, cCom, cDir, cms, medD: med.d.size, p};
+    docMostrar(moArtCliHTML(R), 'Mano_de_obra_clientes_Artica_' + desde + '_' + hasta, 'Ártica · Mano de obra de clientes');
+  }catch(e){ toast(/mo_param|mo_nomina|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(e), true); }
+}
+function moArtCliHTML(R){
+  const T = k => R.ops.reduce((a, o) => a + (o[k] || 0), 0), tot = T('tot'), venta = R.ops.reduce((a, o) => a + (o.venta || 0), 0), conV = R.ops.filter(o => o.venta);
+  const vTot = conV.reduce((a, o) => a + o.tot, 0);
+  const kpis = [[moCOP(tot), 'Mano de obra total', `${fmtN(R.ops.length)} OP · ${fmtN(R.M2, 1)} m²`], [moCOP(tot / (R.M2 || 1)), 'Por m²', 'Promedio del periodo'],
+    [conV.length ? fmtN(vTot / (venta || 1) * 100, 1) + ' %' : '—', 'Sobre la venta', conV.length ? `${fmtN(conV.length)} OP cotizadas · ${moCOP(venta)}` : 'Sin cotizaciones con OP'], [moCOP(R.cCom + R.cDir), 'Comercial y dirección', 'Incluido en el total']];
+  const AB = {corte: 'COR', pulido: 'PUL', mecanizado: 'MEC', templado: 'TEM', lavado: 'LAV', forrado: 'FOR'};
+  return `<div class="inf-pag">
+    <div class="i-band"><img src="icons/artica_logo.png" alt="Ártica" style="filter:brightness(0) invert(1);height:18mm;margin-bottom:3mm"><h1>COSTO DE MANO DE OBRA</h1><div class="i-ob">CLIENTES DE ÁRTICA</div></div>
+    <div class="i-sub"><span>OP del <b>${infF(R.desde)} – ${infF(R.hasta)}</b></span><span>Corte al <b>${infF(today())}</b> · Confidencial</span></div>
+    <div class="i-hoja">
+      <div class="i-kpis" style="grid-template-columns:repeat(4,1fr)">${kpis.map(([v, t, s]) => `<div class="i-kpi"><b style="font-size:18pt">${v}</b><span>${t}</span><small>${s}</small></div>`).join('')}</div>
+      <h2>POR ORDEN DE PRODUCCIÓN</h2>
+      <table><thead><tr><th>OP</th><th>CLIENTE</th><th>RUTA</th><th class="i-r">M²</th><th class="i-r">PLANTA</th><th class="i-r">COMERCIAL Y DIR.</th><th class="i-r">TOTAL</th><th class="i-r">$/M²</th><th class="i-r">% VENTA</th></tr></thead><tbody>
+        ${R.ops.map(o => `<tr><td class="i-ref">${esc(o.op)}</td><td>${esc(o.cli || '')}</td><td style="font-size:8.4pt">${o.ruta.map(r => AB[r] || r).join('·')}</td><td class="i-r">${fmtN(o.m2, 1)}</td><td class="i-r">${moCOP(o.dir + o.est)}</td><td class="i-r">${moCOP(o.com + o.dg)}</td><td class="i-r i-b">${moCOP(o.tot)}</td><td class="i-r">${moCOP(o.tot / (o.m2 || 1))}</td><td class="i-r">${o.venta ? fmtN(o.tot / o.venta * 100, 1) + ' %' : '—'}</td></tr>`).join('') || '<tr><td colspan="9">No hay OP de clientes en el periodo.</td></tr>'}
+        ${R.ops.length ? `<tr><td class="i-ref">TOTAL</td><td></td><td></td><td class="i-r">${fmtN(R.M2, 1)}</td><td class="i-r">${moCOP(T('dir') + T('est'))}</td><td class="i-r">${moCOP(T('com') + T('dg'))}</td><td class="i-r i-b">${moCOP(tot)}</td><td class="i-r">${moCOP(tot / (R.M2 || 1))}</td><td class="i-r">${conV.length ? fmtN(vTot / (venta || 1) * 100, 1) + ' %' : '—'}</td></tr>` : ''}</tbody></table>
+      <h2>COMPONENTES</h2>
+      <table><thead><tr><th>COMPONENTE</th><th>CÓMO SE CALCULA</th><th class="i-r">COSTO</th></tr></thead><tbody>
+        <tr><td class="i-ref">Planta (escáner)</td><td style="font-size:8.8pt">Día de los operarios de cada estación repartido por los m² que pasaron por su estación (clientes y obras de Elíptica).</td><td class="i-r i-b">${moCOP(T('dir'))}</td></tr>
+        <tr><td class="i-ref">Planta (estimado)</td><td style="font-size:8.8pt">Lo que no se escaneó: m² × estaciones de la ruta × ${moCOP(R.cms)} por m²-estación (medido con el escáner en ${fmtN(R.medD)} día${R.medD === 1 ? '' : 's'}).</td><td class="i-r i-b">${moCOP(T('est'))}</td></tr>
+        <tr><td class="i-ref">Comercial</td><td style="font-size:8.8pt">${R.com.map(x => esc(x.n)).join(' y ') || '—'} · ${fmtN(+R.p.comercialDed || 0)} % de su tiempo del periodo, repartido por m².</td><td class="i-r i-b">${moCOP(R.cCom)}</td></tr>
+        <tr><td class="i-ref">Dirección de operaciones</td><td style="font-size:8.8pt">${R.dirG.map(x => esc(x.n)).join(', ') || '—'} · ${fmtN(+R.p.dirArtCli || 0)} % de su tiempo del periodo dedicado a clientes de Ártica, repartido por m².</td><td class="i-r i-b">${moCOP(R.cDir)}</td></tr></tbody></table>
+      <div class="i-glos" style="font-size:8.8pt;margin-top:4mm">Costo por hora = (salario × (1 + ${fmtN(moCarga(R.p), 2)} %) + auxilio de transporte con prestaciones) ÷ horas laborables del mes. Comercial y dirección son tiempo del periodo: si en el periodo hubo pocas OP, su costo por m² sube. Los porcentajes de dedicación se cambian en Mano de obra → Parámetros.</div>
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Ártica · Elíptica</div><p>Calculado con los registros de la app al ${infF(today())}. Documento confidencial.</p></div>
+    </div>
+    <div class="inf-pie"><span>ÁRTICA · VIDRIO</span><span>Mano de obra de clientes · ${infF(R.desde)} – ${infF(R.hasta)}</span></div></div>`;
 }
 // ── Informe de productividad de planta (para junta directiva) ──
 function prodDocHTML(){
