@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.72';
+const APP_VERSION = '7.73';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1470,9 +1470,9 @@ async function informeMostrar(l, o){
   let st = $('#infCss'); if(!st){ st = document.createElement('style'); st.id = 'infCss'; st.textContent = INF_CSS; document.head.appendChild(st); }
   const old = $('#infRoot'); if(old) old.remove();
   const root = document.createElement('div'); root.id = 'infRoot';
-  root.innerHTML = `<div class="inf-bar"><button class="btn primary" onclick="informeImprimir()">${ICON.down} Guardar en PDF / imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>
+  root.innerHTML = DOC_BAR() + `
     <div class="inf-wrap">${informeHTML(l, o)}</div>`;
-  document.body.appendChild(root); document.body.classList.add('inf-imprime'); window._docTitulo = null;
+  document.body.appendChild(root); document.body.classList.add('inf-imprime'); window._docTitulo = `Informe_avance_${S.obra}_${today()}`; window._docPie = `ELÍPTICA · INFORME DE AVANCE DE PRODUCCIÓN · ${S.obra}`;
   const ajusta = () => { const w = root.querySelector('.inf-wrap'); if(!w) return; const px = w.offsetWidth, s = Math.min(1, (window.innerWidth - 16) / px);
     w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
   ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
@@ -1699,9 +1699,9 @@ async function cotPDF(){
   let st2 = $('#cotCss'); if(!st2){ st2 = document.createElement('style'); st2.id = 'cotCss'; st2.textContent = COT_CSS; document.head.appendChild(st2); }
   const old = $('#infRoot'); if(old) old.remove();
   const root = document.createElement('div'); root.id = 'infRoot';
-  root.innerHTML = `<div class="inf-bar"><button class="btn primary" onclick="informeImprimir()">${ICON.down} Guardar en PDF / imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div><div class="inf-wrap">${cotDocHTML(A.cot)}</div>`;
+  root.innerHTML = DOC_BAR() + `<div class="inf-wrap">${cotDocHTML(A.cot)}</div>`;
   document.body.appendChild(root); document.body.classList.add('inf-imprime');
-  window._docTitulo = `Cotizacion ${cotNum(A.cot)} ${(A.cot.cliente || {}).nombre || ''}`.trim();
+  window._docTitulo = `Cotizacion ${cotNum(A.cot)} ${(A.cot.cliente || {}).nombre || ''}`.trim(); window._docPie = '';
   const ajusta = () => { const w = root.querySelector('.inf-wrap'); if(!w) return; const s = Math.min(1, (window.innerWidth - 16) / w.offsetWidth);
     w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
   ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
@@ -1957,9 +1957,142 @@ function renderProd(){
   }
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
     <div class="art-head"><div><div class="h1">Productividad de planta</div><div class="h1-sub">${titulo} · Elíptica y Ártica${P.cargando && D ? ' · actualizando…' : ''}</div></div>
-      <button class="btn sm ghost" onclick="prodCargar()">${ICON.ref} Actualizar</button></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm primary" onclick="prodPDF()">${ICON.down} Informe PDF</button><button class="btn sm ghost" onclick="prodCargar()">${ICON.ref} Actualizar</button></div></div>
     <div class="pd-per">${chip('hoy', 'Hoy')}${chip('dia', 'Un día')}${P.per === 'dia' ? `<input type="date" value="${esc(P.dia || '')}" max="${today()}" onchange="P.dia=this.value;prodCargar()" style="max-width:170px">` : ''}${chip('7', 'Últimos 7 días')}${chip('15', 'Últimos 15 días')}${chip('mes', 'Este mes')}</div>
     ${body}`);
+}
+
+// ── PDF real (archivo) a partir de la vista previa: sirve en iPhone, iPad, Mac y en la app instalada ──
+const H2C_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'];
+async function cargarH2C(){ if(window.html2canvas) return; for(const u of H2C_URLS){ try{ await loadScript(u); if(window.html2canvas) return; }catch(e){} } throw new Error('No se pudo cargar el generador de PDF (revisa la conexión)'); }
+async function docPDF(pag, pie){
+  await cargarH2C(); if(!window.jspdf) await loadScript('lib/jspdf.js');
+  try{ await document.fonts.ready; }catch(e){}
+  const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:-12000px;top:0;width:216mm;background:#fff';
+  document.body.appendChild(host);
+  const hoja = pag.querySelector('.i-hoja'), pages = [];
+  const nueva = () => { const d = document.createElement('div'); d.className = pag.className; d.style.cssText = 'width:216mm;background:#fff;box-shadow:none;padding-bottom:6mm'; host.appendChild(d); pages.push(d); return d; };
+  if(!hoja || !pag.querySelector('.i-salto')){ const d = nueva(); d.innerHTML = pag.innerHTML; }
+  else {
+    let d = nueva(); for(const ch of pag.children){ if(ch === hoja) break; d.appendChild(ch.cloneNode(true)); }
+    let h = document.createElement('div'); h.className = hoja.className; d.appendChild(h);
+    for(const ch of hoja.children){
+      if(ch.classList.contains('i-salto')){ d = nueva(); h = document.createElement('div'); h.className = hoja.className; h.style.paddingTop = '10mm'; d.appendChild(h); continue; }
+      h.appendChild(ch.cloneNode(true));
+    }
+  }
+  host.querySelectorAll('.inf-pie').forEach(e => e.remove());
+  for(const im of host.querySelectorAll('img')) if(!im.complete) await new Promise(r => { im.onload = im.onerror = r; });
+  const pdf = new jspdf.jsPDF({unit: 'mm', format: 'letter'}), PW = 215.9, PH = 279.4, PIE = pie ? 9 : 0;
+  let primera = true;
+  try{
+    for(const d of pages){
+      const cv = await html2canvas(d, {scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false});
+      const pxmm = cv.width / PW, alto = Math.floor((PH - PIE) * pxmm);
+      for(let y = 0; y < cv.height; y += alto){
+        const h = Math.min(alto, cv.height - y); if(h < 30 * pxmm / 10 && y > 0) break;
+        const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = h; const cx = c2.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, c2.width, h); cx.drawImage(cv, 0, y, cv.width, h, 0, 0, cv.width, h);
+        if(!primera) pdf.addPage('letter'); primera = false;
+        pdf.addImage(c2.toDataURL('image/jpeg', .9), 'JPEG', 0, 0, PW, h / pxmm);
+      }
+    }
+  } finally { host.remove(); }
+  const N = pdf.getNumberOfPages();
+  if(pie) for(let i = 1; i <= N; i++){ pdf.setPage(i); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(138, 138, 138);
+    pdf.text(pie, 15, PH - 4.5); pdf.text(`Página ${i} de ${N}`, PW - 15, PH - 4.5, {align: 'right'}); }
+  return pdf.output('blob');
+}
+function pdfEntregar(blob, nombre){
+  const url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: 'application/pdf'});
+  window._docArch = file;
+  const puede = !!(navigator.canShare && navigator.canShare({files: [file]}));
+  openSheet('PDF listo', esc(nombre), `<div style="display:flex;flex-direction:column;gap:8px">
+    ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_docArch], title:_docArch.name}).catch(()=>{})">Compartir (WhatsApp, correo, Guardar en Archivos…)</button>` : ''}
+    <a class="btn ${puede ? '' : 'primary'}" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a>
+    <a class="btn" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a></div>`, 'Listo', async () => {});
+}
+async function docGuardarPDF(){
+  const pag = $('#infRoot .inf-pag'); if(!pag) return;
+  const b = $('#docPdfBtn'); if(b){ b.disabled = true; b.textContent = 'Generando PDF…'; }
+  try{ const blob = await docPDF(pag, window._docPie || '');
+    pdfEntregar(blob, artArchivo(window._docTitulo || 'Documento') + '.pdf'); }
+  catch(e){ toast('No se pudo generar el PDF: ' + errMsg(e), true); }
+  finally{ if(b){ b.disabled = false; b.innerHTML = `${ICON.down} Guardar PDF`; } }
+}
+const DOC_BAR = () => `<div class="inf-bar"><button class="btn primary" id="docPdfBtn" onclick="docGuardarPDF()">${ICON.down} Guardar PDF</button><button class="btn" onclick="informeImprimir()">Imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>`;
+function docMostrar(html, titulo, pie, hist){
+  let st = $('#infCss'); if(!st){ st = document.createElement('style'); st.id = 'infCss'; st.textContent = INF_CSS; document.head.appendChild(st); }
+  const old = $('#infRoot'); if(old) old.remove();
+  const root = document.createElement('div'); root.id = 'infRoot';
+  root.innerHTML = DOC_BAR() + `<div class="inf-wrap">${html}</div>`;
+  document.body.appendChild(root); document.body.classList.add('inf-imprime');
+  window._docTitulo = titulo; window._docPie = pie || '';
+  const ajusta = () => { const w = root.querySelector('.inf-wrap'); if(!w) return; const s = Math.min(1, (window.innerWidth - 16) / w.offsetWidth);
+    w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
+  ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
+  history.pushState(hist || {v: S.view, inf: 1}, '');
+}
+// ── Informe de productividad de planta (para junta directiva) ──
+function prodDocHTML(){
+  const [a, b] = prodRango(), dias = prodDias(a, b), D = P.data || {}, V = P.prev;
+  const ens = D.ens || [], art = D.art || [], proc = D.proc || [], desp = D.desp || [], inst = D.inst || [];
+  const ensU = prodSum(ens, 'u'), artPz = prodSum(art, 'pz'), corU = prodSum(proc.filter(x => x.p === 'cortado'), 'u');
+  const novN = prodSum(D.nov, 'n') + prodSum(D.falt, 'n') + prodSum(D.rep, 'pz');
+  const pv = k => V ? k(V) : null;
+  const dlt = (x, y) => { if(y == null) return ''; if(!y) return x ? ' · nuevo' : ''; const p = Math.round((x - y) / y * 100); return ` · ${p >= 0 ? '▲' : '▼'} ${Math.abs(p)} % vs. ${fmtN(y)}`; };
+  const kpis = [['Ensambladas', ensU, `${fmtN(prodSum(ens, 'm2'), 1)} m² · ${fmtN(prodSum(ens, 'pts'))} pts`, pv(v => prodSum(v.ens, 'u'))],
+    ['Corte perfilería', corU, `${fmtN(prodSum(proc.filter(x => x.p === 'cortado'), 'm2'), 1)} m²`, pv(v => prodSum((v.proc || []).filter(x => x.p === 'cortado'), 'u'))],
+    ['Ártica · piezas', artPz, `${fmtN(prodSum(art, 'm2'), 1)} m² de vidrio`, pv(v => prodSum(v.art, 'pz'))],
+    ['Despachadas', prodSum(desp, 'u'), `${fmtN(prodSum(desp, 'm2'), 1)} m²`, pv(v => prodSum(v.desp, 'u'))],
+    ['Instaladas', prodSum(inst, 'u'), `${fmtN(prodSum(inst, 'm2'), 1)} m²`, pv(v => prodSum(v.inst, 'u'))],
+    ['Novedades', novN, 'reprocesos, faltantes, novedades', pv(v => prodSum(v.nov, 'n') + prodSum(v.falt, 'n') + prodSum(v.rep, 'pz'))]];
+  const porDia = (l, k) => d => prodSum(l.filter(x => x.d === d), k);
+  const graf = (l, k, cap) => { const v = dias.map(porDia(l, k)), mx = Math.max(1, ...v), lab = dias.length <= 16;
+    return `<div class="i-rit" style="gap:${dias.length > 20 ? 1 : 3}mm">${dias.map((d, i) => `<div class="i-rc"><div class="i-rv" style="height:${v[i] ? Math.max(3, v[i] / mx * 85) : 0}%">${v[i] && (lab || v[i] === mx) ? `<b style="font-size:${lab ? 11 : 8}pt">${fmtN(v[i])}</b>` : ''}</div><span style="font-size:${lab ? 8.5 : 7}pt">${lab || i % 5 === 0 || i === dias.length - 1 ? d.slice(8) + '/' + d.slice(5, 7) : ''}</span></div>`).join('')}</div><div class="i-cap">${cap}</div>`; };
+  const tabla = (cab, filas, vacio) => filas ? `<table><thead><tr>${cab.map(c => `<th class="${c[1] || ''}">${c[0]}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table>` : `<div class="i-cap" style="margin-top:0">${vacio}</div>`;
+  const procF = PROD_PROC.map(([k, n]) => { const l = proc.filter(x => x.p === k), u = prodSum(l, 'u'), act = prodActivos(l); return u ? `<tr><td class="i-ref">${n}</td><td class="i-r i-b">${fmtN(u)}</td><td class="i-r">${fmtN(prodSum(l, 'm2'), 1)}</td><td class="i-r">${act}</td><td class="i-r">${fmtN(u / act, 1)}</td></tr>` : ''; }).join('');
+  const porE = [...grp(ens, x => x.e).entries()].map(([e, l]) => ({e, u: prodSum(l, 'u'), m2: prodSum(l, 'm2'), pts: prodSum(l, 'pts'), d: new Set(l.map(x => x.d)).size})).sort((x, y) => y.u - x.u || y.pts - x.pts);
+  const ensF = porE.map(x => `<tr><td class="i-ref">${esc(x.e)}</td><td class="i-r i-b">${fmtN(x.u)}</td><td class="i-r">${fmtN(x.m2, 1)}</td><td class="i-r">${fmtN(x.pts)}</td><td class="i-r">${x.d}</td><td class="i-r">${fmtN(x.u / x.d, 1)}</td><td class="i-r">${fmtN(x.pts / x.d)}</td><td class="i-bc"><div class="i-hb" style="height:2.6mm;background:#f2f2f2"><i style="width:${ensU ? x.u / ensU * 100 : 0}%;background:#272727"></i></div></td><td class="i-r">${ensU ? Math.round(x.u / ensU * 100) : 0} %</td></tr>`).join('');
+  const estF = ART_EST.map(([k, n]) => { const l = art.filter(x => x.est === k), pz = prodSum(l, 'pz'), act = prodActivos(l, 'pz'); return pz ? `<tr><td class="i-ref">${esc(n)}</td><td class="i-r i-b">${fmtN(pz)}</td><td class="i-r">${fmtN(prodSum(l, 'm2'), 1)}</td><td class="i-r">${Math.round(prodSum(l, 'cli') / pz * 100)} %</td><td class="i-r">${act}</td><td class="i-r">${fmtN(pz / act, 1)}</td></tr>` : ''; }).join('');
+  const porOp = [...grp(art, x => x.q).entries()].map(([q, l]) => ({q, pz: prodSum(l, 'pz'), m2: prodSum(l, 'm2'), d: new Set(l.map(x => x.d)).size, est: [...new Set(l.map(x => x.est))].map(e => ART_NOM[e] || e).join(', ')})).sort((x, y) => y.pz - x.pz);
+  const opF = porOp.map(x => `<tr><td class="i-ref">${esc(x.q)}</td><td>${esc(x.est)}</td><td class="i-r i-b">${fmtN(x.pz)}</td><td class="i-r">${fmtN(x.m2, 1)}</td><td class="i-r">${x.d}</td><td class="i-r">${fmtN(x.pz / x.d, 1)}</td></tr>`).join('');
+  const despF = desp.map(x => `<tr><td>${fmtD(x.d)}</td><td class="i-r i-b">${fmtN(x.u)}</td><td class="i-r">${fmtN(x.m2, 1)}</td><td>${esc(x.obras || '')}</td></tr>`).join('');
+  const porI = [...grp(inst, x => x.e).entries()].map(([e, l]) => ({e, u: prodSum(l, 'u'), m2: prodSum(l, 'm2'), d: new Set(l.map(x => x.d)).size})).sort((x, y) => y.u - x.u);
+  const instF = porI.map(x => `<tr><td class="i-ref">${esc(x.e)}</td><td class="i-r i-b">${fmtN(x.u)}</td><td class="i-r">${fmtN(x.m2, 1)}</td><td class="i-r">${x.d}</td><td class="i-r">${fmtN(x.u / x.d, 1)}</td></tr>`).join('');
+  const novs = [...[...grp(D.nov || [], x => x.m).entries()].map(([m, l]) => ['Novedad de ensamble · ' + m, prodSum(l, 'n')]), ...[...grp(D.falt || [], x => x.p).entries()].map(([m, l]) => ['Faltante de material · ' + m, prodSum(l, 'n')]), ...[...grp(D.rep || [], x => x.o || 'Ártica').entries()].map(([m, l]) => ['Reproceso de vidrio · ' + m, prodSum(l, 'pz')])];
+  const novF = novs.map(([m, n]) => `<tr><td>${esc(m)}</td><td class="i-r i-b">${fmtN(n)}</td></tr>`).join('');
+  const top = porE[0], topA = porOp[0];
+  const res = [`En el periodo se ensamblaron <b>${fmtN(ensU)} unidades (${fmtN(prodSum(ens, 'm2'), 1)} m²)</b>${V ? dlt(ensU, prodSum(V.ens, 'u')).replace(' · ', ' — ') : ''}, con ${porE.length} ensamblador${porE.length === 1 ? '' : 'es'} activos${top ? `; el de mayor producción fue <b>${esc(top.e)}</b> con ${fmtN(top.u)} unidades` : ''}.`,
+    `En Ártica se procesaron <b>${fmtN(artPz)} piezas (${fmtN(prodSum(art, 'm2'), 1)} m² de vidrio)</b>${topA ? `; operario con más piezas: <b>${esc(topA.q)}</b> (${fmtN(topA.pz)})` : ''}.`,
+    `Se despacharon <b>${fmtN(prodSum(desp, 'u'))} unidades</b> y se instalaron <b>${fmtN(prodSum(inst, 'u'))}</b>.`,
+    novN ? `Se registraron <b>${fmtN(novN)} novedades</b> (reprocesos de vidrio, faltantes de material y novedades de ensamble).` : 'No se registraron novedades en el periodo.'];
+  const diag = `<svg class="i-diag" viewBox="0 0 300 120" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="1.2"><path d="M40 120 L130 0 L300 0"/><path d="M70 120 L160 0"/><path d="M100 120 L190 0 L300 0"/><path d="M0 95 L210 95 L280 0"/></g></svg>`;
+  const per = a === b ? fmtD(a) : `${fmtD(a)} a ${fmtD(b)} (${dias.length} días)`;
+  return `<div class="inf-pag">
+    <div class="i-band"><img src="icons/logo_blanco.png" alt="Elíptica">${diag}<h1>INFORME DE PRODUCTIVIDAD</h1><div class="i-ob">PLANTA ELÍPTICA Y ÁRTICA</div></div>
+    <div class="i-sub"><span>Periodo <b>${per}</b></span><span>Generado ${fmtD(today())} ${nowTime()}</span></div>
+    <div class="i-hoja">
+      <div class="i-kpis" style="grid-template-columns:repeat(6,1fr)">${kpis.map(([t, v, s, p]) => `<div class="i-kpi"><b>${fmtN(v)}</b><span>${t}</span><small>${s}${dlt(v, p)}</small></div>`).join('')}</div>
+      <h2>RESUMEN</h2><ul class="i-res">${res.map(x => `<li>${x}</li>`).join('')}</ul>
+      ${dias.length > 1 ? `<div class="i-dos2"><div><h2>ENSAMBLE POR DÍA</h2>${graf(ens, 'u', 'Unidades ensambladas por día.')}</div><div><h2>ÁRTICA · PIEZAS POR DÍA</h2>${graf(art, 'pz', 'Piezas de vidrio procesadas por día (todas las estaciones).')}</div></div>` : ''}
+      <h2>ELÍPTICA · PROCESOS</h2>${tabla([['PROCESO'], ['UNIDADES', 'i-r'], ['M²', 'i-r'], ['DÍAS', 'i-r'], ['PROM./DÍA', 'i-r']], procF, 'Sin procesos registrados en el periodo.')}
+      <div class="i-salto"></div>
+      <h2 class="i-h2t">ENSAMBLE POR ENSAMBLADOR</h2>${tabla([['ENSAMBLADOR'], ['UNID.', 'i-r'], ['M²', 'i-r'], ['PUNTOS', 'i-r'], ['DÍAS', 'i-r'], ['UND/DÍA', 'i-r'], ['PTS/DÍA', 'i-r'], ['PARTICIPACIÓN'], ['%', 'i-r']], ensF, 'Sin ensambles terminados en el periodo.')}
+      <div class="i-nota">Puntos = tiempo estándar de la OP. Iniciadas en el periodo: ${fmtN(prodSum(D.ini, 'u'))} unidades.</div>
+      <h2>ÁRTICA · ESTACIONES</h2>${tabla([['ESTACIÓN'], ['PIEZAS', 'i-r'], ['M²', 'i-r'], ['CLIENTES', 'i-r'], ['DÍAS', 'i-r'], ['PROM./DÍA', 'i-r']], estF, 'Sin piezas escaneadas en Ártica en el periodo.')}
+      ${opF ? `<h2>ÁRTICA · OPERARIOS</h2>${tabla([['OPERARIO'], ['ESTACIONES'], ['PIEZAS', 'i-r'], ['M²', 'i-r'], ['DÍAS', 'i-r'], ['PROM./DÍA', 'i-r']], opF, '')}` : ''}
+      <div class="i-salto"></div>
+      <div class="i-dos2"><div><h2 class="i-h2t">DESPACHOS</h2>${tabla([['FECHA'], ['UND', 'i-r'], ['M²', 'i-r'], ['OBRAS']], despF, 'Sin despachos en el periodo.')}</div>
+        <div><h2 class="i-h2t">INSTALACIÓN</h2>${tabla([['INSTALADOR'], ['UND', 'i-r'], ['M²', 'i-r'], ['DÍAS', 'i-r'], ['UND/DÍA', 'i-r']], instF, 'Sin instalaciones en el periodo.')}</div></div>
+      <h2>NOVEDADES DEL PERIODO</h2>${tabla([['TIPO'], ['CANTIDAD', 'i-r']], novF, 'Sin novedades en el periodo.')}
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información del sistema de registro de producción de Elíptica y Ártica. Comparaciones contra el periodo anterior del mismo número de días.</p></div>
+    </div></div>`;
+}
+function prodPDF(){
+  if(!P.data) return toast('Espera a que cargue la productividad', true);
+  const [a, b] = prodRango();
+  docMostrar(prodDocHTML(), `Productividad_planta_${a}${a === b ? '' : '_a_' + b}`, `ELÍPTICA · INFORME DE PRODUCTIVIDAD · ${a === b ? fmtD(a) : fmtD(a) + ' a ' + fmtD(b)}`, {v: 'prod', inf: 1});
 }
 
 function renderObraNovBtn(){
