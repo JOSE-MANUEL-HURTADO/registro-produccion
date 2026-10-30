@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.69';
+const APP_VERSION = '7.70';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1908,9 +1908,8 @@ function renderProd(){
     const procF = PROD_PROC.map(([k, n]) => { const l = proc.filter(x => x.p === k), u = prodSum(l, 'u'), act = prodActivos(l);
       return `<tr><td><b>${n}</b></td><td class="r"><b>${fmtN(u)}</b></td><td class="r">${fmtN(prodSum(l, 'm2'), 1)}</td><td class="r">${act}</td><td class="r">${act ? fmtN(u / act, 1) : '—'}</td><td class="pd-mini">${prodBarras(dias, porDia(l, 'u'), 26)}</td></tr>`; }).join('');
     // Ensamble por ensamblador
-    const ensArt = ens.filter(x => /^ART[IÍ]CA$/.test(x.e)), ensPl = ens.filter(x => !/^ART[IÍ]CA$/.test(x.e)), ensPlU = prodSum(ensPl, 'u');
-    const porE = [...grp(ensPl, x => x.e).entries()].map(([e, l]) => ({e, u: prodSum(l, 'u'), m2: prodSum(l, 'm2'), pts: prodSum(l, 'pts'), d: new Set(l.map(x => x.d)).size, l})).sort((x, y) => y.u - x.u || y.pts - x.pts);
-    const ensF = porE.map(x => `<tr><td><b>${esc(x.e)}</b></td><td class="r"><b>${fmtN(x.u)}</b></td><td class="r">${fmtN(x.m2, 1)}</td><td class="r">${fmtN(x.pts)}</td><td class="r">${x.d}</td><td class="r">${fmtN(x.u / x.d, 1)}</td><td class="r">${fmtN(x.pts / x.d)}</td><td class="pd-pc"><i style="width:${ensPlU ? x.u / ensPlU * 100 : 0}%"></i><span>${ensPlU ? Math.round(x.u / ensPlU * 100) : 0} %</span></td></tr>`).join('');
+    const porE = [...grp(ens, x => x.e).entries()].map(([e, l]) => ({e, u: prodSum(l, 'u'), m2: prodSum(l, 'm2'), pts: prodSum(l, 'pts'), d: new Set(l.map(x => x.d)).size, l})).sort((x, y) => y.u - x.u || y.pts - x.pts);
+    const ensF = porE.map(x => `<tr><td><b>${esc(x.e)}</b></td><td class="r"><b>${fmtN(x.u)}</b></td><td class="r">${fmtN(x.m2, 1)}</td><td class="r">${fmtN(x.pts)}</td><td class="r">${x.d}</td><td class="r">${fmtN(x.u / x.d, 1)}</td><td class="r">${fmtN(x.pts / x.d)}</td><td class="pd-pc"><i style="width:${ensU ? x.u / ensU * 100 : 0}%"></i><span>${ensU ? Math.round(x.u / ensU * 100) : 0} %</span></td></tr>`).join('');
     // Ártica
     const porEst = ART_EST.map(([k, n]) => { const l = art.filter(x => x.est === k), pz = prodSum(l, 'pz'), act = prodActivos(l, 'pz');
       return pz ? `<tr><td><b>${esc(n)}</b></td><td class="r"><b>${fmtN(pz)}</b></td><td class="r">${fmtN(prodSum(l, 'm2'), 1)}</td><td class="r">${pz ? Math.round(prodSum(l, 'cli') / pz * 100) : 0} %</td><td class="r">${act}</td><td class="r">${act ? fmtN(pz / act, 1) : '—'}</td><td class="pd-mini">${prodBarras(dias, porDia(l, 'pz'), 26)}</td></tr>` : ''; }).join('');
@@ -1930,7 +1929,7 @@ function renderProd(){
     body = `<div class="pd-kpis">${kpis.map(([t, v, s, p]) => `<div><span>${t}</span><b>${fmtN(v)}</b><small>${s}</small>${p != null ? `<small>${prodDelta(v, p)} vs. periodo anterior (${fmtN(p)})</small>` : ''}</div>`).join('')}</div>
       ${dias.length > 1 ? `<div class="pd-dos"><div class="cot-box"><div class="cot-h">Ensamble por día</div>${prodBarras(dias, porDia(ens, 'u'), 90)}</div><div class="cot-box"><div class="cot-h">Ártica · piezas por día</div>${prodBarras(dias, porDia(art, 'pz'), 90)}</div></div>` : ''}
       <div class="cot-box"><div class="cot-h">Elíptica · procesos</div>${tabla([['Proceso'], ['Unidades', 'r'], ['m²', 'r'], ['Días', 'r'], ['Prom./día', 'r'], ['Por día', '']], proc.length ? procF : '', 'Sin procesos registrados en el periodo.')}</div>
-      <div class="cot-box"><div class="cot-h">Ensamble por ensamblador</div><div class="cot-d">Terminadas en el periodo por los ensambladores: ${fmtN(ensPlU)} · iniciadas: ${fmtN(prodSum(D.ini, 'u'))}. Puntos = tiempo estándar de la OP.${ensArt.length ? ` <b>Solo vidrio (asignadas a Ártica, sin ensamblador): ${fmtN(prodSum(ensArt, 'u'))} unidades · ${fmtN(prodSum(ensArt, 'm2'), 1)} m²</b> — divisiones de baño, barandas y similares; no cuentan en el % de los ensambladores.` : ''}</div>
+      <div class="cot-box"><div class="cot-h">Ensamble por ensamblador</div><div class="cot-d">Terminadas en el periodo · iniciadas: ${fmtN(prodSum(D.ini, 'u'))}. Puntos = tiempo estándar de la OP.</div>
         ${tabla([['Ensamblador'], ['Unid.', 'r'], ['m²', 'r'], ['Puntos', 'r'], ['Días', 'r'], ['Und/día', 'r'], ['Pts/día', 'r'], ['% del total']], ensF, 'Sin ensambles terminados en el periodo.')}</div>
       <div class="cot-box"><div class="cot-h">Ártica · estaciones</div>${tabla([['Estación'], ['Piezas', 'r'], ['m²', 'r'], ['Clientes', 'r'], ['Días', 'r'], ['Prom./día', 'r'], ['Por día', '']], porEst, 'Sin piezas escaneadas en Ártica en el periodo.')}
         ${opF ? `<div class="cot-h" style="margin-top:14px">Operarios de Ártica</div>${tabla([['Operario'], ['Estaciones'], ['Piezas', 'r'], ['m²', 'r'], ['Días', 'r'], ['Prom./día', 'r']], opF, '')}` : ''}</div>
