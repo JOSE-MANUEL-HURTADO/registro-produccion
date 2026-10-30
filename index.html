@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.88';
+const APP_VERSION = '7.89';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -714,13 +714,15 @@ const API = {
   // Listas desplegables: solo quienes han ensamblado / instalado desde el 1 de enero de 2026 (los registros viejos no se tocan)
   async personasRecientes(){
     const desde = PERSONAS_DESDE;
-    const [e1, e2, e3, i1] = await Promise.all([
+    const [e1, e2, e3, i1, ret] = await Promise.all([
       this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_inicio',desde).not('ensamblador','is',null).order('id')),
       this.all(o => this.sb.from('items').select('ensamblador',o).gte('dia_final',desde).not('ensamblador','is',null).order('id')),
       this.all(o => this.sb.from('items').select('ens_asignado',o).not('ens_asignado','is',null).order('id')).catch(() => []),
-      this.all(o => this.sb.from('items').select('instalador',o).gte('fecha_instalacion',INSTALADORES_DESDE).not('instalador','is',null).order('id'))
+      this.all(o => this.sb.from('items').select('instalador',o).gte('fecha_instalacion',INSTALADORES_DESDE).not('instalador','is',null).order('id')),
+      this.sb.from('ensambladores').select('nombre').eq('activo', false).then(r => r.data || []).catch(() => [])   // retirados de la empresa
     ]);
-    const u = l => [...new Set(l.map(normNom).filter(Boolean))].sort(nat);
+    const fuera = new Set(ret.map(r => normNom(r.nombre)));
+    const u = l => [...new Set(l.map(normNom).filter(Boolean))].filter(n => !fuera.has(n)).sort(nat);
     return {ens: u([...e1, ...e2].map(r => r.ensamblador).concat(e3.map(r => r.ens_asignado))), inst: u(i1.map(r => r.instalador))};
   },
   async ultimoRespaldo(){
@@ -2730,6 +2732,12 @@ async function asCargueQuitar(clave){
   const {error} = await API.sb.from('asistencia').delete().eq('fecha', AS.fecha).eq('tipo', 'cargue').eq('clave', clave); if(error) return toast(errMsg(error), true);
   delete AS.filas[asKey('cargue', clave)]; renderAsis();
 }
+// Retirar a alguien que ya no trabaja en la empresa: deja de salir en asistencia, asignación de ensamble y listas de personas
+async function asRetirar(n){
+  if(!confirm(`¿${n} ya no trabaja en la empresa?\n\nDeja de aparecer en la asistencia y en las listas para asignar ensamble e instalación. Su historial se conserva.`)) return;
+  const {error} = await API.sb.from('ensambladores').upsert({nombre: normNom(n), activo: false}, {onConflict: 'nombre'}); if(error) return toast(errMsg(error), true);
+  S.personas = null; await cargarPersonas(); toast(`✓ ${n} retirado de las listas`); asCargar();
+}
 function goAsis(fecha){
   if(!puedeRegistrar()) return;
   if(S.view !== 'asis') history.pushState({v: 'asis'}, '');
@@ -2777,7 +2785,7 @@ function renderAsis(){
     const sinMesa = AS.mesaHoy ? enP.filter(n => !(AS.mesa[n] || []).some(i => !i.ens_novedad_id) && !asCargues(n).length) : [];
     const ensF = AS.ens.map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
       const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : asCargues(n).length ? '<span class="as-ok">🚚 Cargando camión</span>' : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
-      return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
+      return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${encodeURIComponent(n)}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
