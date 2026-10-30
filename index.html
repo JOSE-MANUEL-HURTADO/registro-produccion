@@ -99,6 +99,8 @@ body.artica .sheet{background:#2e2e2e;}
 .pd-tw{overflow-x:auto}.pd-t{width:100%;border-collapse:collapse;font-size:13px}.pd-t th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px;border-bottom:1px solid var(--border2);white-space:nowrap}
 .pd-t td{padding:6px;border-bottom:1px solid var(--border);vertical-align:middle}.pd-t .r{text-align:right;font-variant-numeric:tabular-nums}
 .pd-pc{min-width:110px;position:relative}.pd-pc i{display:block;height:8px;background:var(--text);opacity:.7}.pd-pc span{font-size:11px;color:var(--muted)}
+.as-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)}.as-n{flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px}
+.as-seg{flex:none}.as-mot{max-width:260px;min-height:34px}.as-ok{font-size:12px;color:#2e9d5b}.as-mal{font-size:12px;color:var(--danger);font-weight:700}
 .cot-box{background:var(--surface);border:1px solid var(--border);padding:14px 16px;margin-bottom:12px}.cot-h{font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}.cot-d{color:var(--muted);font-size:13px;margin:-4px 0 8px}
 .cot-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:800px){.cot-cards{grid-template-columns:1fr}}
 .cot-tab{border-collapse:collapse;width:100%;font-size:13px}.cot-tab th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:4px 4px;white-space:nowrap}
@@ -575,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.76';
+const APP_VERSION = '7.77';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1889,6 +1891,7 @@ async function prodCargar(){
   try{
     const [d, p] = await Promise.all([API.sb.rpc('prod_resumen', {p_desde: a, p_hasta: b}), API.sb.rpc('prod_resumen', {p_desde: prodDia(a, -n), p_hasta: prodDia(a, -1)})]);
     if(d.error) throw d.error; P.data = d.data; P.prev = p.error ? null : p.data;
+    try{ const r = await API.sb.from('asistencia').select('fecha,tipo,clave,estado,motivo,operario').gte('fecha', a).lte('fecha', b).order('fecha'); P.asis = r.error ? [] : (r.data || []); }catch(e){ P.asis = []; }
   }catch(e){ P.data = null; P.err = /prod_resumen|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la productividad en la base (SQL 91)' : errMsg(e); }
   P.cargando = false; if(S.view === 'prod') renderProd();
 }
@@ -1902,6 +1905,14 @@ function prodBarras(dias, valDe, alto){
 const prodDelta = (a, b) => { if(b == null || !isFinite(b)) return ''; if(!b) return a ? '<em class="pd-up">nuevo</em>' : ''; const p = Math.round((a - b) / b * 100);
   return `<em class="${p >= 0 ? 'pd-up' : 'pd-dn'}">${p >= 0 ? '▲' : '▼'} ${Math.abs(p)} %</em>`; };
 const prodActivos = (l, k) => new Set((l || []).filter(x => +x[k || 'u'] || +x.pz).map(x => x.d)).size;
+const PROC_NOM = k => (PROCS.find(x => x[0] === k) || [k, k])[1];
+function prodAsis(){
+  const l = P.asis || [], dias = new Set(l.filter(x => x.tipo === 'ensamble').map(x => x.fecha));
+  const nov = l.filter(x => ['obra', 'ausente', 'sin_operario'].includes(x.estado)).map(x => ({d: x.fecha, q: x.tipo === 'proceso' ? PROC_NOM(x.clave) + (x.operario ? ' · ' + x.operario : '') : x.clave,
+    e: x.estado === 'obra' ? 'En obra' : x.estado === 'ausente' ? 'Ausente' : 'Proceso sin operario', m: x.motivo || ''}));
+  const planta = [...grp(l.filter(x => x.tipo === 'ensamble' && x.estado === 'planta'), x => x.fecha).values()].map(v => v.length);
+  return {dias: dias.size, prom: planta.length ? planta.reduce((a, b) => a + b, 0) / planta.length : 0, nov};
+}
 function renderProd(){
   const [a, b] = prodRango(), dias = prodDias(a, b), D = P.data, V = P.prev;
   const chip = (k, t) => `<button class="btn sm ${P.per === k ? 'primary' : 'ghost'}" onclick="prodPer('${k}')">${t}</button>`;
@@ -1953,7 +1964,9 @@ function renderProd(){
         ${opF ? `<div class="cot-h" style="margin-top:14px">Operarios de Ártica</div>${tabla([['Operario'], ['Estaciones'], ['Piezas', 'r'], ['m²', 'r'], ['Días', 'r'], ['Prom./día', 'r']], opF, '')}` : ''}</div>
       <div class="pd-dos"><div class="cot-box"><div class="cot-h">Despachos</div>${tabla([['Fecha'], ['Unid.', 'r'], ['m²', 'r'], ['Obras']], despF, 'Sin despachos en el periodo.')}</div>
         <div class="cot-box"><div class="cot-h">Instalación por instalador</div>${tabla([['Instalador'], ['Unid.', 'r'], ['m²', 'r'], ['Días', 'r'], ['Und/día', 'r']], instF, 'Sin instalaciones en el periodo.')}</div></div>
-      <div class="cot-box"><div class="cot-h">Novedades del periodo</div>${tabla([['Tipo'], ['Cantidad', 'r']], novF, 'Sin novedades en el periodo. 👍')}</div>`;
+      <div class="cot-box"><div class="cot-h">Novedades del periodo</div>${tabla([['Tipo'], ['Cantidad', 'r']], novF, 'Sin novedades en el periodo. 👍')}</div>
+      ${(() => { const x = prodAsis(); return `<div class="cot-box"><div class="cot-h">Asistencia y personal</div><div class="cot-d">${x.dias ? `Asistencia registrada ${x.dias} de ${dias.length} día(s) · en promedio ${fmtN(x.prom, 1)} ensambladores en planta por día.` : 'No se registró asistencia en el periodo.'}</div>
+        ${tabla([['Fecha'], ['Persona / proceso'], ['Novedad'], ['Motivo']], x.nov.map(n => `<tr><td>${fmtD(n.d)}</td><td><b>${esc(n.q)}</b></td><td>${n.e}</td><td>${esc(n.m)}</td></tr>`).join(''), 'Sin ausencias, salidas a obra ni procesos sin operario.')}</div>`; })()}`;
   }
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
     <div class="art-head"><div><div class="h1">Productividad de planta</div><div class="h1-sub">${titulo} · Elíptica y Ártica${P.cargando && D ? ' · actualizando…' : ''}</div></div>
@@ -2104,6 +2117,8 @@ function prodDocHTML(){
       <div class="i-dos2"><div><h2 class="i-h2t">DESPACHOS</h2>${tabla([['FECHA'], ['UND', 'i-r'], ['M²', 'i-r'], ['OBRAS']], despF, 'Sin despachos en el periodo.')}</div>
         <div><h2 class="i-h2t">INSTALACIÓN</h2>${tabla([['INSTALADOR'], ['UND', 'i-r'], ['M²', 'i-r'], ['DÍAS', 'i-r'], ['UND/DÍA', 'i-r']], instF, 'Sin instalaciones en el periodo.')}</div></div>
       <h2>NOVEDADES DEL PERIODO</h2>${tabla([['TIPO'], ['CANTIDAD', 'i-r']], novF, 'Sin novedades en el periodo.')}
+      ${(() => { const x = prodAsis(); return `<h2>ASISTENCIA Y PERSONAL</h2><div class="i-nota" style="margin:0 0 2mm">${x.dias ? `Asistencia registrada ${x.dias} de ${dias.length} día(s) · promedio ${fmtN(x.prom, 1)} ensambladores en planta por día.` : 'No se registró asistencia en el periodo.'}</div>
+        ${tabla([['FECHA'], ['PERSONA / PROCESO'], ['NOVEDAD'], ['MOTIVO']], x.nov.map(n => `<tr><td>${fmtD(n.d)}</td><td class="i-ref">${esc(n.q)}</td><td>${n.e}</td><td>${esc(n.m)}</td></tr>`).join(''), 'Sin ausencias, salidas a obra ni procesos sin operario.')}`; })()}
       <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información del sistema de registro de producción de Elíptica y Ártica. Comparaciones contra el periodo anterior del mismo número de días.</p></div>
     </div></div>`;
 }
@@ -2111,6 +2126,82 @@ function prodPDF(){
   if(!P.data) return toast('Espera a que cargue la productividad', true);
   const [a, b] = prodRango();
   docMostrar(prodDocHTML(), `Productividad_planta_${a}${a === b ? '' : '_a_' + b}`, `ELÍPTICA · INFORME DE PRODUCTIVIDAD · ${a === b ? fmtD(a) : fmtD(a) + ' a ' + fmtD(b)}`, {v: 'prod', inf: 1});
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ASISTENCIA DIARIA DE PLANTA (SQL 93): quién está en planta / en obra / ausente, y procesos sin operario
+// ════════════════════════════════════════════════════════════════
+const AS = {fecha: null, ens: [], filas: {}, mesa: {}, err: null, cargando: false, hoyOk: null};
+const AS_PROC = () => PROCS.filter(([k]) => k !== 'programado');
+const AS_MOT = ['Ausencia del operario', 'Incapacidad', 'Permiso', 'Vacaciones', 'Daño de máquina', 'Sin material', 'Otro'];
+const asKey = (t, c) => t + '|' + c;
+async function asHoyRegistrada(){
+  try{ const {count} = await API.sb.from('asistencia').select('id', {count: 'exact', head: true}).eq('fecha', today()).eq('tipo', 'ensamble'); AS.hoyOk = (count || 0) > 0; }catch(e){ AS.hoyOk = null; }
+  const b = $('#btnAsis'); if(b) b.outerHTML = asBtnHTML();
+}
+const asBtnHTML = () => { const finde = [0, 6].includes(new Date(today() + 'T12:00:00').getDay());
+  return `<button class="btn sm ghost" style="margin-top:8px" id="btnAsis" onclick="goAsis()">Asistencia de hoy${AS.hoyOk === false && !finde ? ' <b style="margin-left:6px;background:var(--danger);color:#fff;padding:0 7px;border-radius:9px">pendiente</b>' : AS.hoyOk ? ' ✓' : ''}</button>`; };
+function goAsis(fecha){
+  if(!puedeRegistrar()) return;
+  if(S.view !== 'asis') history.pushState({v: 'asis'}, '');
+  S.view = 'asis'; aplicarEmpresa(); AS.fecha = fecha || AS.fecha || today(); window.scrollTo(0, 0); asCargar();
+}
+async function asCargar(){
+  AS.cargando = true; AS.err = null; renderAsis();
+  try{
+    const [ens, filas, mesa] = await Promise.all([API.ensambladores(),
+      API.sb.from('asistencia').select('*').eq('fecha', AS.fecha).then(r => { if(r.error) throw r.error; return r.data || []; }),
+      AS.fecha === today() ? API.sb.from('items').select('ensamblador,op_instalacion,op,obra,ens_novedad_id').not('dia_inicio', 'is', null).is('dia_final', null).or('despachado.is.null,despachado.eq.false').limit(3000).then(r => r.data || []) : Promise.resolve(null)]);
+    AS.filas = Object.fromEntries(filas.map(f => [asKey(f.tipo, f.clave), {...f}]));
+    const nombres = new Set(ens.filter(n => !/^[AÁ]RTICA$/i.test(n)).map(n => n.toUpperCase()));
+    for(const f of filas) if(f.tipo === 'ensamble') nombres.add(f.clave);
+    AS.ens = [...nombres].sort(nat);
+    AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
+    AS.mesaHoy = !!mesa;
+  }catch(e){ AS.err = /asistencia|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la asistencia en la base (SQL 93)' : errMsg(e); }
+  AS.cargando = false; AS.sucio = false; if(S.view === 'asis') renderAsis();
+}
+function asSet(tipo, clave, campo, v){
+  const k = asKey(tipo, clave); const f = AS.filas[k] = AS.filas[k] || {fecha: AS.fecha, tipo, clave, estado: tipo === 'ensamble' ? 'planta' : 'activo'};
+  f[campo] = v; f._cambio = true; AS.sucio = true;
+  if(campo === 'estado') renderAsis();
+}
+function asTodosPlanta(){ for(const n of AS.ens){ const k = asKey('ensamble', n); if(!AS.filas[k]) asSet('ensamble', n, 'estado', 'planta'); }
+  for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]) asSet('proceso', p, 'estado', 'activo'); } renderAsis(); }
+async function asGuardar(){
+  const rows = Object.values(AS.filas).filter(f => f._cambio).map(f => ({fecha: AS.fecha, tipo: f.tipo, clave: f.clave, estado: f.estado,
+    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (f.operario || null) : null}));
+  const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
+  if(!rows.length) return toast('No hay cambios');
+  try{ const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'}); if(error) throw error;
+    toast(`✓ Asistencia del ${fmtD(AS.fecha)} guardada`); if(AS.fecha === today()) AS.hoyOk = rows.some(r => r.tipo === 'ensamble') || AS.hoyOk; asCargar(); }
+  catch(e){ toast(/asistencia|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la asistencia en la base (SQL 93)' : errMsg(e), true); }
+}
+function renderAsis(){
+  const seg = (tipo, clave, ops, cur) => `<div class="seg as-seg">${ops.map(([v, t]) => `<button class="${cur === v ? 'on' : ''}" onclick="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(clave)}'), 'estado', '${v}')">${t}</button>`).join('')}</div>`;
+  let body = '';
+  if(AS.err) body = `<div class="warn">${esc(AS.err)}</div>`;
+  else if(AS.cargando && !AS.ens.length) body = '<div class="loading"><div class="spin"></div>Cargando</div>';
+  else {
+    const enP = AS.ens.filter(n => (AS.filas[asKey('ensamble', n)] || {}).estado === 'planta');
+    const sinMesa = AS.mesaHoy ? enP.filter(n => !(AS.mesa[n] || []).some(i => !i.ens_novedad_id)) : [];
+    const ensF = AS.ens.map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
+      const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
+      return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
+        ${['obra', 'ausente'].includes(f.estado) ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="${f.estado === 'obra' ? '¿En qué obra?' : 'Motivo (incapacidad, permiso…)'}" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">` : ''}</div>`; }).join('');
+    const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {};
+      return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b></div>${seg('proceso', k, [['activo', 'Con operario'], ['sin_operario', 'Sin operario']], f.estado)}
+        <input class="as-mot" value="${esc(f.operario || '')}" placeholder="Operario" oninput="asSet('proceso', '${k}', 'operario', this.value)" style="max-width:180px">
+        ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : ''}</div>`; }).join('');
+    body = `${AS.mesaHoy && sinMesa.length ? `<div class="warn" style="margin-bottom:12px"><b>${sinMesa.length === 1 ? sinMesa[0] + ' está' : sinMesa.join(', ') + ' están'} en planta sin una OP en mesa.</b> Asígnales trabajo o registra su inicio de ensamble.</div>` : ''}
+      <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
+      <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Si un proceso no tiene operario hoy, márcalo con su motivo: queda como novedad que justifica que ese día no se produjo.</div>${procF}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="asGuardar()">Guardar asistencia</button><button class="btn ghost" onclick="asTodosPlanta()">Marcar los que faltan como en planta / con operario</button></div>`;
+  }
+  $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
+    <div class="art-head"><div><div class="h1">Asistencia de planta</div><div class="h1-sub">Quién está en planta para ensamblar y qué procesos tienen operario · se avisa si alguien en planta no tiene OP en mesa</div></div>
+      <input type="date" value="${esc(AS.fecha)}" max="${today()}" onchange="goAsis(this.value)" style="max-width:170px"></div>
+    ${body}`);
 }
 
 function renderObraNovBtn(){
@@ -3365,7 +3456,7 @@ function renderHome(){
     <div class="tabs">${homeTabs()}
     </div>
     <div class="home-head">
-      <div><div class="h1">${anual ? 'Obras por año' : 'Obras activas'}</div><div class="h1-sub">${sub}</div>${puedeRegistrar() && !anual ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}${!anual ? ` <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button>` : ''}</div>
+      <div><div class="h1">${anual ? 'Obras por año' : 'Obras activas'}</div><div class="h1-sub">${sub}</div>${puedeRegistrar() && !anual ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''}${!anual ? ` <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button>${puedeRegistrar() ? ' ' + asBtnHTML() : ''}` : ''}</div>
       <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra u OP (6251-7)…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div id="yearChips"></div>
@@ -3374,7 +3465,7 @@ function renderHome(){
   const inp = $('#qObra');
   inp.oninput = () => { S.q = inp.value; anual ? renderAnualBox() : renderObrasBox(resumenObras()); };
   if(anual) loadAnual(); else renderObrasBox(res);
-  if(!anual) ensNovBtn();
+  if(!anual){ ensNovBtn(); if(puedeRegistrar()) asHoyRegistrada(); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3450,7 +3541,7 @@ function renderPlanta(){
   $('#app').innerHTML = shell(`${respaldoHTML()}
     <div class="tabs">${homeTabs()}</div>
     <div class="home-head">
-      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div>${puedeRegistrar() ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''} <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button></div>
+      <div><div class="h1">Planta</div><div class="h1-sub">Todas las obras · toca un estado para ver el detalle · ${liveHTML()}</div>${puedeRegistrar() ? `<button class="btn sm ghost" style="margin-top:8px" onclick="odLista()">Órdenes de despacho pendientes</button>` : ''} <button class="btn sm ghost" style="margin-top:8px" id="btnNovEns" onclick="ensNovGlobal()">⏸ Novedades de ensamble</button>${puedeRegistrar() ? ' ' + asBtnHTML() : ''}</div>
       <div class="search">${ICON.search}<input id="qObra" placeholder="Buscar obra, OP, ensamblador o instalador…" value="${esc(S.q)}" autocomplete="off" autocapitalize="characters"></div>
     </div>
     <div class="st-tiles" id="stTiles"></div>
@@ -3458,7 +3549,7 @@ function renderPlanta(){
   const inp = $('#qObra');
   inp.oninput = () => { S.q = inp.value; renderPlantaBox(); };
   renderPlantaBox();
-  ensNovBtn();
+  ensNovBtn(); if(puedeRegistrar()) asHoyRegistrada();
 }
 function setPlSt(k){ S.plSt = k; renderPlantaBox(); }
 
@@ -4032,6 +4123,7 @@ function onPop(ev){
   if(S.view === 'obra' && S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra}, ''); return; }
   if(st.v === 'carga'){ S.view='carga'; renderCarga(); return; }
   if(st.v === 'prod' && isGerente()){ S.view = 'prod'; aplicarEmpresa(); prodCargar(); return; }
+  if(st.v === 'asis' && puedeRegistrar()){ S.view = 'asis'; aplicarEmpresa(); asCargar(); return; }
   if(st.v === 'obra') openObra(st.obra, true, st.anio, st.pf || undefined);
   else { S.view='home'; S.obra=null; S.sel.clear(); S.detailId=null; S.draft=null; document.body.style.overflow=''; closeSheet(); renderHome(); }
 }
