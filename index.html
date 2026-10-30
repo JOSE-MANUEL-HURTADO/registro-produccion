@@ -563,7 +563,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.64';
+const APP_VERSION = '7.65';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1484,6 +1484,9 @@ const COT_TIPOS = ['TEMPLADO', 'LAMINADO', 'CRUDO', 'ESPEJO', 'REFLECTIVO'];
 const COT_CAL = ['3', '4', '5', '6', '8', '10', '12', '15', '19', '3+3', '4+4', '5+5', '6+6', '8+8', '10+10'];
 const COT_COL = ['INCOLORO', 'EXTRACLARO', 'BRONCE', 'GRIS', 'AZUL', 'VERDE', 'SATINADO'];
 const COT_CANTO = ['PULIDO BRILLADO', 'PULIDO MATE', 'CANTO A CANTO', 'BISELADO', 'FILETEADO'];
+const COT_NIT = '800.091.061-0';
+const COT_ASESORES = [['Juan Sebastián Hurtado', '313 387 2993'], ['María Fernanda Sanabria', '310 210 0257']];
+const cotCel = a => (COT_ASESORES.find(x => x[0] === a) || [])[1] || '';
 const COT_COND = {pago: '50 % anticipo · 50 % previo al despacho', entrega: '10 días hábiles', transporte: 'Recoge en planta'};
 const cotPuede = () => isGerente() || esArticaOps();
 const cotTipo = l => artTipoTxt(l.tipo, l.cal, l.col);
@@ -1533,7 +1536,7 @@ function artCotHTML(){
 async function cotNueva(){
   let precios = {}; try{ precios = await API_COT.precios(); }catch(e){}
   A.cotPreciosBase = precios;
-  A.cot = {fecha: today(), validez: 15, cliente: {}, proyecto: {entrega: 'Recoge en planta', ciudad: 'Ibagué'}, condiciones: {...COT_COND, asesor: (S.perfil && S.perfil.nombre) || ''},
+  A.cot = {fecha: today(), validez: 15, cliente: {}, proyecto: {entrega: 'Recoge en planta', ciudad: 'Ibagué'}, condiciones: {...COT_COND, asesor: COT_ASESORES[0][0]},
     lineas: [{ref: '', cant: 1, tipo: 'TEMPLADO', cal: '10', col: 'INCOLORO', canto: 'PULIDO BRILLADO', ancho: '', alto: '', mec: false, proc: ''}], adicionales: [], precios: {}, estado: 'borrador'};
   cotPreciosDefecto(); renderArtica(); window.scrollTo(0, 0);
 }
@@ -1580,7 +1583,7 @@ function cotEditorHTML(){
         <div class="field"><span class="lbl">Referencia</span>${inp('proyecto.referencia', pr.referencia, 'Ej. Casa 19 · cerramientos')}</div><div class="field"><span class="lbl">Ciudad</span>${inp('proyecto.ciudad', pr.ciudad)}</div>
         <div class="field"><span class="lbl">Entrega</span>${inp('proyecto.entrega', pr.entrega, 'Recoge en planta / Entrega en obra')}</div><div class="field"><span class="lbl">Fecha</span><input type="date" value="${esc(c.fecha)}" oninput="cotSet('fecha',this.value)"></div>
         <div class="field"><span class="lbl">Validez (días)</span>${inp('validez', c.validez, '15', 'type="number" min="1"')}</div><div class="field"><span class="lbl">Forma de pago</span>${inp('condiciones.pago', cd.pago)}</div>
-        <div class="field"><span class="lbl">Tiempo de entrega</span>${inp('condiciones.entrega', cd.entrega)}</div><div class="field"><span class="lbl">Asesor</span>${inp('condiciones.asesor', cd.asesor)}</div></div></div>
+        <div class="field"><span class="lbl">Tiempo de entrega</span>${inp('condiciones.entrega', cd.entrega)}</div><div class="field"><span class="lbl">Asesor</span><select onchange="cotSet('condiciones.asesor',this.value)">${[...new Set([...COT_ASESORES.map(x => x[0]), cd.asesor].filter(Boolean))].map(x => `<option ${x === cd.asesor ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div></div>
     </div>
     <div class="cot-box"><div class="cot-h">Medidas (mm)</div>
       <div style="overflow-x:auto"><table class="cot-tab"><thead><tr><th>Ref.</th><th>Cant</th><th>Tipo</th><th>Calibre</th><th>Color</th><th>Canto</th><th>Ancho</th><th>Alto</th><th>m²</th><th title="Mecanizado">Mec.</th><th>Procesos / observación</th><th></th></tr></thead><tbody>${lin}</tbody></table></div>
@@ -1629,12 +1632,12 @@ function cotDocHTML(c){
   const ad = (c.adicionales || []).filter(x => +x.cant && +x.valor);
   const cli = [['Nombre', cl.nombre], ['NIT / C.C.', cl.nit], ['Contacto', cl.contacto], ['Teléfono', cl.tel], ['Correo', cl.correo]].filter(x => x[1]);
   const pro = [['Referencia', pr.referencia], ['Entrega', pr.entrega], ['Ciudad', pr.ciudad]].filter(x => x[1]);
-  const con = [['Validez', (c.validez || 15) + ' días calendario'], ['Pago', cd.pago], ['Entrega', cd.entrega], ['Asesor', cd.asesor]].filter(x => x[1]);
+  const con = [['Validez', (c.validez || 15) + ' días calendario'], ['Pago', cd.pago], ['Entrega', cd.entrega], ['Asesor', cd.asesor], ['Celular', cotCel(cd.asesor)]].filter(x => x[1]);
   const kv = l => `<div class="c-k">${l.map(([a, b]) => `<span>${esc(a)}</span><span>${esc(b)}</span>`).join('')}</div>`;
   return `<div class="inf-pag c-pag">
     <div class="c-band"><img class="c-logo" src="icons/artica_logo.png" alt="Ártica"><img class="c-tri" src="icons/artica_triangulos.png" alt="">
       <div class="c-tit"><h1>COTIZACIÓN</h1><div class="c-num">N.º ${cotNum(c)}</div><div class="c-f">${infF(c.fecha)} · VÁLIDA HASTA ${infF(venc)}</div></div></div>
-    <div class="c-lin"></div><div class="c-sub"><span>Vidrio procesado a la medida</span><span>${esc(pr.ciudad || 'Ibagué · Tolima')}</span></div>
+    <div class="c-lin"></div><div class="c-sub"><span>Vidrio procesado a la medida · NIT ${COT_NIT}</span><span>${esc(pr.ciudad || 'Ibagué · Tolima')}</span></div>
     <div class="c-hoja">
       <div class="c-cards"><div class="c-card"><h3>CLIENTE</h3>${kv(cli)}</div><div class="c-card"><h3>PROYECTO</h3>${kv(pro)}</div><div class="c-card"><h3>CONDICIONES</h3>${kv(con)}</div></div>
       <table class="c-tab"><thead><tr><th class="c-c">#</th><th>REF.</th><th class="c-r">CANT</th><th class="c-r">ANCHO</th><th class="c-r">ALTO</th><th class="c-r">M²</th><th>PROCESOS</th><th class="c-r">VALOR M²</th><th class="c-r">VALOR</th></tr></thead>
@@ -1644,7 +1647,7 @@ function cotDocHTML(c){
         <div class="c-tot"><h4>VALOR DE LA COTIZACIÓN</h4><div><span>Vidrio</span><span>${cot$(t.vid)}</span></div>${t.adic ? `<div><span>Procesos adicionales</span><span>${cot$(t.adic)}</span></div>` : ''}<div><span>Subtotal</span><span>${cot$(t.sub)}</span></div><div><span>IVA 19 %</span><span>${cot$(t.iva)}</span></div><div class="c-T"><span>TOTAL</span><span>${cot$(t.total)}</span></div></div></div>
       <div class="c-cond"><div><h4>CONDICIONES COMERCIALES</h4><ol><li>Forma de pago: ${esc(cd.pago || COT_COND.pago)}.</li><li>Tiempo de entrega: ${esc(cd.entrega || COT_COND.entrega)}, contados desde el pago del anticipo y la confirmación escrita de medidas.</li><li>Los precios incluyen el corte, los cantos y los procesos indicados. No incluyen transporte ni instalación, salvo que se indique.</li><li>Los precios pueden cambiar si cambian las medidas, las cantidades o los procesos cotizados.</li></ol></div>
         <div><h4>CONDICIONES TÉCNICAS</h4><ol><li>Las medidas son responsabilidad del cliente; se fabrica con las medidas confirmadas en la orden de producción.</li><li>Tolerancia de fabricación de ± 2 mm en ancho y alto.</li><li>Al aprobarse, esta cotización se convierte en la orden de producción de Ártica con las mismas líneas.</li></ol></div></div>
-      <div class="c-firmas"><div><b>ELABORÓ</b>${esc(cd.asesor || 'Ártica · Vidrio arquitectónico')}</div><div><b>ACEPTA EL CLIENTE</b>Firma, nombre y fecha</div></div>
+      <div class="c-firmas"><div><b>ELABORÓ</b>${esc(cd.asesor || 'Ártica · Vidrio arquitectónico')}${cotCel(cd.asesor) ? ' · Cel. ' + cotCel(cd.asesor) : ''}</div><div><b>ACEPTA EL CLIENTE</b>Firma, nombre y fecha</div></div>
     </div>
     <div class="c-pie"><span>Cra. 16 Sur # 67-406, Interior Bodega 5-6 · Zona Industrial el Papayo, Ibagué – Tolima</span><span>Tel. 310 210 0257 · www.artica.com.co</span></div></div>`;
 }
@@ -1710,13 +1713,13 @@ async function cotExcelBlob(c){
   ws.mergeCells('G3:I3'); cel('G3', 'N.º ' + cotNum(c), {name: DIN, size: 13, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'right'});
   ws.mergeCells('G4:I4'); cel('G4', `${fmtD(c.fecha)} · válida hasta ${fmtD(venc)}`, {name: FUT, size: 9, color: {argb: 'FFBDBDBD'}}, GRAF, {vertical: 'top', horizontal: 'right'});
   ws.getRow(6).height = 4; for(let k = 1; k <= 9; k++) ws.getCell(6, k).fill = fill(AC);
-  ws.getRow(7).height = 16; ws.mergeCells('A7:I7'); cel('A7', 'V I D R I O   P R O C E S A D O   A   L A   M E D I D A', {name: FUT, size: 8, color: {argb: 'FF4A4A4A'}}, 'FFD9D9D9', {vertical: 'middle', indent: 1});
+  ws.getRow(7).height = 16; ws.mergeCells('A7:I7'); cel('A7', 'V I D R I O   P R O C E S A D O   A   L A   M E D I D A     ·     N I T   ' + COT_NIT.split('').join(' '), {name: FUT, size: 8, color: {argb: 'FF4A4A4A'}}, 'FFD9D9D9', {vertical: 'middle', indent: 1});
   // Cliente / proyecto / condiciones
   const cl = c.cliente || {}, pr = c.proyecto || {}, cd = c.condiciones || {};
   ws.getRow(8).height = 8;
   const izq = [['CLIENTE', null], ['Nombre', cl.nombre], ['NIT / C.C.', cl.nit], ['Contacto', cl.contacto], ['Teléfono', cl.tel], ['Correo', cl.correo],
     ['PROYECTO', null], ['Referencia', pr.referencia], ['Entrega', pr.entrega], ['Ciudad', pr.ciudad]].filter(x => x[1] !== undefined && (x[1] === null || x[1] !== ''));
-  const der = [['CONDICIONES', null], ['Validez', (c.validez || 15) + ' días'], ['Pago', cd.pago], ['Entrega', cd.entrega], ['Asesor', cd.asesor]].filter(x => x[1] === null || x[1]);
+  const der = [['CONDICIONES', null], ['Validez', (c.validez || 15) + ' días'], ['Pago', cd.pago], ['Entrega', cd.entrega], ['Asesor', cd.asesor], ['Celular', cotCel(cd.asesor)]].filter(x => x[1] === null || x[1]);
   const encab = (ref, t) => { const h = cel(ref, t, {name: DIN, size: 10, bold: true, color: {argb: GRAF}}, null, {vertical: 'bottom'}); h.border = {top: {style: 'medium', color: {argb: GRAF}}}; };
   let ri = 9;
   for(const [a, b] of izq){ ws.getRow(ri).height = b === null ? 18 : 15;
@@ -1783,7 +1786,7 @@ async function cotExcelBlob(c){
   for(let i = 0; i < 4; i++){ ws.getRow(r).height = 32; ws.mergeCells(`A${r}:E${r}`); cel(`A${r}`, cc[i], {name: FUT, size: 8.5, color: {argb: 'FF4A4A4A'}}, null, {vertical: 'top', wrapText: true});
     ws.mergeCells(`F${r}:I${r}`); cel(`F${r}`, ct[i], {name: FUT, size: 8.5, color: {argb: 'FF4A4A4A'}}, null, {vertical: 'top', wrapText: true}); r++; }
   r += 2; ws.getRow(r - 1).height = 26;
-  ws.mergeCells(`A${r}:D${r}`); cel(`A${r}`, 'ELABORÓ · ' + (cd.asesor || 'Ártica'), {name: DIN, size: 9, bold: true, color: {argb: TXT2}}).border = {top: {style: 'medium', color: {argb: GRAF}}};
+  ws.mergeCells(`A${r}:D${r}`); cel(`A${r}`, 'ELABORÓ · ' + (cd.asesor || 'Ártica') + (cotCel(cd.asesor) ? ' · Cel. ' + cotCel(cd.asesor) : ''), {name: DIN, size: 9, bold: true, color: {argb: TXT2}}).border = {top: {style: 'medium', color: {argb: GRAF}}};
   ws.mergeCells(`F${r}:I${r}`); cel(`F${r}`, 'ACEPTA EL CLIENTE · firma, nombre y fecha', {name: DIN, size: 9, bold: true, color: {argb: TXT2}}).border = {top: {style: 'medium', color: {argb: GRAF}}};
   r += 2; ws.getRow(r).height = 20; for(let col = 1; col <= 9; col++) ws.getCell(r, col).fill = fill(GRAF);
   ws.mergeCells(`A${r}:I${r}`); cel(`A${r}`, 'Cra. 16 Sur # 67-406, Interior Bodega 5-6 · Zona Industrial el Papayo, Ibagué – Tolima · Tel. 310 210 0257 · www.artica.com.co', {name: DIN, size: 9.5, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
