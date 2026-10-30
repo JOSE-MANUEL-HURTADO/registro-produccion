@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.87';
+const APP_VERSION = '7.88';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1970,7 +1970,7 @@ function renderProd(){
   }
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
     <div class="art-head"><div><div class="h1">Productividad de planta</div><div class="h1-sub">${titulo} · Elíptica y Ártica${P.cargando && D ? ' · actualizando…' : ''}</div></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm primary" onclick="prodPDF()">${ICON.down} Informe PDF</button><button class="btn sm ghost" onclick="prodCargar()">${ICON.ref} Actualizar</button></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm primary" onclick="prodPDF()">${ICON.down} Informe PDF</button><button class="btn sm ghost" title="Horas pagadas sin trabajo registrado y su costo" onclick="moMuertoVer(...prodRango())">Tiempo muerto</button><button class="btn sm ghost" onclick="prodCargar()">${ICON.ref} Actualizar</button></div></div>
     <div class="pd-per">${chip('hoy', 'Hoy')}${chip('dia', 'Un día')}${P.per === 'dia' ? `<input type="date" value="${esc(P.dia || '')}" max="${today()}" onchange="P.dia=this.value;prodCargar()" style="max-width:170px">` : ''}${chip('7', 'Últimos 7 días')}${chip('15', 'Últimos 15 días')}${chip('mes', 'Este mes')}</div>
     ${body}`);
 }
@@ -2340,7 +2340,8 @@ function renderMO(){
       ${MO.nom.map(n => `<option value="n${n.id}" ${v === 'n' + n.id ? 'selected' : ''}>${esc(n.nombre)}</option>`).join('')}
       <option value="contratista" ${v === 'contratista' ? 'selected' : ''}>Contratista (sin costo de nómina)</option><option value="ignorar" ${v === 'ignorar' ? 'selected' : ''}>No es una persona / ignorar</option></select>`; };
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
-    <div class="h1">Mano de obra · personal y salarios</div><div class="h1-sub">Solo usted ve esta información. Se usa para el costo de mano de obra de cada obra.</div>
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start"><div class="h1">Mano de obra · personal y salarios</div>
+      <button class="btn" onclick="moMuertoVer(today().slice(0, 8) + '01', today())">Tiempo muerto del mes</button></div><div class="h1-sub">Solo usted ve esta información. Se usa para el costo de mano de obra de cada obra.</div>
     <div class="cot-box"><div class="cot-h">Parámetros</div>
       <div class="fgrid"><div class="field"><span class="lbl">ARL general (%)</span><input type="number" step="0.001" id="moArl" value="${p.arl}"></div>
         <div class="field"><span class="lbl">Exonerado de salud, SENA e ICBF</span><select id="moExo"><option value="1" ${p.exonerado ? 'selected' : ''}>Sí (art. 114-1 E.T.)</option><option value="0" ${p.exonerado ? '' : 'selected'}>No</option></select></div></div>
@@ -2508,6 +2509,95 @@ function moArtCliHTML(R){
       <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Ártica · Elíptica</div><p>Calculado con los registros de la app al ${infF(today())}. Documento confidencial.</p></div>
     </div>
     <div class="inf-pie"><span>ÁRTICA · VIDRIO</span><span>Mano de obra de clientes · ${infF(R.desde)} – ${infF(R.hasta)}</span></div></div>`;
+}
+// ── Tiempo muerto: horas pagadas de cada operario que no quedaron registradas en ningún trabajo ──
+//  Ensamble: horas del día cubiertas por unidades en su mesa (unión de intervalos inicio→fin), más cargues y prealistados.
+//  Procesos de Elíptica (desde el escáner, 15/10/2026) y estaciones de Ártica (desde 27/10/2026): día con escaneos = día productivo.
+//  Instalación y "en obra" (asistencia): día productivo. Ausencias (asistencia) se muestran aparte.
+const MO_ESC_PROC = '2026-10-15', MO_ESC_ART = '2026-10-27';
+async function moMuertoVer(desde, hasta){
+  if(!isGerente()) return;
+  if(hasta > today()) hasta = today();
+  toast('Calculando el tiempo muerto…');
+  try{ await moCargarConfig(); const p = moPar();
+    const t0 = new Date(desde + 'T00:00:00-05:00').toISOString(), t1 = new Date(moSig(hasta) + 'T00:00:00-05:00').toISOString();
+    const [ens, ins, pro, asis, art] = await Promise.all([
+      API.all(o => API.sb.from('items').select(MO_COLS, o).not('dia_inicio', 'is', null).lte('dia_inicio', hasta).or(`dia_final.gte.${desde},dia_final.is.null`).gte('dia_inicio', String(+desde.slice(0, 4) - 1) + desde.slice(4)).order('id')),
+      API.all(o => API.sb.from('items').select('instalador,fecha_instalacion', o).eq('instalado', true).gte('fecha_instalacion', desde).lte('fecha_instalacion', hasta).order('id')),
+      API.all(o => API.sb.from('items').select('ensamblador,ens_asignado,' + [...MO_PROC, ['prealistado']].map(([k]) => k + '_en').join(','), o).or([...MO_PROC, ['prealistado']].map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
+      API.sb.from('asistencia').select('*').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || []),
+      API.all(o => API.sb.from('art_registros').select('estacion,creado', o).gte('creado', t0).lt('creado', t1).order('id')).catch(() => [])]);
+    // Personas y lo que hicieron cada día: {cub: horas cubiertas, todo: día completo productivo, aus: ausente, motivo}
+    const P = {}, dia = (nom, d) => { const per = moPersona(nom); if(per.tipo !== 'nomina' || per.n.activo === false) return null;   /* solo personal de la nómina actual */ const x = P[per.k] = P[per.k] || {per, roles: new Set(), d: {}}; return x.d[d] = x.d[d] || {iv: [], extra: 0, todo: false}; };
+    const rol = (nom, r) => { const per = moPersona(nom); if(P[per.k]) P[per.k].roles.add(r); };
+    // quiénes cuentan: ensambladores, operarios de procesos, cuadrillas de Ártica (todos los días laborables del periodo)
+    if(!S.personas) await cargarPersonas();
+    const sumar = (n, r) => { if(dia(n, desde)) P[moPersona(n).k].roles.add(r); };
+    personas('ens').filter(n => !MO_NOPERS.test(n)).forEach(n => sumar(n, 'Ensamble'));
+    Object.entries(AS_OPER).forEach(([k, n]) => sumar(n, (MO_PROC.find(x => x[0] === k) || [, k])[1]));
+    Object.entries(p.artCrew).forEach(([k, l]) => l.forEach(n => sumar(n, 'Ártica')));
+    for(const k of Object.keys(P)) P[k].d = {};
+    for(const i of ens){ if(!i.ensamblador) continue; const abierta = !i.dia_final, fin = i.dia_final || today(); let n = 0;
+      for(let d = i.dia_inicio, k = 0; d <= fin && k < 400; d = moSig(d), k++){ if(!moHorasDia(d)) continue; if(abierta && ++n > 10) break;
+        if(d < desde || d > hasta) continue;
+        const a = d === i.dia_inicio ? (moHH(i.hora_inicio) ?? 0) : 0, b = d === i.dia_final ? (moHH(i.hora_final) ?? 24) : 24;
+        const x = dia(i.ensamblador, d); if(x) x.iv.push([a, b]); } }
+    for(const i of ins){ const x = dia(i.instalador, i.fecha_instalacion); if(x){ x.todo = true; rol(i.instalador, 'Instalación'); } }
+    for(const i of pro){ for(const [k] of MO_PROC){ const d = moDiaEn(i[k + '_en']); if(!d) continue; const a = asis.find(z => z.fecha === d && z.tipo === 'proceso' && z.clave === k);
+        const op = (a && a.operario) || AS_OPER[k]; const x = op && dia(op, d); if(x) x.todo = true; }
+      const d = moDiaEn(i.prealistado_en), e = i.ensamblador || i.ens_asignado; if(d && e){ const x = dia(e, d); if(x) x.extra += 0.5; } }
+    for(const g of art){ const d = moDiaEn(g.creado); for(const q of p.artCrew[g.estacion] || []){ const x = dia(q, d); if(x) x.todo = true; } }
+    for(const a of asis){ if(a.tipo === 'cargue'){ const x = dia(String(a.clave).split('|')[0], a.fecha); if(x) x.extra += +a.horas || 0; }
+      if(a.tipo === 'ensamble' && a.estado !== 'planta'){ const x = dia(a.clave, a.fecha); if(x){ if(a.estado === 'obra') x.todo = true; else { x.aus = true; x.motivo = a.motivo; } } }
+      if(a.tipo === 'proceso' && a.estado === 'sin_operario'){ const op = a.operario || AS_OPER[a.clave]; const x = op && dia(op, a.fecha); if(x){ x.aus = true; x.motivo = a.motivo; } } }
+    // Por persona: días laborables del periodo
+    const filas = [], porDia = {};
+    for(const x of Object.values(P)){
+      const r = {nombre: x.per.k, roles: [...x.roles].join(' · '), H: 0, prod: 0, muerto: 0, aus: 0, cM: 0, cA: 0, cT: 0, sinDato: 0};
+      for(let d = desde; d <= hasta; d = moSig(d)){ const H = moHorasDia(d); if(!H) continue;
+        const ch = moCostoHora(x.per, d.slice(0, 7)).hora, y = x.d[d];
+        // sin forma de medir: procesos antes del escáner y Ártica antes del escáner (si la persona no tiene otro registro ese día)
+        const soloProc = !x.roles.has('Ensamble') && !x.roles.has('Instalación');
+        const sinEsc = soloProc && ((x.roles.has('Ártica') && d < MO_ESC_ART) || (!x.roles.has('Ártica') && d < MO_ESC_PROC));
+        if(sinEsc && !(y && (y.todo || y.iv.length || y.extra || y.aus))){ r.sinDato += H; continue; }
+        r.H += H; r.cT += H * ch;
+        if(y && y.aus){ r.aus += H; r.cA += H * ch; continue; }
+        let cub = 0;
+        if(y && y.todo) cub = H;
+        else if(y){ // unión de intervalos dentro de la jornada
+          const v = moVent(d), iv = y.iv.map(([a, b]) => [a, b]).sort((m, n) => m[0] - n[0]); const u = [];
+          for(const [a, b] of iv){ if(u.length && a <= u[u.length - 1][1]) u[u.length - 1][1] = Math.max(u[u.length - 1][1], b); else u.push([a, b]); }
+          cub = Math.min(H, u.reduce((s, [a, b]) => s + moSolape(d, a, b), 0) + y.extra); void v; }
+        const m = Math.max(0, H - cub); r.prod += cub; r.muerto += m; r.cM += m * ch; porDia[d] = (porDia[d] || 0) + m * ch;
+      }
+      if(r.H || r.sinDato) filas.push(r);
+    }
+    filas.sort((a, b) => b.cM - a.cM);
+    docMostrar(moMuertoHTML({desde, hasta, filas, porDia}), 'Tiempo_muerto_' + desde + '_' + hasta, 'Tiempo muerto · ' + desde + ' a ' + hasta);
+  }catch(e){ toast(/mo_param|mo_nomina|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(e), true); }
+}
+function moMuertoHTML(R){
+  const S2 = k => R.filas.reduce((a, r) => a + r[k], 0), H = S2('H'), M = S2('muerto'), cM = S2('cM'), cA = S2('cA'), cT = S2('cT'), sd = S2('sinDato');
+  const dias = Object.entries(R.porDia).sort(), mx = Math.max(1, ...dias.map(d => d[1]));
+  const kpis = [[moCOP(cM), 'Costo del tiempo muerto', `${fmtN(M, 0)} h de ${fmtN(H, 0)} h pagadas`], [fmtN(H ? M / H * 100 : 0, 1) + ' %', 'Tiempo muerto', 'Sobre las horas pagadas medibles'],
+    [moCOP(cA), 'Ausencias', `${fmtN(S2('aus'), 0)} h (asistencia)`], [moCOP(cT), 'Nómina del periodo', 'Operarios incluidos']];
+  return `<div class="inf-pag">
+    <div class="i-band"><img src="icons/logo_blanco.png" alt="Elíptica"><h1>TIEMPO MUERTO</h1><div class="i-ob">ELÍPTICA Y ÁRTICA · OPERARIOS</div></div>
+    <div class="i-sub"><span>Periodo <b>${infF(R.desde)} – ${infF(R.hasta)}</b></span><span>Corte al <b>${infF(today())}</b> · Confidencial</span></div>
+    <div class="i-hoja">
+      <div class="i-kpis" style="grid-template-columns:repeat(4,1fr)">${kpis.map(([v, t, s]) => `<div class="i-kpi"><b style="font-size:18pt">${v}</b><span>${t}</span><small>${s}</small></div>`).join('')}</div>
+      <h2>POR PERSONA</h2>
+      <table><thead><tr><th>PERSONA</th><th>ROL</th><th class="i-r">H PAGADAS</th><th class="i-r">H CON TRABAJO</th><th class="i-r">H MUERTAS</th><th class="i-r">%</th><th class="i-r">COSTO MUERTO</th><th class="i-r">AUSENCIAS</th></tr></thead><tbody>
+        ${R.filas.map(r => `<tr><td class="i-ref">${esc(r.nombre)}</td><td style="font-size:8.6pt">${esc(r.roles)}</td><td class="i-r">${fmtN(r.H, 1)}</td><td class="i-r">${fmtN(r.prod, 1)}</td><td class="i-r i-b">${fmtN(r.muerto, 1)}</td><td class="i-r">${r.H ? fmtN(r.muerto / r.H * 100, 0) : 0} %</td><td class="i-r i-b">${moCOP(r.cM)}</td><td class="i-r">${r.aus ? fmtN(r.aus, 1) + ' h' : '—'}</td></tr>`).join('')}
+        <tr><td class="i-ref">TOTAL</td><td></td><td class="i-r">${fmtN(H, 1)}</td><td class="i-r">${fmtN(S2('prod'), 1)}</td><td class="i-r i-b">${fmtN(M, 1)}</td><td class="i-r">${H ? fmtN(M / H * 100, 0) : 0} %</td><td class="i-r i-b">${moCOP(cM)}</td><td class="i-r">${moCOP(cA)}</td></tr></tbody></table>
+      ${dias.length > 1 ? `<h2>COSTO DEL TIEMPO MUERTO POR DÍA</h2><div class="i-rit" style="height:30mm">${dias.slice(-22).map(([d, v]) => `<div class="i-rc"><div class="i-rv" style="height:${Math.max(3, v / mx * 80)}%"><b style="font-size:7pt;top:-4mm">${fmtN(v / 1e3, 0)}k</b></div><span style="font-size:7pt">${d.slice(8)}/${d.slice(5, 7)}</span></div>`).join('')}</div>` : ''}
+      <h2>CÓMO SE MIDE</h2>
+      <div class="i-glos" style="font-size:8.8pt">Horas pagadas = horas de jornada de cada día laborable (lunes 8 h, martes a viernes 8,5 h, sin festivos). <b>Ensambladores:</b> horas con alguna unidad en su mesa (de la hora de inicio a la de fin, sin contar dos veces las unidades simultáneas), más cargues de camión y prealistados (½ h c/u). <b>Operarios de procesos y de Ártica:</b> un día con escaneos en su estación cuenta completo; uno sin escaneos cuenta como tiempo muerto. <b>Instalación y "en obra":</b> día completo. <b>Ausencias</b> registradas en la asistencia se muestran aparte.
+        ${sd ? `<br>No se midieron ${fmtN(sd, 0)} h de operarios de procesos antes del escáner (Elíptica desde el 15/10/2026, Ártica desde el 27/10/2026).` : ''}
+        Un día sin registros puede ser tiempo muerto real o trabajo que no se escaneó: este informe también mide qué tan completo es el registro.</div>
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Calculado con los registros de la app al ${infF(today())}. Documento confidencial.</p></div>
+    </div>
+    <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>Tiempo muerto · ${infF(R.desde)} – ${infF(R.hasta)}</span></div></div>`;
 }
 // ── Informe de productividad de planta (para junta directiva) ──
 function prodDocHTML(){
