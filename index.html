@@ -563,7 +563,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.66';
+const APP_VERSION = '7.67';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1582,9 +1582,9 @@ function cotEditorHTML(){
         <div class="field"><span class="lbl">Correo</span>${inp('cliente.correo', cl.correo)}</div></div></div>
       <div class="cot-box"><div class="cot-h">Proyecto y condiciones</div><div class="fgrid">
         <div class="field"><span class="lbl">Referencia</span>${inp('proyecto.referencia', pr.referencia, 'Ej. Casa 19 · cerramientos')}</div><div class="field"><span class="lbl">Ciudad</span>${inp('proyecto.ciudad', pr.ciudad)}</div>
-        <div class="field"><span class="lbl">Entrega</span>${inp('proyecto.entrega', pr.entrega, 'Recoge en planta / Entrega en obra')}</div><div class="field"><span class="lbl">Fecha</span><input type="date" value="${esc(c.fecha)}" oninput="cotSet('fecha',this.value)"></div>
+        <div class="field"><span class="lbl">Entrega</span><select onchange="cotSet('proyecto.entrega',this.value)">${[...new Set(['Recoge en planta', 'Entrega en sitio', pr.entrega].filter(Boolean))].map(x => `<option ${x === pr.entrega ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><span class="lbl">Fecha</span><input type="date" value="${esc(c.fecha)}" oninput="cotSet('fecha',this.value)"></div>
         <div class="field"><span class="lbl">Validez (días)</span>${inp('validez', c.validez, '15', 'type="number" min="1"')}</div><div class="field"><span class="lbl">Forma de pago</span>${inp('condiciones.pago', cd.pago)}</div>
-        <div class="field"><span class="lbl">Tiempo de entrega</span>${inp('condiciones.entrega', cd.entrega)}</div><div class="field"><span class="lbl">Asesor</span><select onchange="cotSet('condiciones.asesor',this.value)">${[...new Set([...COT_ASESORES.map(x => x[0]), cd.asesor].filter(Boolean))].map(x => `<option ${x === cd.asesor ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div></div>
+        <div class="field"><span class="lbl">Tiempo de entrega (días hábiles)</span><input type="number" min="1" value="${esc(parseInt(cd.entrega) || 10)}" placeholder="10" oninput="cotSet('condiciones.entrega', (parseInt(this.value) || 10) + ' días hábiles')"></div><div class="field"><span class="lbl">Asesor</span><select onchange="cotSet('condiciones.asesor',this.value)">${[...new Set([...COT_ASESORES.map(x => x[0]), cd.asesor].filter(Boolean))].map(x => `<option ${x === cd.asesor ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div></div>
     </div>
     <div class="cot-box"><div class="cot-h">Medidas (mm)</div>
       <div style="overflow-x:auto"><table class="cot-tab"><thead><tr><th>Ref.</th><th>Cant</th><th>Tipo</th><th>Calibre</th><th>Color</th><th>Canto</th><th>Ancho</th><th>Alto</th><th>m²</th><th title="Mecanizado">Mec.</th><th>Procesos / observación</th><th></th></tr></thead><tbody>${lin}</tbody></table></div>
@@ -2007,7 +2007,7 @@ async function artCargar(){
 function artTab(t){ A.tab = t; if(t === 'rend') A.rend = null; renderArtica(); }
 function renderArtica(){
   if(esArticaOps() && !['etq', 'cot'].includes(A.tab)) A.tab = 'etq';
-  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas'],['cot','Cotizaciones']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(cotPuede() ? [['cot','Cotizaciones']] : []),...(artAdmin() ? [['oper','Operarios']] : [])];
+  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas'],['cot','Cotizaciones']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(cotPuede() ? [['cot','Cotizaciones']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
   let body;
   if(!A.piezas && !A.err) body = '<div class="loading"><div class="spin"></div>Cargando Ártica</div>';
   else if(A.err) body = `<div class="warn">${esc(A.err)}</div>`;
