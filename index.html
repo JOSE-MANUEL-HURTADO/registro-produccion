@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.77';
+const APP_VERSION = '7.78';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2149,12 +2149,12 @@ function goAsis(fecha){
 async function asCargar(){
   AS.cargando = true; AS.err = null; renderAsis();
   try{
-    const [ens, filas, mesa] = await Promise.all([API.ensambladores(),
+    if(!S.personas) await cargarPersonas();
+    const [ens, filas, mesa] = await Promise.all([Promise.resolve(personas('ens')),
       API.sb.from('asistencia').select('*').eq('fecha', AS.fecha).then(r => { if(r.error) throw r.error; return r.data || []; }),
       AS.fecha === today() ? API.sb.from('items').select('ensamblador,op_instalacion,op,obra,ens_novedad_id').not('dia_inicio', 'is', null).is('dia_final', null).or('despachado.is.null,despachado.eq.false').limit(3000).then(r => r.data || []) : Promise.resolve(null)]);
     AS.filas = Object.fromEntries(filas.map(f => [asKey(f.tipo, f.clave), {...f}]));
     const nombres = new Set(ens.filter(n => !/^[AÁ]RTICA$/i.test(n)).map(n => n.toUpperCase()));
-    for(const f of filas) if(f.tipo === 'ensamble') nombres.add(f.clave);
     AS.ens = [...nombres].sort(nat);
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
     AS.mesaHoy = !!mesa;
