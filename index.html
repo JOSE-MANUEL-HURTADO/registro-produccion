@@ -563,7 +563,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.65';
+const APP_VERSION = '7.66';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -972,7 +972,7 @@ const S = {
   sel:new Set(), detailId:null, draft:null, live:false, com:new Map()
 };
 const isGerente = () => S.perfil && S.perfil.rol === 'gerente';
-const rolTxt = r => r === 'gerente' ? 'Director de operaciones' : r === 'artica_ops' ? 'Ártica · OP y OPTIMA' : r === 'artica' ? 'Ártica · operario' : (r || '');   // el rol "gerente" se muestra con el cargo real
+const rolTxt = r => r === 'gerente' ? 'Director de operaciones' : r === 'artica_gerente' ? 'Gerente comercial · Ártica' : r === 'artica_ops' ? 'Ártica · OP y OPTIMA' : r === 'artica' ? 'Ártica · operario' : (r || '');   // el rol "gerente" se muestra con el cargo real
 const rolEs = (...r) => !!S.perfil && r.includes(S.perfil.rol);
 const puedeRegistrar = () => rolEs('gerente','asistente');   // procesos, ensamble, despacho, instalación
 const veCobros = () => rolEs('gerente','cobros','consulta');  // ve las marcas de cobro
@@ -1078,6 +1078,7 @@ async function afterLogin(ses){
   }
   if(esOperarioArtica()) return goArticaOperario();
   if(esArticaOps()){ window.addEventListener('popstate', onPop); A.tab = 'etq'; return goArtica(); }
+  if(esArticaGer()){ window.addEventListener('popstate', onPop); A.tab = 'avance'; return goArtica(); }
   if(soloScan()){
     window.addEventListener('popstate', onPop);
     history.replaceState({v:'scan'}, '');
@@ -1488,7 +1489,7 @@ const COT_NIT = '800.091.061-0';
 const COT_ASESORES = [['Juan Sebastián Hurtado', '313 387 2993'], ['María Fernanda Sanabria', '310 210 0257']];
 const cotCel = a => (COT_ASESORES.find(x => x[0] === a) || [])[1] || '';
 const COT_COND = {pago: '50 % anticipo · 50 % previo al despacho', entrega: '10 días hábiles', transporte: 'Recoge en planta'};
-const cotPuede = () => isGerente() || esArticaOps();
+const cotPuede = () => artAdmin() || esArticaOps();
 const cotTipo = l => artTipoTxt(l.tipo, l.cal, l.col);
 const cotM2 = l => (+l.cant || 0) * (+l.ancho || 0) * (+l.alto || 0) / 1e6;
 const cot$ = v => '$ ' + fmtN(Math.round(v || 0));
@@ -1927,12 +1928,15 @@ const ART_NOM = Object.fromEntries(ART_EST);
 const ART_AB = {corte:'C', pulido:'P', mecanizado:'M', templado:'T', lavado:'L', forrado:'F'};
 const veArtica = () => rolEs('gerente','asistente','consulta');
 const esOperarioArtica = () => rolEs('artica');
-const esArticaOps = () => rolEs('artica_ops');   // carga OP de clientes de Ártica, OPTIMA y etiquetas; no ve Elíptica (SQL 75)
-const artEscaneaTodo = () => rolEs('gerente','asistente');   // todas las estaciones de Ártica (SQL 73)
-const artImprime = () => isGerente() || esArticaOps();
+const esArticaOps = () => rolEs('artica_ops');
+const esArticaGer = () => rolEs('artica_gerente');   // gerente comercial de Ártica: todo Ártica, nada de Elíptica (SQL 89)
+const artAdmin = () => isGerente() || esArticaGer();
+const entraArtica = () => veArtica() || esArticaOps() || esArticaGer();   // carga OP de clientes de Ártica, OPTIMA y etiquetas; no ve Elíptica (SQL 75)
+const artEscaneaTodo = () => rolEs('gerente','asistente','artica_gerente');   // todas las estaciones de Ártica (SQL 73)
+const artImprime = () => artAdmin() || esArticaOps();
 const A = {tab:'avance', obra:null, piezas:null, err:null, q:'', filtro:'pend', abierta:null, rend:null, rendDias:7, plan:null, ops:null, prefijos:null};
 function empresa(){ try{ return localStorage.getItem('empresa') === 'artica' ? 'artica' : 'eliptica'; }catch(e){ return 'eliptica'; } }
-function aplicarEmpresa(){ document.body.classList.toggle('artica', esOperarioArtica() || esArticaOps() || S.view === 'artop' || ((veArtica() || esArticaOps()) && S.view === 'artica')); }
+function aplicarEmpresa(){ document.body.classList.toggle('artica', esOperarioArtica() || esArticaOps() || esArticaGer() || S.view === 'artop' || ((veArtica() || esArticaOps()) && S.view === 'artica')); }
 function cambiarEmpresa(){
   const e = S.view === 'artica' ? 'eliptica' : 'artica';
   try{ localStorage.setItem('empresa', e); }catch(x){}
@@ -1990,7 +1994,7 @@ const artFaltaSQL = e => /art_|schema cache|PGRST20/i.test(errMsg(e)) ? 'Falta c
 
 // ════════════════ Vista del gerente / asistente ════════════════
 function goArtica(){
-  if(!veArtica() && !esArticaOps()) return;
+  if(!entraArtica()) return;
   S.view = 'artica'; aplicarEmpresa();
   history.replaceState({v:'artica'}, '');
   if(!A.piezas) artCargar(); else renderArtica();
@@ -2003,7 +2007,7 @@ async function artCargar(){
 function artTab(t){ A.tab = t; if(t === 'rend') A.rend = null; renderArtica(); }
 function renderArtica(){
   if(esArticaOps() && !['etq', 'cot'].includes(A.tab)) A.tab = 'etq';
-  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas'],['cot','Cotizaciones']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(cotPuede() ? [['cot','Cotizaciones']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
+  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas'],['cot','Cotizaciones']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(cotPuede() ? [['cot','Cotizaciones']] : []),...(artAdmin() ? [['oper','Operarios']] : [])];
   let body;
   if(!A.piezas && !A.err) body = '<div class="loading"><div class="spin"></div>Cargando Ártica</div>';
   else if(A.err) body = `<div class="warn">${esc(A.err)}</div>`;
@@ -2091,7 +2095,7 @@ function artPiezaHTML(p){
   return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b><span> · ${esc(artCanto(p).toLowerCase())}</span> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.optima_pos ? ' · <b>POS ' + esc(artPosTxt(p)) + '</b>' : ''}${p.obs ? ' · ' + esc(p.obs) : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${c[e] ? 'now' : ''}" title="${ART_NOM[e] || e}: ${h} de ${p.cant} hechas${c[e] ? ' · ' + c[e] + ' esperando aquí' : ''}">${c[e] ? `<i class="q">${c[e]}</i>` : ''}${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? (espera ? 'Esperando: ' + espera : 'En ' + ART_NOM[paso].toLowerCase()) : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
-      <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${isGerente() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
+      <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${artAdmin() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
 }
 // Trazabilidad de una medida: qué piezas pasaron por cada estación (número de etiqueta), cuándo y quién, y sus reprocesos
 async function artHistorial(id){
@@ -2110,7 +2114,7 @@ async function artHistorial(id){
       ? `<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="min-width:120px;color:var(--text2)">${fh(x.t)}</span><span style="flex:1"><b>${ART_NOM[x.r.estacion] || x.r.estacion}</b>${x.r.n != null ? ` · pieza ${x.r.n}/${p.cant}` : ''}</span><span style="color:var(--text2)">${esc(x.r.quien || '')}</span></div>`
       : `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;color:#fff;background:rgba(179,38,30,.25)"><span style="min-width:120px">${fh(x.t)}</span><span style="flex:1"><b>⚠ Reproceso · ${fmtN(x.r.cant)} pz</b> · ${esc(x.r.origen || '')}${x.r.nota ? ' · ' + esc(x.r.nota) : ''}</span><span>${esc(x.r.quien || '')}</span></div>`).join('') || '<div class="empty">Sin escaneos todavía.</div>'}</div>
     ${h.rep === null ? '<div class="sc-note" style="margin-top:6px">Falta activar el registro de reprocesos en la base (SQL 70).</div>' : ''}
-    ${(isGerente() || esOperarioArtica()) && artHechos(p, 'corte') > 0 ? `<div style="margin-top:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="artRpN" type="number" min="1" max="${artHechos(p, 'corte')}" value="1" inputmode="numeric" style="width:80px"><input id="artRpNota" placeholder="¿Qué pasó? (ej. se rompió en templado)" style="flex:1;min-width:180px"><button class="btn sm" style="color:var(--danger)" onclick="artReprocesarUI(${p.id})">Mandar a reprocesar</button></div>` : ''}`;
+    ${(artAdmin() || esOperarioArtica()) && artHechos(p, 'corte') > 0 ? `<div style="margin-top:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="artRpN" type="number" min="1" max="${artHechos(p, 'corte')}" value="1" inputmode="numeric" style="width:80px"><input id="artRpNota" placeholder="¿Qué pasó? (ej. se rompió en templado)" style="flex:1;min-width:180px"><button class="btn sm" style="color:var(--danger)" onclick="artReprocesarUI(${p.id})">Mandar a reprocesar</button></div>` : ''}`;
 }
 async function artReprocesarUI(id){
   const n = Math.max(1, Math.round(+($('#artRpN') || {}).value || 1)), nota = (($('#artRpNota') || {}).value || '').trim();
@@ -3669,7 +3673,7 @@ function onPop(ev){
   if(document.getElementById('infRoot')){ informeCerrar(true); return; }
   if(S.view === 'scan' && st.v !== 'scan'){ scStop(); closeSheet(); }
   if(st.v === 'scan' && puedeEscanear()){ goScan(); return; }
-  if(st.v === 'artica' && veArtica()){ goArtica(); return; }
+  if(st.v === 'artica' && entraArtica()){ goArtica(); return; }
   if(soloScan()){ history.replaceState({v:'scan'}, ''); goScan(); return; }
   if(st.v === 'obra' && S.view === 'obra' && st.obra === S.obra){
     if(S.detailId && !st.d){
@@ -6900,7 +6904,7 @@ function historialHTML(){
 }
 
 // ── Usuarios y roles (solo gerente) ──
-const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas e instalación)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)'],['artica_ops','Ártica · OP de clientes y OPTIMA']];
+const ROLES = [['','Sin acceso'],['asistente','Asistente'],['consulta','Consulta'],['cobros','Cobros'],['gerente','Director de operaciones'],['conductor','Conductor (remisiones)'],['entrega','Entrega en obra (actas e instalación)'],['recibe','Recibe en obra (firma)'],['planta','Planta (solo escanea)'],['instalador','Instalador (solo escanea instalación)'],['artica','Ártica · operario (escanea su estación)'],['artica_ops','Ártica · OP de clientes y OPTIMA'],['artica_gerente','Ártica · gerente comercial (todo Ártica)']];
 const U = {list:null, err:null};
 async function loadUsuarios(){
   U.err = null;
