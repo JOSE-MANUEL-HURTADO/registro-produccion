@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.74';
+const APP_VERSION = '7.75';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1987,15 +1987,17 @@ async function docPDF(pag, pie){
   let primera = true;
   try{
     for(const d of pages){
-      const cv = await html2canvas(d, {scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false});
+      const cv = await html2canvas(d, {scale: esIOS() ? 1.5 : 2, backgroundColor: '#ffffff', useCORS: true, logging: false});
       const pxmm = cv.width / PW, alto = Math.floor((PH - PIE) * pxmm);
       for(let y = 0; y < cv.height; y += alto){
         const h = Math.min(alto, cv.height - y); if(h < 30 * pxmm / 10 && y > 0) break;
         const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = h; const cx = c2.getContext('2d');
         cx.fillStyle = '#fff'; cx.fillRect(0, 0, c2.width, h); cx.drawImage(cv, 0, y, cv.width, h, 0, 0, cv.width, h);
         if(!primera) pdf.addPage('letter'); primera = false;
-        pdf.addImage(c2.toDataURL('image/jpeg', .9), 'JPEG', 0, 0, PW, h / pxmm);
+        pdf.addImage(c2.toDataURL('image/jpeg', .88), 'JPEG', 0, 0, PW, h / pxmm);
+        c2.width = c2.height = 0;   // libera memoria (iPhone)
       }
+      cv.width = cv.height = 0;
     }
   } finally { host.remove(); }
   const N = pdf.getNumberOfPages();
@@ -2010,6 +2012,13 @@ function pdfEntregar(blob, nombre, imprimir){
   window._docUrl = url;
   window._docPrint = () => { try{ const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0'; f.src = url; document.body.appendChild(f);
     f.onload = () => { try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ window.open(url, '_blank'); } setTimeout(() => f.remove(), 60000); }; }catch(e){ window.open(url, '_blank'); } };
+  if(esIOS()){
+    openSheet(imprimir ? 'Imprimir' : 'PDF listo', esc(nombre), `<div style="display:flex;flex-direction:column;gap:8px">
+      ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_docArch], title:_docArch.name}).catch(()=>{})">${imprimir ? 'Imprimir' : 'Compartir o guardar'}</button>
+        <div class="sc-note">${imprimir ? 'En el menú que aparece, toca <b>Imprimir</b> (baja si no lo ves).' : 'WhatsApp, correo, <b>Guardar en Archivos</b> o <b>Imprimir</b>.'}</div>` : `<div class="warn">Este iPhone no permite compartir archivos desde la app. Abre la app en Safari o actualiza iOS.</div>`}
+      <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Ver o descargar PDF</a></div>`, 'Listo', async () => {});
+    return;
+  }
   openSheet(imprimir ? 'Imprimir' : 'PDF listo', esc(nombre), `<div style="display:flex;flex-direction:column;gap:8px">
     ${imprimir ? `<a class="btn primary" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir el PDF para imprimir</a>
       ${esIOS() ? '' : `<button class="btn" onclick="_docPrint()">Imprimir directo</button>`}
