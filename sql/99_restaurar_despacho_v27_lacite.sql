@@ -7,5 +7,6 @@
 update public.ordenes_despacho set estado = 'abierta' where id = 16 and estado = 'cargada';
 update public.items set despachado = true, fecha_despacho = date '2026-10-30', remision = '00-333'
  where id = 87777 and op_instalacion = '6300-1.1' and obra = 'LA CITE' and not coalesce(despachado, false);
+update public.items set status = 'DESPACHADO' where id = 87777 and despachado and status <> 'DESPACHADO';
 update public.ordenes_despacho set estado = 'cargada' where id = 16 and estado = 'abierta';
 select string_agg(op_instalacion || ' ' || item || ' · ' || status, ', ' order by op_instalacion) as r from public.items where remision = '00-333';
