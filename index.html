@@ -575,7 +575,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.70';
+const APP_VERSION = '7.71';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2396,7 +2396,7 @@ function artOptimaHTML(){
   const enviados = [...env.values()].sort((a, b) => String(b.en).localeCompare(String(a.en))); A._env = enviados;
   const opsTxt = s => { const a = [...s].sort(nat); return a.length > 5 ? a.slice(0, 5).join(', ') + ` y ${a.length - 5} más` : a.join(', '); };
   const ck = 'style="width:20px;height:20px;min-height:0;padding:0;margin:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text);flex:none"';
-  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Un Excel por <b>tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Marca las obras y clientes que vas a optimizar juntos para aprovechar mejor la lámina. Cada medida lleva su <b>posición (POS)</b>: digítalas en OPTIMA <b>en ese mismo orden</b> para que OPTIMA les dé el mismo número, que sale grande en la etiqueta. Si una medida sale de un retal, se borra en OPTIMA: los demás números no cambian.</div>
+  return `<div class="cstep"><b>2</b><div><div class="cs-t">Exportar para OPTIMA</div><div class="cs-d">Una orden de corte (PDF) por <b>tipo de vidrio, calibre y color</b> (OPTIMA solo optimiza junto vidrio igual). Marca las obras y clientes que vas a optimizar juntos para aprovechar mejor la lámina. Cada medida lleva su <b>posición (POS)</b>: digítalas en OPTIMA <b>en ese mismo orden</b> para que OPTIMA les dé el mismo número, que sale grande en la etiqueta. Si una medida sale de un retal, se borra en OPTIMA: los demás números no cambian.</div>
       ${hayC && hayE ? `<div class="art-ver">${[['todo', 'Todo', todos], ['eli', 'Obras de Elíptica', todos.filter(l => !l.cliente)], ['cli', 'Clientes de Ártica', todos.filter(l => l.cliente)]].map(([k, t, ls]) =>
           `<button class="btn sm ${ver === k ? 'primary' : 'ghost'}" onclick="A.optVer='${k}';renderArtica()">${t} · ${nPz(ls)}</button>`).join('')}</div>` : ''}
       ${vids.length ? vids.map((v, vi) => { const sel = v.lotes.filter(l => !off.has(l.k)), n = sel.reduce((a, l) => a + l.n, 0);
@@ -2405,11 +2405,11 @@ function artOptimaHTML(){
         <div class="art-sub ${c}">${tit} · ${ls.length} · ${nPz(ls)} piezas</div>
         ${ls.map(l => `<label class="art-lote" style="cursor:pointer;justify-content:flex-start;gap:10px"><input type="checkbox" ${ck} ${off.has(l.k) ? '' : 'checked'} onchange="artOptSel(decodeURIComponent('${encQ(l.k)}'), this.checked)">
           <div><b>${esc(l.obra)}</b><span>${l.fecha ? dias(l.fecha) + ' · ' : ''}${l.entrega ? 'entrega ' + fmtD(l.entrega) + ' · ' : ''}${fmtN(l.piezas.length)} medida${l.piezas.length === 1 ? '' : 's'} · <b>${fmtN(l.n)} piezas</b> · OP ${esc(opsTxt(l.ops))}</span></div></label>`).join('')}`).join('')}
-        <div style="display:flex;justify-content:flex-end;margin:6px 0 14px"><button class="btn sm primary" ${n ? '' : 'disabled'} onclick="artExportarVid(${vi})">${ICON.down} Excel · ${fmtN(n)} piezas${sel.length > 1 ? ' · ' + sel.length + ' obras/clientes' : ''}</button></div>`; }).join('')
+        <div style="display:flex;justify-content:flex-end;margin:6px 0 14px"><button class="btn sm primary" ${n ? '' : 'disabled'} onclick="artExportarVid(${vi})">${ICON.down} Orden de corte · ${fmtN(n)} piezas${sel.length > 1 ? ' · ' + sel.length + ' obras/clientes' : ''}</button></div>`; }).join('')
         : '<div class="empty">No hay vidrio pendiente por mandar a OPTIMA.</div>'}
       ${enviados.length ? `<details class="art-env" ${A.envAbierto ? 'open' : ''} ontoggle="A.envAbierto=this.open"><summary>Enviados a OPTIMA, aún sin cortar completo (${fmtN(enviados.length)} lote${enviados.length === 1 ? '' : 's'} · ${fmtN(enviados.reduce((s, g) => s + g.n, 0))} piezas)</summary>
         ${enviados.map((g, i) => `<div class="art-lote"><div><b>${esc(g.k.replace(/^L\d+ · /, ''))}</b><span>${fmtN(g.piezas.length)} medidas · ${fmtN(g.n)} piezas por cortar · enviado ${g.en ? new Date(g.en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}</span><span>OP ${esc([...new Set(g.piezas.map(p => p.op))].sort(nat).join(', '))}</span></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm primary" onclick="artArchivosLote(${i})">${ICON.down} Archivos (Excel + etiquetas)</button><button class="btn sm ghost" onclick="artDevolverOPs(${i})">Devolver OP…</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver todo</button></div></div>`).join('')}</details>` : ''}</div></div>`;
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm primary" onclick="artArchivosLote(${i})">${ICON.down} Archivos (orden de corte + etiquetas)</button><button class="btn sm ghost" onclick="artDevolverOPs(${i})">Devolver OP…</button><button class="btn sm ghost" onclick="artDevolverLote(${i})">Devolver todo</button></div></div>`).join('')}</details>` : ''}</div></div>`;
 }
 function artOptSel(k, on){ const o = A.optOff || (A.optOff = new Set()); on ? o.delete(k) : o.add(k); renderArtica(); }
 // Excel para digitar en OPTIMA: POS, CANT, MED X (ancho), MED Y (alto), CLIENTE (ítem), PEDIDO, NOTAS
@@ -2418,6 +2418,71 @@ const artPed = op => { const m = String(op || '').match(/^(\d+)-(\d+)$/); return
 const EXCELJS_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js', 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'];
 async function cargarExcelJS(){ if(window.ExcelJS) return; for(const u of EXCELJS_URLS){ try{ await loadScript(u); if(window.ExcelJS) return; }catch(e){} } throw new Error('No se pudo cargar el generador de Excel'); }
 async function b64Icono(u){ try{ const b = await (await fetch(u)).blob(); return await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(b); }); }catch(e){ return null; } }
+// ── Orden de corte para OPTIMA en PDF (no editable: se digita en OPTIMA tal cual sale), con la imagen de Ártica ──
+async function artOrdenCortePDF(ps, cantDe, meta){
+  if(!window.jspdf) await loadScript('lib/jspdf.js');
+  const doc = new jspdf.jsPDF({unit: 'mm', format: 'letter', orientation: 'landscape'}), W = 279.4, H = 215.9, M = 10;
+  const G = [39, 39, 39], AC = [50, 69, 73], L = [217, 217, 217], L2 = [244, 244, 244], T3 = [138, 138, 138];
+  const logo = await b64Icono('icons/artica_logo.png');
+  const car = meta.car || {}, tot = ps.reduce((a, p) => a + (Number(cantDe(p)) || 0), 0), m2 = ps.reduce((a, p) => a + (Number(cantDe(p)) || 0) * p.ancho * p.alto / 1e6, 0);
+  const cols = [['POS', 12, 'c'], ['CANT', 12, 'r'], ['MED X', 16, 'r'], ['MED Y', 16, 'r'], ['ÍTEM', 18, 'c'], ['PEDIDO', 20, 'l'], ['NOTAS', 14, 'c'], ['CANTO', 30, 'l'], ['OBRA / CLIENTE', 40, 'l'], ['OBSERVACIONES', 46.4, 'l'], ['FECHA OP', 18, 'c'], ['DIGITADO', 17, 'c']];
+  const fill = c => doc.setFillColor(...c), txt = c => doc.setTextColor(...c);
+  let pag = 1;
+  const pie = () => { doc.setFont('helvetica', 'normal'); doc.setFontSize(7); txt(T3);
+    doc.text('ÁRTICA · VIDRIO ARQUITECTÓNICO · Orden de corte · ' + (meta.nombre || ''), M, H - 5); doc.text('Hoja ' + pag, W - M, H - 5, {align: 'right'}); };
+  const cab = y => { fill(G); doc.rect(M, y, W - 2 * M, 7, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); txt([255, 255, 255]);
+    let x = M; for(const [t, w, al] of cols){ doc.text(t, al === 'r' ? x + w - 1.5 : al === 'c' ? x + w / 2 : x + 1.5, y + 4.7, {align: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left'}); x += w; } return y + 7; };
+  // Encabezado de la primera hoja
+  fill(G); doc.rect(0, 0, W, 30, 'F');
+  if(logo) try{ doc.addImage('data:image/png;base64,' + logo, 'PNG', M, 3, 28, 24); }catch(e){}
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); txt([255, 255, 255]); doc.text('ORDEN DE CORTE · OPTIMA', W - M, 14, {align: 'right'});
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); txt([191, 191, 191]); doc.text('Ingreso de medidas al optimizador · digitar en este orden · documento no editable', W - M, 21, {align: 'right'});
+  if(meta.lote){ doc.setFontSize(10); txt([255, 255, 255]); doc.text('LOTE ' + meta.lote, W - M, 27, {align: 'right'}); }
+  fill(AC); doc.rect(0, 30, W, 1.2, 'F');
+  // Vidrio y datos del lote
+  let y = 35;
+  fill(G); doc.rect(M, y, 70, 20, 'F'); txt([255, 255, 255]); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text('V I D R I O', M + 35, y + 5, {align: 'center'});
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.text(String(car.tipo || '').toUpperCase(), M + 35, y + 12, {align: 'center'});
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); txt([191, 191, 191]); doc.text([car.cal, car.col].filter(Boolean).join(' · '), M + 35, y + 17.5, {align: 'center'});
+  const datos = [['OBRAS / CLIENTES', (meta.obras || []).join('  ·  ')], ['PIEZAS', `${fmtN(tot)} piezas  ·  ${fmtN(ps.length)} posiciones  ·  ${fmtN(m2, 2)} m2`], ['FECHA', `${fmtD(today())} ${nowTime()}${meta.quien ? '  ·  Exportó: ' + meta.quien : ''}`]];
+  datos.forEach(([l, v], k) => { const yy = y + k * 6.7; fill(L2); doc.rect(M + 73, yy, W - 2 * M - 73, 6.2, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); txt(T3); doc.text(l, M + 75, yy + 4.1);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); txt(G); doc.text(doc.splitTextToSize(v, W - 2 * M - 115)[0], M + 110, yy + 4.2); });
+  y = cab(y + 24);
+  // Filas
+  ps.forEach((p, k) => {
+    const v = [String(p._pos || p.optima_pos || ''), fmtN(Number(cantDe(p))), String(p.ancho), String(p.alto), p.item || '', artPed(p.op), artNotas(p), artCanto(p), artObra(p), (typeof artObs === 'function' ? artObs(p) : p.obs || ''), p.fecha_op ? fmtD(p.fecha_op) : '', ''];
+    doc.setFontSize(8.2);
+    const wrap = [7, 8, 9].map(i => doc.splitTextToSize(String(v[i] || ''), cols[i][1] - 3));
+    const rh = Math.max(7.5, Math.max(...wrap.map(w => w.length)) * 3.4 + 2.8);
+    if(y + rh > H - 12){ pie(); doc.addPage('letter', 'landscape'); pag++; y = cab(M); }
+    if(k % 2) { fill(L2); doc.rect(M, y, W - 2 * M, rh, 'F'); }
+    fill([230, 230, 230]); doc.rect(M, y, cols[0][1], rh, 'F');
+    if(v[9]){ fill([233, 234, 234]); doc.rect(M + cols.slice(0, 9).reduce((a, c) => a + c[1], 0), y, cols[9][1], rh, 'F'); fill(G); doc.rect(M + cols.slice(0, 9).reduce((a, c) => a + c[1], 0), y, .9, rh, 'F'); }
+    let x = M;
+    cols.forEach(([t, w, al], i) => {
+      const cx = al === 'r' ? x + w - 1.5 : al === 'c' ? x + w / 2 : x + 1.5, o = {align: al === 'r' ? 'right' : al === 'c' ? 'center' : 'left'};
+      txt(G);
+      if(i === 0){ doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text(v[0], cx, y + rh / 2 + 1.6, o); }
+      else if(i === 11){ doc.setDrawColor(...T3); doc.setLineWidth(.3); doc.rect(x + w / 2 - 2, y + rh / 2 - 2, 4, 4); }
+      else if([7, 8, 9].includes(i)){ doc.setFont('helvetica', i === 9 ? 'bold' : 'normal'); doc.setFontSize(8.2); doc.text(wrap[i - 7], cx, y + 4.6, o); }
+      else { doc.setFont('helvetica', [1, 2, 3].includes(i) ? 'bold' : 'normal'); doc.setFontSize([1, 2, 3].includes(i) ? 10 : 8.4); doc.text(v[i], cx, y + rh / 2 + 1.3, o); }
+      x += w; });
+    doc.setDrawColor(...L); doc.setLineWidth(.2); doc.line(M, y + rh, W - M, y + rh);
+    y += rh;
+  });
+  // Total, indicaciones y firmas
+  if(y + 40 > H - 12){ pie(); doc.addPage('letter', 'landscape'); pag++; y = M; }
+  fill(G); doc.rect(M, y, W - 2 * M, 7.5, 'F'); txt([255, 255, 255]); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text('TOTAL', M + 6, y + 5, {align: 'center'}); doc.text(fmtN(tot), M + 12 + 12 - 1.5, y + 5, {align: 'right'});
+  doc.setFont('helvetica', 'normal'); doc.text(`piezas en ${fmtN(ps.length)} posiciones  ·  ${fmtN(m2, 2)} m2`, M + 28, y + 5);
+  y += 12; doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); txt(T3);
+  doc.text(doc.splitTextToSize('Digita las filas en este orden: OPTIMA le da a cada medida la misma posición (POS) que lleva su etiqueta. Si una medida sale de un retal, bórrala en OPTIMA; las demás no cambian de número. Las medidas son las de la OP: OPTIMA agrega la amoladura según el calibre. Lee las OBSERVACIONES de cada fila antes de cortar.', W - 2 * M), M, y);
+  y += 20; doc.setDrawColor(...G); doc.setLineWidth(.5);
+  [['DIGITÓ EN OPTIMA', M], ['CORTÓ', M + 95], ['REVISÓ', M + 190]].forEach(([t, x]) => { doc.line(x, y, x + 69, y); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); txt(T3); doc.text(t, x + 34.5, y + 4, {align: 'center'}); });
+  pie();
+  return doc.output('blob');
+}
 async function artExcelPro(ps, cantDe, meta){
   await cargarExcelJS();
   const GRAF = 'FF272727', BLANCO = 'FFFFFFFF', GRIS = 'FFE6E6E6', GRIS2 = 'FFF4F4F4', TXT2 = 'FF6B6B6B', DIN = 'DIN Condensed', FUT = 'Futura';
@@ -2506,8 +2571,9 @@ function artArchivosSheet(titulo, sub, xls, pdf, nota){
       <div style="min-width:0"><b>${t}</b><div class="sc-note" style="margin:0;word-break:break-all">${d}</div></div></div>${btns}</div>`;
   const ambos = pdf ? `<button class="btn primary" onclick="_artBajar('${ux}', _artArch.xn); setTimeout(() => _artBajar('${up}', _artArch.pn), 700)">${ICON.down} Descargar los dos archivos</button>` : '';
   openSheet(titulo, sub, `<div style="display:flex;flex-direction:column;gap:10px">${nota || ''}${esIOS() ? '' : ambos}
-    ${card(1, 'Excel para OPTIMA', esc(xls.nombre), `<div style="display:flex;gap:6px;flex-wrap:wrap">
-        <a class="btn ${esIOS() || !pdf ? 'primary' : ''}" href="${ux}" download="${esc(xls.nombre)}" style="text-decoration:none;justify-content:center;flex:1">${ICON.down} Descargar Excel</a>
+    ${card(1, 'Orden de corte para OPTIMA (PDF)', esc(xls.nombre), `<div style="display:flex;gap:6px;flex-wrap:wrap">
+        <a class="btn" href="${ux}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center;flex:1">Abrir</a>
+        <a class="btn ${esIOS() || !pdf ? 'primary' : ''}" href="${ux}" download="${esc(xls.nombre)}" style="text-decoration:none;justify-content:center;flex:1">${ICON.down} Descargar</a>
         ${comp(fx) ? `<button class="btn" style="flex:1" onclick="navigator.share({files:[_artArch.fx], title:_artArch.xn}).catch(()=>{})">Compartir</button>` : ''}</div>`)}
     ${pdf ? card(2, `Etiquetas (${fmtN(pdf.n)})`, 'Imprimir a tamaño real (100 %) · rollo 85 × 60 mm', `<div style="display:flex;gap:6px;flex-wrap:wrap">
         <a class="btn ${esIOS() ? 'primary' : ''}" href="${up}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center;flex:1">Abrir para imprimir</a>
@@ -2528,41 +2594,39 @@ async function artExportarVid(vi){
   const off = A.optOff || new Set(), sel = v.lotes.filter(l => !off.has(l.k));
   if(!sel.length) return toast('Marca al menos una obra o cliente', true);
   try{
-    if(!window.XLSX){ toast('Preparando el Excel…'); await loadScript(XLSX_URL); }
+    toast('Preparando la orden de corte…');
     // Orden: obra o cliente, OP e ítem; posiciones 1, 2, 3… seguidas en todo el archivo
     const ps = sel.flatMap(l => l.piezas).sort((a, b) => nat(artObra(a), artObra(b)) || nat(a.op, b.op) || nat(a.item, b.item) || a.linea - b.linea);
     ps.forEach((p, k) => { p._pos = k + 1; p._cant = artPorEnviar(p); });
     const etq = ps.flatMap(p => { const h = artHechos(p, 'corte') + artEnPlan(p); return Array.from({length: p._cant}, (_, j) => ({p, n: h + j + 1})); });
-    let blob; try{ blob = await artExcelPro(ps, p => p._cant, {car: v.car, obras: [...new Set(ps.map(artObra))], quien: (S.perfil && S.perfil.nombre) || '', nombre: `${v.car.tipo} ${v.car.cal} ${v.car.col}`}); }
-    catch(e){ console.warn(e); blob = artExcelBlob(ps, p => p._cant); }
     const obras = sel.map(l => l.obra), hhmm = new Date().toTimeString().slice(0, 5);
     const nombre = `${v.car.tipo} ${v.car.cal} ${v.car.col} · ${obras.join(' + ')} · ${today().slice(5).split('-').reverse().join('/')} ${hhmm}`;
-    const archivo = artArchivo(`OPTIMA_${v.car.tipo}_${v.car.cal}_${v.car.col}_${obras.length > 1 ? obras.length + '_obras' : obras[0]}_${today()}`) + '.xlsx';
+    const archivo = artArchivo(`OPTIMA_${v.car.tipo}_${v.car.cal}_${v.car.col}_${obras.length > 1 ? obras.length + '_obras' : obras[0]}_${today()}`) + '.pdf';
+    const pend = ps.map(p => artEnPlan(p) + p._cant);
     let n = null, err = null;
-    try{ n = await API.artOptimaLote(ps.map(p => ({id: p.id, pend: artEnPlan(p) + p._cant, pos: p._pos})), nombre); }
+    try{ n = await API.artOptimaLote(ps.map((p, k) => ({id: p.id, pend: pend[k], pos: p._pos})), nombre); }
     catch(e){ err = /art_optima|optima_|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'falta activar la posición de OPTIMA en la base (SQL 74)' : errMsg(e); }
+    const blob = await artOrdenCortePDF(ps, p => p._cant, {car: v.car, obras: [...new Set(ps.map(artObra))], quien: (S.perfil && S.perfil.nombre) || '', nombre: `${v.car.tipo} ${v.car.cal} ${v.car.col}`, lote: n != null ? 'L' + n : ''});
     if(n != null){ const t = new Date().toISOString();
-      for(const p of ps){ p.optima_pend = artEnPlan(p) + p._cant; p.optima_en = t; p.corte_post_optima = 0; p.optima_lote = 'L' + n + ' · ' + nombre; p.optima_lote_n = n; p.optima_pos = p._pos; } }
+      ps.forEach((p, k) => { p.optima_pend = pend[k]; p.optima_en = t; p.corte_post_optima = 0; p.optima_lote = 'L' + n + ' · ' + nombre; p.optima_lote_n = n; p.optima_pos = p._pos; }); }
     A.ultLote = {nombre, etq}; A._etqUlt = etq;
     renderArtica();
     toast('Preparando las etiquetas…');
-    const pdf = await artPdfSeguro(etq, 'Etiquetas_' + archivo.replace(/\.xlsx$/, '') + '.pdf');
+    const pdf = await artPdfSeguro(etq, 'Etiquetas_' + archivo.replace(/\.pdf$/, '') + '.pdf');
     artArchivosSheet('Archivos del lote', `${fmtN(ps.length)} posiciones · ${fmtN(etq.length)} piezas · ${esc(obras.join(' + '))}`, {blob, nombre: archivo}, pdf,
-      err ? `<div class="warn">Los archivos están listos, pero el lote no quedó marcado como enviado: ${esc(err)}. Sigue en la lista.</div>` : `<div class="sc-note">Quedó en "Enviados a OPTIMA" (botón <b>Archivos</b> para volver a bajarlos). Digita las filas en OPTIMA en el orden del Excel.</div>`);
-  }catch(e){ toast('No se pudo generar el Excel: ' + errMsg(e), true); }
+      err ? `<div class="warn">Los archivos están listos, pero el lote no quedó marcado como enviado: ${esc(err)}. Sigue en la lista.</div>` : `<div class="sc-note">Quedó en "Enviados a OPTIMA" (botón <b>Archivos</b> para volver a bajarlos). Digita las filas en OPTIMA en el orden de la orden de corte.</div>`);
+  }catch(e){ toast('No se pudo generar la orden de corte: ' + errMsg(e), true); }
 }
-// Volver a bajar el Excel de un lote ya enviado (mismas posiciones)
 // Volver a bajar los archivos de un lote ya enviado (mismas posiciones)
 async function artArchivosLote(i){
   const g = (A._env || [])[i]; if(!g) return;
   try{
-    if(!window.XLSX){ toast('Preparando el Excel…'); await loadScript(XLSX_URL); }
     const ps = [...g.piezas].sort((a, b) => (a.optima_pos || 1e9) - (b.optima_pos || 1e9)); ps.forEach(p => { p._pos = p.optima_pos; });
     const cd = p => p.optima_pend || artEnPlan(p), c0 = vidrioCar(ps[0].tipo);
-    let blob; try{ blob = await artExcelPro(ps, cd, {car: c0, obras: [...new Set(ps.map(artObra))], quien: (S.perfil && S.perfil.nombre) || '', nombre: c0.txt}); }catch(e){ console.warn(e); blob = artExcelBlob(ps, cd); }
+    const blob = await artOrdenCortePDF(ps, cd, {car: c0, obras: [...new Set(ps.map(artObra))], quien: (S.perfil && S.perfil.nombre) || '', nombre: c0.txt, lote: (g.k.match(/^L\d+/) || [''])[0]});
     const base = artArchivo('OPTIMA_' + g.k.replace(/^L\d+ · /, ''));
     const pdf = await artPdfSeguro(artEtqDeLote(g.piezas), 'Etiquetas_' + base + '.pdf');
-    artArchivosSheet('Archivos del lote', esc(g.k.replace(/^L\d+ · /, '')), {blob, nombre: base + '.xlsx'}, pdf);
+    artArchivosSheet('Archivos del lote', esc(g.k.replace(/^L\d+ · /, '')), {blob, nombre: base + '.pdf'}, pdf);
   }catch(e){ toast('No se pudieron preparar los archivos: ' + errMsg(e), true); }
 }
 // Devolver solo algunas OP de un lote enviado (para optimizarlas junto con otras)
