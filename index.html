@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.83';
+const APP_VERSION = '7.84';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2081,6 +2081,7 @@ const MO_SMMLV = {2023: [1160000, 140606], 2024: [1300000, 162000], 2025: [14235
 const moSM = y => MO_SMMLV[y] || MO_SMMLV[y < 2023 ? 2023 : 2026];
 const MO_DEF = {exonerado: true, arl: 4.35, prima: 8.33, ces: 8.33, intCes: 1, vac: 4.17, pension: 12, caja: 4, salud: 8.5, sena: 2, icbf: 3,
   est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null}, indirectos: ['JOHANA HERRERA']};
+const MO_TRES = ['cortado', 'troquelado', 'mecanizado'];
 const MO_PROC = [['cortado', 'Corte'], ['troquelado', 'Troquelado'], ['mecanizado', 'Mecanizado'], ['vidrio_proc', 'Vidrio']];
 // Ventanas de la jornada (horas decimales) y horas de un intervalo de trabajo que caen dentro de la jornada de un día
 const moVent = d => { const w = new Date(d + 'T12:00:00').getDay(); return w === 1 ? [[8, 12], [13, 17]] : [[7.5, 12], [13, 17]]; };
@@ -2206,7 +2207,8 @@ function moCalcular(D, obra){
   // Procesos antes del escáner: minutos estimados por unidad × costo hora del operario habitual
   for(const i of D.propios) for(const [k] of MO_PROC){
     if(!['X', '+'].includes(i[k]) || i[k + '_en']) continue;
-    const min = +p.est[k]; if(!(min > 0)){ R.sinEst[k] = (R.sinEst[k] || 0) + 1; continue; }
+    // minutos del proceso: el estimado propio del proceso o, si no hay, el promedio por ítem repartido entre corte, troquelado y mecanizado
+    const min = +p.est[k] > 0 ? +p.est[k] : (+p.estItem > 0 && MO_TRES.includes(k) ? +p.estItem / MO_TRES.length : 0); if(!(min > 0)){ R.sinEst[k] = (R.sinEst[k] || 0) + 1; continue; }
     const op = AS_OPER[k], per = op ? moPersona(op) : {tipo: 'minimo', k: 'OPERARIO ' + k.toUpperCase()}; if(per.tipo === 'ignorar' || per.tipo === 'contratista') continue;
     const ym = (i.dia_inicio || i.dia_final || hoy).slice(0, 7), h = min / 60 * (i[k] === '+' ? 0.5 : 1) * (+i.cant || 1);
     sum(per, 'est', h * moCostoHora(per, ym).hora, h, ym);
@@ -2224,7 +2226,7 @@ function moHTML(R){
   const comp = [['ens', 'Ensamble', 'Horas de cada ensamblador repartidas según el tiempo que cada unidad estuvo en su mesa (hora de inicio a hora de fin, dentro de la jornada). Incluye el prealistado.'],
     ['inst', 'Instalación (nómina)', 'Días de cada instalador repartidos entre lo que instaló ese día (por m²) y días "en obra" de la asistencia.'],
     ['proc', 'Procesos con escáner', 'Días del operario de cada proceso repartidos por los m² procesados ese día.'],
-    ['est', 'Procesos antes del escáner', 'Minutos estimados por unidad × costo hora del operario habitual.'],
+    ['est', 'Procesos antes del escáner', `Tiempo estimado${p.estItem ? ' (' + fmtN(p.estItem) + ' min por ítem entre corte, troquelado y mecanizado)' : ''} × costo hora del operario habitual de cada proceso.`],
     ['cargue', 'Cargue de camión', 'Horas de cargue registradas en la asistencia para esta obra.'],
     ['ind', 'Apoyo de planta', 'Asistente de planta: su día se reparte entre las obras según el trabajo de planta de cada una ese día.']];
   const meses = Object.entries(R.mes).sort();
@@ -2301,6 +2303,8 @@ function renderMO(){
         <div class="field"><span class="lbl">Exonerado de salud, SENA e ICBF</span><select id="moExo"><option value="1" ${p.exonerado ? 'selected' : ''}>Sí (art. 114-1 E.T.)</option><option value="0" ${p.exonerado ? '' : 'selected'}>No</option></select></div></div>
       <div class="cot-d">Carga prestacional resultante: <b>${fmtN(moCarga(p), 2)} %</b> sobre el salario (prima, cesantías, intereses, vacaciones, pensión, caja y ARL${p.exonerado ? '' : ', salud, SENA e ICBF'}) + auxilio de transporte a quien gane hasta 2 SMMLV.</div>
       <div class="cot-h" style="margin-top:12px">Tiempo estimado por unidad, antes del escáner (minutos)</div>
+      <div class="field"><span class="lbl">Promedio por ítem (corte + troquelado + mecanizado, se reparte en partes iguales)</span><input type="number" step="1" min="0" id="moEstItem" value="${p.estItem ?? ''}" placeholder="Ej. 20"></div>
+      <div class="cot-d">Si escribe un tiempo propio para un proceso, ese reemplaza el promedio en ese proceso.</div>
       <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
       <div class="field" style="margin-top:8px"><span class="lbl">Apoyo de planta (separados por coma) · su costo se reparte entre las obras según el trabajo de planta del día</span><input id="moInd" value="${esc((p.indirectos || []).join(', '))}"></div>
       <button class="btn primary" style="margin-top:8px" onclick="moGuardarPar()">Guardar parámetros</button></div>
@@ -2313,7 +2317,7 @@ function renderMO(){
 }
 async function moGuardarPar(){
   const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
-  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean)};
+  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, estItem: $('#moEstItem').value === '' ? null : +$('#moEstItem').value, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean)};
   const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
   MO.par = par; toast('✓ Parámetros guardados'); renderMO();
 }
