@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.79';
+const APP_VERSION = '7.80';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2141,6 +2141,29 @@ async function asHoyRegistrada(){
 }
 const asBtnHTML = () => { const finde = [0, 6].includes(new Date(today() + 'T12:00:00').getDay());
   return `<button class="btn sm ghost" style="margin-top:8px" id="btnAsis" onclick="goAsis()">Asistencia de hoy${AS.hoyOk === false && !finde ? ' <b style="margin-left:6px;background:var(--danger);color:#fff;padding:0 7px;border-radius:9px">pendiente</b>' : AS.hoyOk ? ' ✓' : ''}</button>`; };
+// ¿Puede asignarse/iniciar ensamble hoy a este ensamblador? Exige la asistencia de hoy registrada y que esté EN PLANTA
+async function asHoyFilas(){
+  if(AS._hoy && AS._hoy.f === today() && Date.now() - AS._hoy.t < 60000) return AS._hoy.l;
+  const {data, error} = await API.sb.from('asistencia').select('clave,estado,motivo').eq('fecha', today()).eq('tipo', 'ensamble');
+  if(error) throw error; AS._hoy = {f: today(), t: Date.now(), l: data || []}; return AS._hoy.l;
+}
+async function asPermite(ens, dia){
+  if(dia && dia !== today()) return true;              // registros de días anteriores: no se exige
+  if(/^[AÁ]RTICA$/i.test(String(ens || '').trim())) return true;
+  let l; try{ l = await asHoyFilas(); }catch(e){ return true; }   // sin SQL 93 o sin conexión: no bloquea
+  if(!l.length){
+    openSheet('Falta la asistencia de hoy', '', `<div class="warn"><b>Antes de asignar OP hay que registrar la asistencia de hoy</b>: quién está en planta, quién salió a obra y quién faltó.</div>
+      <button class="btn primary" style="margin-top:10px;width:100%" onclick="closeSheet();goAsis()">Registrar asistencia de hoy</button>`, 'Cerrar', async () => {});
+    return false; }
+  if(!ens) return true;
+  const k = normNom(ens), f = l.find(r => normNom(r.clave) === k);
+  if(f && f.estado === 'planta') return true;
+  const por = !f ? 'no está en la asistencia de hoy' : f.estado === 'obra' ? 'está hoy en obra' + (f.motivo ? ' (' + f.motivo + ')' : '') : 'está ausente hoy' + (f.motivo ? ' (' + f.motivo + ')' : '');
+  if(!confirm(`${k} ${por}.\n\n¿Marcarlo EN PLANTA en la asistencia de hoy y continuar con la asignación?`)) return false;
+  try{ const {error} = await API.sb.from('asistencia').upsert([{fecha: today(), tipo: 'ensamble', clave: k, estado: 'planta', motivo: null, operario: null}], {onConflict: 'fecha,tipo,clave'}); if(error) throw error;
+    AS._hoy = null; toast(`✓ ${k} quedó en planta en la asistencia de hoy`); return true; }
+  catch(e){ toast(errMsg(e), true); return false; }
+}
 function goAsis(fecha){
   if(!puedeRegistrar()) return;
   if(S.view !== 'asis') history.pushState({v: 'asis'}, '');
@@ -2174,7 +2197,7 @@ async function asGuardar(){
   const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
   if(!rows.length) return toast('No hay cambios');
   try{ const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'}); if(error) throw error;
-    toast(`✓ Asistencia del ${fmtD(AS.fecha)} guardada`); if(AS.fecha === today()) AS.hoyOk = rows.some(r => r.tipo === 'ensamble') || AS.hoyOk; asCargar(); }
+    AS._hoy = null; toast(`✓ Asistencia del ${fmtD(AS.fecha)} guardada`); if(AS.fecha === today()) AS.hoyOk = rows.some(r => r.tipo === 'ensamble') || AS.hoyOk; asCargar(); }
   catch(e){ toast(/asistencia|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la asistencia en la base (SQL 93)' : errMsg(e), true); }
 }
 function renderAsis(){
@@ -4984,7 +5007,8 @@ function sheetProcesos(){
   }));
 }
 
-function sheetEnsamblador(){
+async function sheetEnsamblador(){
+  if(!await asPermite(null)) return;
   const items = selItems();
   const yaAsig = items.filter(i => i.ensamblador).length;
   const desp = items.filter(i => i.despachado).length;
@@ -5004,6 +5028,7 @@ function sheetEnsamblador(){
     const ens = pfVal('gEns'), dia = $('#gDia').value, hora = $('#gHora').value;
     if(!ens){ toast('Elige el ensamblador', true); return false; }
     if(!dia){ toast('Falta el día de inicio', true); return false; }
+    if(!await asPermite(ens, dia)) return false;
     { const nuevos = items.filter(i => !i.dia_inicio || normEns(i.ensamblador) !== normEns(ens)), ops = [...new Set(nuevos.map(i => i.op))];
       if(ops.length > 1 && !isGerente()){ toast('Un ensamblador trabaja una OP a la vez: selecciona ítems de una sola OP', true); return false; }
       if(ops.length > 1 && !confirm(`Vas a iniciar ${ops.length} OP a la vez para ${ens} (${ops.join(', ')}). ¿Continuar?`)) return false;
@@ -5394,6 +5419,7 @@ async function scCodigo(txt, manual){
   scGuardarParams();
   const e = scEst();
   if(e.k === 'ini' && !SC.ens){ scBeep(false); return toast('Primero elige el ensamblador: la etiqueta se acomoda a su línea de ensamble', true); }
+  if(e.k === 'ini' && SC._asOk !== normNom(SC.ens) + today()){ if(!await asPermite(SC.ens)){ scBeep(false); return; } SC._asOk = normNom(SC.ens) + today(); }
   if(e.k === 'inst' && !SC.inst){ scBeep(false); return toast('Primero elige el instalador', true); }
   if(e.k === 'nov' && !SC.novMot){ scBeep(false); return toast('Primero elige el motivo de la novedad', true); }
   if(e.k === 'nov' && SC.novMot === 'Otro' && !String(SC.novDet || '').trim()){ scBeep(false); const d = $('#scNovDet'); if(d) d.focus(); return toast('Escribe el detalle de la novedad', true); }
@@ -6506,7 +6532,8 @@ function progCerrar(id, anular){
   });
 }
 // Asignar: por OP, cuántas unidades le tocan a cada ensamblador (se prefieren las que ya tienen los procesos listos)
-function progAsignar(id){
+async function progAsignar(id){
+  if(!await asPermite(null)) return;
   const todos = (PG.items || []).filter(i => i.programacion_id === id && !i.dia_inicio && !i.ensamblador && !i.despachado);
   if(!todos.length) return toast('Todos los ítems de esta programación ya iniciaron ensamble', true);
   // Solo se muestra lo que falta por asignar y ya está listo para ensamblar (corte, troquelado y mecanizado completos)
@@ -6528,6 +6555,7 @@ function progAsignar(id){
     <button class="btn sm ghost" style="margin-top:8px" onclick="progQuitarAsig(${id})">Quitar todas las asignaciones sin iniciar</button>`;
   openSheet('Asignar ensambladores · N.º ' + id, 'Línea de trabajo de cada ensamblador', body, 'Asignar', async () => {
     const ens = pfVal('paEns'); if(!ens){ toast('Elige el ensamblador', true); return false; }
+    if(!await asPermite(ens)) return false;
     const ids = [];
     ops.forEach(([op, is], k) => { const q = Math.max(0, Math.round(Number(document.querySelector(`.paQ[data-k="${k}"]`).value) || 0)); if(!q) return;
       const sin = is.filter(i => !i.ens_asignado && listoEns(i)).sort((a, b) => nat(a.op_instalacion, b.op_instalacion));
