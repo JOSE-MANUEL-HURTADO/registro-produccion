@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.78';
+const APP_VERSION = '7.79';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -6694,7 +6694,8 @@ function ordenDespacho(){
     <div style="max-height:30vh;overflow:auto;margin-top:8px">${porOp.map(o => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span><b>${esc(o.op)}</b> · ${esc(o.dis)} · ${fmtN(o.n)} und${o.pisos ? ' · ' + esc(o.pisos) : ''}</span><b>${fmtKg(o.kg)}</b></div>`).join('')}</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${puedeRegistrar() ? `<button class="btn primary" style="flex:1" onclick="odGuardar()">Guardar orden e imprimir</button>` : `<button class="btn" style="flex:1" onclick="ordenDespachoPDF()">${ICON.down} PDF orden de cargue</button>`}</div>
-    <div class="sc-note" style="margin-top:6px">La orden no despacha nada: el despacho y la remisión se crean cuando se escanea cada ítem al subirlo al camión.</div>`;
+    <div class="sc-note" style="margin-top:6px">La orden no despacha nada: el despacho y la remisión se crean cuando se escanea cada ítem al subirlo al camión.</div>
+    ${puedeRegistrar() ? '<div id="odExist" style="margin-top:12px"></div>' : ''}`;
   window._od = {items, p, m2};
   openSheet('Orden de despacho', subSel(sel.length), body, 'Listo', async () => {});
   const bar = () => { const cap = Number($('#odCap').value) || 0; try{ localStorage.setItem('cap_camion', cap); }catch(e){}
@@ -6702,6 +6703,7 @@ function ordenDespacho(){
     $('#odBar').innerHTML = `<div style="height:10px;background:var(--surface3);position:relative"><div style="position:absolute;inset:0 auto 0 0;width:${Math.min(100, pct)}%;background:${over ? 'var(--danger,#d9534f)' : 'var(--inst,#4caf50)'}"></div></div>
       <div style="font-size:12px;margin-top:4px">${cap ? `<b style="color:${over ? 'var(--danger,#d9534f)' : 'inherit'}">${fmtN(pct, 0)} %</b> ${over ? '· <b>NO CABE</b>, sobran ' + fmtKg(p.kg - cap) : '· quedan ' + fmtKg(cap - p.kg)}` : 'Escribe la capacidad'}</div>`; };
   $('#odCap').oninput = bar; bar();
+  if(puedeRegistrar()) odExistentes(items);
 }
 async function ordenDespachoPDF(od){
   const {items, p, m2} = window._od || {}; if(!items) return;
@@ -6756,6 +6758,43 @@ async function ordenDespachoPDF(od){
       ${puede ? `<button class="btn primary" onclick="navigator.share({files:[_odf.file], title:_odf.nombre}).catch(()=>{})">Compartir / Imprimir</button>` : ''}
       <a class="btn ${puede ? '' : 'primary'}" href="${url}" target="_blank" rel="noopener" style="text-decoration:none;justify-content:center">Abrir PDF</a>
       <a class="btn" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar PDF</a></div>`, 'Listo', async () => {});
+}
+// ── Agregar unidades a una orden ya creada (petición de la obra): misma orden y misma remisión ──
+async function odExistentes(items){
+  const box = () => $('#odExist'); if(!box()) return;
+  const obras = [...new Set(items.map(i => i.obra).filter(Boolean))];
+  let l = [];
+  try{ const desde = new Date(Date.now() - 4 * 864e5).toISOString();
+    const {data, error} = await API.sb.from('ordenes_despacho').select('*').or(`estado.eq.abierta,and(estado.eq.cargada,cerrada.gte.${desde})`).order('id', {ascending: false}).limit(60);
+    if(error) throw error; l = (data || []).filter(o => obras.some(ob => String(o.obra || '').split(' · ').includes(ob)));
+  }catch(e){ return; }
+  let rec = new Map(); try{ const rems = [...new Set(l.map(o => o.remision).filter(Boolean))]; if(rems.length) rec = await API.remRecibidas(rems); }catch(e){}
+  if(!box()) return;
+  if(!l.length){ box().innerHTML = ''; return; }
+  box().innerHTML = `<div class="cot-h" style="font-size:13px;margin-bottom:6px">¿Son unidades adicionales que pidió la obra? Agréguelas a una orden existente</div>
+    <div class="sc-note" style="margin-bottom:6px">Quedan en la misma orden de despacho y salen con la misma remisión; no se crea una nueva.</div>
+    <div style="display:flex;flex-direction:column;gap:6px">${l.map(o => { const r = o.remision && rec.get(o.remision);
+      return `<div class="pl-card" style="padding:8px 10px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <span style="font-size:13px"><b>Orden N.º ${o.id}</b> · ${esc(o.obra || '')} · ${fmtN((o.items || []).length)} ítems${o.remision ? ' · Rem. ' + esc(o.remision) : ''} · ${o.estado === 'abierta' ? 'en cargue' : 'cargada ' + fmtD(String(o.cerrada).slice(0, 10))}${r ? ' · <b>remisión ya recibida en obra</b>' : ''}</span>
+        ${r ? '<small>No se puede: la remisión ya fue firmada</small>' : `<button class="btn sm" onclick="odAgregar(${o.id})">Agregar a la N.º ${o.id}</button>`}</div>`; }).join('')}</div>`;
+}
+async function odAgregar(id){
+  const {items} = window._od || {}; if(!items) return;
+  const nuevos = items.filter(i => !i.despachado);
+  if(!nuevos.length) return toast('Los ítems seleccionados ya están despachados', true);
+  let o, todos = [];
+  try{ o = await API.od(id); if(!o) throw new Error('No encontré la orden ' + id);
+    const ids = [...new Set([...(o.items || []), ...nuevos.map(i => i.id)])];
+    const add = ids.length - (o.items || []).length; if(!add) return toast('Esas unidades ya están en la orden N.º ' + id, true);
+    for(let i = 0; i < ids.length; i += 300){ const {data, error} = await API.sb.from('items').select('*').in('id', ids.slice(i, i + 300)); if(error) throw error; todos = todos.concat(data || []); }
+    const obra = [...new Set([...String(o.obra || '').split(' · '), ...nuevos.map(i => i.obra)].filter(Boolean))].join(' · ');
+    await API.odActualizar(id, {items: ids, peso: Math.round(pesoTotal(todos).kg), obra, estado: 'abierta', cerrada: null});
+    o = {...o, items: ids, obra, estado: 'abierta', cerrada: null};
+    toast(`✓ ${fmtN(add)} unidad${add === 1 ? '' : 'es'} agregada${add === 1 ? '' : 's'} a la orden N.º ${id}${o.remision ? ' · remisión ' + o.remision : ''}`);
+  }catch(e){ return toast(errMsg(e), true); }
+  try{ clearSel(); }catch(e){}
+  window._od = {items: todos, p: pesoTotal(todos), m2: todos.reduce((a, i) => a + (Number(i.m2) || 0) * (Number(i.cant) || 1), 0)};
+  ordenDespachoPDF(o);
 }
 // ── Orden de despacho guardada: se usa en el cargue (escáner → Despacho) ──
 async function odGuardar(){
