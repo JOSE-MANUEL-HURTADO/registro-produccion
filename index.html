@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.89';
+const APP_VERSION = '7.90';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -6223,7 +6223,9 @@ async function scAplicar(l, tot, e){
 }
 async function scDeshacer(i){
   const l = SC.log[i]; if(!l || !l.prev || l.deshecho) return;
-  if(!confirm(`¿Deshacer ${l.est} de ${l.op} (${l.n} ítem${l.n===1?'':'s'})?`)) return;
+  if(!confirm(l.rem ? `¿Sacar ${l.op} (${l.n} ítem${l.n===1?'':'s'}) del camión?\n\nSe quita de la remisión ${l.rem} y vuelve a ensamblado. Hágalo solo si de verdad no se cargó.` : `¿Deshacer ${l.est} de ${l.op} (${l.n} ítem${l.n===1?'':'s'})?`)) return;
+  // Despacho: se cancela con registro (queda quién, cuándo y por qué en los despachos cancelados)
+  if(l.rem){ try{ await API.cancelarDespacho(l.prev.map(x => x.id), 'Deshecho en el escáner del cargue (rem. ' + l.rem + ')'); l.deshecho = true; renderScanLog(); toast('✓ Sacado de la remisión ' + l.rem); }catch(e){ toast(errMsg(e), true); } return; }
   if(l.entr){ try{ await API.deshacerEntrega(l.entr); l.deshecho = true; renderScanLog(); toast('✓ Sacado del acta'); }catch(e){ toast(errMsg(e), true); } return; }
   try{
     const g = new Map();
