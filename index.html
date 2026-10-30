@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.81';
+const APP_VERSION = '7.82';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2063,6 +2063,277 @@ function docMostrar(html, titulo, pie, hist){
     w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
   ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
   history.pushState(hist || {v: S.view, inf: 1}, '');
+}
+// ════════════════════════════════════════════════════════════════
+//  COSTO DE MANO DE OBRA POR OBRA (SQL 94 · solo el director)
+//  Cada día laborable de cada persona cuesta: (salario × (1 + carga prestacional) + auxilio de transporte con sus prestaciones)
+//  ÷ horas laborables del mes × horas del día. Ese costo se reparte entre las obras en que trabajó ese día:
+//   · ensamble: unidades en su mesa ese día (puntos de la unidad ÷ días que duró su ensamble)
+//   · instalación: unidades instaladas ese día (por m²); asistencia "en obra" con el nombre de la obra
+//   · procesos con escáner: lo que pasó por el proceso ese día (por m²); operario de la asistencia o el habitual
+//   · procesos antes del escáner: minutos estimados por unidad × costo hora del operario habitual
+//  Si una persona tuvo varios roles el mismo día (ej. mecanizado y ensamble), el día se divide entre los roles.
+// ════════════════════════════════════════════════════════════════
+const MO_SMMLV = {2023: [1160000, 140606], 2024: [1300000, 162000], 2025: [1423500, 200000], 2026: [1750905, 249095]};
+const moSM = y => MO_SMMLV[y] || MO_SMMLV[y < 2023 ? 2023 : 2026];
+const MO_DEF = {exonerado: true, arl: 4.35, prima: 8.33, ces: 8.33, intCes: 1, vac: 4.17, pension: 12, caja: 4, salud: 8.5, sena: 2, icbf: 3,
+  est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null, prealistado: null}};
+const MO_PROC = [['cortado', 'Corte'], ['troquelado', 'Troquelado'], ['mecanizado', 'Mecanizado'], ['vidrio_proc', 'Vidrio'], ['prealistado', 'Prealistado']];
+const MO_NOPERS = /^(ARTICA|ÁRTICA|OBRA|ELIPTICA|ELÍPTICA|TODOS|NO IDENTIFICADO|SIN NOMBRE)$/;
+const MO = {par: null, nom: [], ali: {}, cargado: false};
+// Festivos de Colombia (Ley 51 de 1983, "Ley Emiliani"): fijos + trasladables al lunes + los que dependen de la Pascua
+const moFest = (() => { const cache = {};
+  return y => { if(cache[y]) return cache[y];
+    const f = (m, d) => new Date(Date.UTC(y, m - 1, d)), iso = d => d.toISOString().slice(0, 10), lunes = d => { const w = d.getUTCDay(); if(w !== 1) d.setUTCDate(d.getUTCDate() + ((8 - w) % 7)); return d; };
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, g = Math.floor((8 * b + 13) / 25), h = (19 * a + b - d - g + 15) % 30,
+      i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 19 * l) / 433), mes = Math.floor((h + l - 7 * m + 90) / 25), dia = (h + l - 7 * m + 33 * mes + 19) % 32;
+    const pas = f(mes, dia), p = n => { const x = new Date(pas); x.setUTCDate(x.getUTCDate() + n); return x; };
+    const l2 = [f(1, 1), f(5, 1), f(7, 20), f(8, 7), f(12, 8), f(12, 25), p(-3), p(-2),
+      lunes(f(1, 6)), lunes(f(3, 19)), lunes(f(6, 29)), lunes(f(8, 15)), lunes(f(10, 12)), lunes(f(11, 1)), lunes(f(11, 11)), lunes(p(39)), lunes(p(60)), lunes(p(68))];
+    return cache[y] = new Set(l2.map(iso)); }; })();
+// Jornada: lunes 8:00–12:00 y 13:00–17:00 (8 h); martes a viernes 7:30–12:00 y 13:00–17:00 (8,5 h)
+const moHorasDia = d => { const w = new Date(d + 'T12:00:00').getDay(); if(w === 0 || w === 6) return 0; if(moFest(+d.slice(0, 4)).has(d)) return 0; return w === 1 ? 8 : 8.5; };
+const moHorasMes = (() => { const c = {}; return ym => { if(c[ym] != null) return c[ym]; const [y, m] = ym.split('-').map(Number); let h = 0;
+  for(let d = 1; d <= new Date(y, m, 0).getDate(); d++) h += moHorasDia(`${ym}-${String(d).padStart(2, '0')}`); return c[ym] = h; }; })();
+const moSig = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
+const moPar = () => { const p = {...MO_DEF, ...(MO.par || {})}; p.est = {...MO_DEF.est, ...((MO.par || {}).est || {})}; return p; };
+const moCarga = (p = moPar()) => p.prima + p.ces + p.intCes + p.vac + p.pension + p.caja + (+p.arl || 0) + (p.exonerado ? 0 : p.salud + p.sena + p.icbf);
+const moSinTilde = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+// Persona de la nómina que corresponde a un nombre de la app: la que se eligió, o la única cuyo nombre contiene todas las palabras
+function moPersona(nombre){
+  const k = normNom(nombre); if(!k) return {tipo: 'ignorar'};
+  const a = MO.ali[k];
+  if(a){ if(a.tipo !== 'nomina') return {tipo: a.tipo, k};
+    const n = MO.nom.find(x => x.id === a.nomina_id); if(n) return {tipo: 'nomina', k, n, fuente: 'asignado'}; }
+  if(MO_NOPERS.test(k)) return {tipo: 'ignorar', k};
+  const t = moSinTilde(k).split(' ').filter(w => w.length > 1);
+  if(t.length >= 2){ const c = MO.nom.filter(n => { const w = moSinTilde(n.nombre).split(' '); return t.every(x => w.includes(x)); }); if(c.length === 1) return {tipo: 'nomina', k, n: c[0], fuente: 'auto'}; }
+  return {tipo: 'minimo', k};
+}
+// Costo mensual y por hora de una persona en un mes (años anteriores: el salario se ajusta con el mínimo de ese año)
+function moCostoHora(per, ym){
+  const y = +ym.slice(0, 4), [sm, aux] = moSM(y), p = moPar();
+  let sal = per.n ? +per.n.salario : sm;
+  if(per.n && y < 2026) sal = Math.max(sm, sal * sm / MO_SMMLV[2026][0]);
+  const conAux = per.n && per.n.aux_transporte != null ? per.n.aux_transporte : sal <= 2 * sm;
+  const arl = per.n && per.n.arl != null ? +per.n.arl : +p.arl;
+  const carga = moCarga({...p, arl});
+  const mes = sal * (1 + carga / 100) + (conAux ? aux * (1 + (p.prima + p.ces + p.intCes) / 100) : 0);
+  return {mes, hora: mes / (moHorasMes(ym) || 182), sal, conAux};
+}
+async function moCargarConfig(){
+  const [p, n, a] = await Promise.all([API.sb.from('mo_param').select('p').eq('id', 1).maybeSingle(), API.sb.from('mo_nomina').select('*').order('nombre'), API.sb.from('mo_alias').select('*')]);
+  for(const r of [p, n, a]) if(r.error) throw r.error;
+  MO.par = (p.data && p.data.p) || {}; MO.nom = n.data || []; MO.ali = Object.fromEntries((a.data || []).map(x => [x.nombre_app, x])); MO.cargado = true;
+}
+const MO_COLS = 'id,obra,op,m2,cant,puntos,ensamblador,dia_inicio,dia_final,despachado,instalador,fecha_instalacion,instalado,cortado,troquelado,mecanizado,vidrio_proc,prealistado,cortado_en,troquelado_en,mecanizado_en,vidrio_proc_en,prealistado_en';
+const moDiaEn = ts => ts ? new Date(ts).toLocaleDateString('en-CA', {timeZone: 'America/Bogota'}) : null;
+async function moDatos(obra){
+  const propios = await API.all(o => API.sb.from('items').select(MO_COLS, o).eq('obra', obra).order('id'));
+  if(!propios.length) throw new Error('La obra no tiene ítems');
+  const fechas = propios.flatMap(i => [i.dia_inicio, i.dia_final, i.instalado && i.fecha_instalacion, ...MO_PROC.map(([k]) => moDiaEn(i[k + '_en']))]).filter(Boolean).sort();
+  if(!fechas.length) return {propios, todos: propios, asis: [], desde: null, hasta: null};
+  const desde = fechas[0], hasta = fechas[fechas.length - 1] > today() ? today() : fechas[fechas.length - 1];
+  const t0 = new Date(desde + 'T00:00:00-05:00').toISOString(), t1 = new Date(moSig(hasta) + 'T00:00:00-05:00').toISOString();
+  const [ens, ins, pro, asis] = await Promise.all([
+    API.all(o => API.sb.from('items').select(MO_COLS, o).not('dia_inicio', 'is', null).lte('dia_inicio', hasta).or(`dia_final.gte.${desde},dia_final.is.null`).order('id')),
+    API.all(o => API.sb.from('items').select(MO_COLS, o).eq('instalado', true).gte('fecha_instalacion', desde).lte('fecha_instalacion', hasta).order('id')),
+    API.all(o => API.sb.from('items').select(MO_COLS, o).or(MO_PROC.map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
+    API.sb.from('asistencia').select('fecha,tipo,clave,estado,motivo,operario').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || [])]);
+  const m = new Map(); for(const i of [...ens, ...ins, ...pro, ...propios]) m.set(i.id, i);
+  return {propios, todos: [...m.values()], asis, desde, hasta};
+}
+function moCalcular(D, obra){
+  const p = moPar(), hoy = today();
+  const R = {obra, comp: {ens: 0, inst: 0, proc: 0, est: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, sinCosto: {}, desde: D.desde, hasta: D.hasta};
+  const dias = {};   // persona → día → {ens:[], inst:[], proc:[]}
+  const claim = (nom, d, rol, ob, w, extra) => { if(!d || !nom || !(w > 0)) return; const per = moPersona(nom); if(per.tipo === 'ignorar') return;
+    if(per.tipo === 'contratista'){ if(ob === obra && extra){ const c = R.contr[per.k] = R.contr[per.k] || {u: 0, m2: 0, rol}; c.u += 1; c.m2 += +extra.m2 || 0; } return; }
+    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: []}; x[rol].push({ob, w}); };
+  const asisDia = {}; for(const a of D.asis) asisDia[a.fecha + '|' + a.tipo + '|' + normNom(a.clave)] = a;
+  const fuera = (nom, d) => { const a = asisDia[d + '|ensamble|' + normNom(nom)]; return a && a.estado !== 'planta'; };
+  const obras = [...new Set(D.todos.map(i => i.obra))];
+  for(const i of D.todos){
+    // Ensamble: puntos de la unidad repartidos en los días laborables que estuvo en la mesa
+    if(i.ensamblador && i.dia_inicio){
+      let fin = i.dia_final || hoy, ds = [];
+      for(let d = i.dia_inicio, n = 0; d <= fin && n < 400; d = moSig(d), n++) if(moHorasDia(d) > 0) ds.push(d);
+      if(!i.dia_final) ds = ds.slice(0, 10);               // abiertas sin terminar: como máximo 10 días
+      if(!ds.length) ds = [i.dia_inicio];
+      const w = (+i.puntos || 1) / ds.length;
+      for(const d of ds) if(d >= D.desde && d <= D.hasta && !fuera(i.ensamblador, d)) claim(i.ensamblador, d, 'ens', i.obra, w);
+    }
+    if(i.instalado && i.fecha_instalacion && i.instalador) claim(i.instalador, i.fecha_instalacion, 'inst', i.obra, Math.max(0.5, +i.m2 || 0), i);
+    for(const [k] of MO_PROC){ const d = moDiaEn(i[k + '_en']); if(!d) continue;
+      const a = asisDia[d + '|proceso|' + k]; if(a && a.estado === 'sin_operario') continue;
+      const op = (a && a.operario) || AS_OPER[k]; if(op) claim(op, d, 'proc', i.obra, Math.max(0.5, +i.m2 || 0)); else (R.sinCosto[k] = (R.sinCosto[k] || 0) + (i.obra === obra));
+    }
+  }
+  // Asistencia "en obra": si el motivo nombra la obra, ese día es de la obra
+  for(const a of D.asis) if(a.tipo === 'ensamble' && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm.includes(moSinTilde(o)));
+    if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
+  const sum = (per, rol, c, h, ym) => { const r = R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
+    r.roles[rol] = (r.roles[rol] || 0) + c; r.h += h; r.c += c; R.comp[rol] += c; R.mes[ym] = (R.mes[ym] || 0) + c; };
+  for(const P of Object.values(dias)) for(const [d, x] of Object.entries(P.d)){
+    const H = moHorasDia(d); if(!H) continue;
+    const ym = d.slice(0, 7), ch = moCostoHora(P.per, ym).hora, roles = ['ens', 'inst', 'proc'].filter(r => x[r].length);
+    for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0), mia = x[r].filter(c => c.ob === obra).reduce((a, c) => a + c.w, 0);
+      if(mia > 0){ const h = H / roles.length * mia / tot; sum(P.per, r, h * ch, h, ym); } }
+  }
+  // Procesos antes del escáner: minutos estimados por unidad × costo hora del operario habitual
+  for(const i of D.propios) for(const [k] of MO_PROC){
+    if(!['X', '+'].includes(i[k]) || i[k + '_en']) continue;
+    const min = +p.est[k]; if(!(min > 0)){ R.sinEst[k] = (R.sinEst[k] || 0) + 1; continue; }
+    const op = AS_OPER[k], per = op ? moPersona(op) : {tipo: 'minimo', k: 'OPERARIO ' + k.toUpperCase()}; if(per.tipo === 'ignorar' || per.tipo === 'contratista') continue;
+    const ym = (i.dia_inicio || i.dia_final || hoy).slice(0, 7), h = min / 60 * (i[k] === '+' ? 0.5 : 1) * (+i.cant || 1);
+    const c = h * moCostoHora(per, ym).hora;
+    const r = R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
+    r.roles.est = (r.roles.est || 0) + c; r.h += h; r.c += c; R.comp.est += c; R.mes[ym] = (R.mes[ym] || 0) + c;
+  }
+  R.total = Object.values(R.comp).reduce((a, b) => a + b, 0);
+  R.u = D.propios.length; R.m2 = D.propios.reduce((a, i) => a + (+i.m2 || 0), 0);
+  R.uEns = D.propios.filter(i => i.dia_final).length; R.uInst = D.propios.filter(i => i.instalado).length;
+  return R;
+}
+const moCOP = v => '$ ' + fmtN(Math.round(v || 0));
+const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)'};
+function moHTML(R){
+  const p = moPar(), carga = moCarga(p), hoy = today();
+  const pers = Object.values(R.per).sort((a, b) => b.c - a.c);
+  const comp = [['ens', 'Ensamble', 'Días de cada ensamblador repartidos entre las unidades que tuvo en mesa (por puntos de la unidad).'],
+    ['inst', 'Instalación (nómina)', 'Días de cada instalador repartidos entre lo que instaló ese día (por m²) y días "en obra" de la asistencia.'],
+    ['proc', 'Procesos con escáner', 'Días del operario de cada proceso repartidos por los m² procesados ese día.'],
+    ['est', 'Procesos antes del escáner', 'Minutos estimados por unidad × costo hora del operario habitual.']];
+  const meses = Object.entries(R.mes).sort();
+  const mx = Math.max(1, ...meses.map(m => m[1]));
+  const fu = {asignado: 'Nómina', auto: 'Nómina', minimo: 'Salario mínimo*'};
+  const sinEst = Object.entries(R.sinEst), contr = Object.entries(R.contr), minimos = pers.filter(x => x.fuente === 'minimo');
+  const kpis = [[moCOP(R.total), 'Mano de obra total', `${fmtN(R.u)} unidades · ${fmtN(R.m2, 1)} m²`], [moCOP(R.total / (R.m2 || 1)), 'Por m²', 'Sobre el total de la obra'],
+    [moCOP(R.total / (R.u || 1)), 'Por unidad', `${fmtN(R.uEns)} ensambladas · ${fmtN(R.uInst)} instaladas`], [fmtN(pers.reduce((a, x) => a + x.h, 0), 0) + ' h', 'Horas-hombre', `${fmtN(pers.length)} personas`]];
+  return `<div class="inf-pag">
+    <div class="i-band"><img src="icons/logo_blanco.png" alt="Elíptica"><h1>COSTO DE MANO DE OBRA</h1><div class="i-ob">${esc(R.obra)}</div></div>
+    <div class="i-sub"><span>Periodo <b>${R.desde ? infF(R.desde) + ' – ' + infF(R.hasta) : '—'}</b></span><span>Corte al <b>${infF(hoy)}</b> · Confidencial</span></div>
+    <div class="i-hoja">
+      <div class="i-kpis" style="grid-template-columns:repeat(4,1fr)">${kpis.map(([v, t, s]) => `<div class="i-kpi"><b style="font-size:18pt">${v}</b><span>${t}</span><small>${s}</small></div>`).join('')}</div>
+      <h2>POR COMPONENTE</h2>
+      <table><thead><tr><th>COMPONENTE</th><th>CÓMO SE CALCULA</th><th class="i-r">COSTO</th><th class="i-r">%</th></tr></thead><tbody>
+        ${comp.map(([k, t, n]) => `<tr><td class="i-ref">${t}</td><td style="font-size:8.8pt;color:#4a4a4a">${n}</td><td class="i-r i-b">${moCOP(R.comp[k])}</td><td class="i-r">${R.total ? fmtN(R.comp[k] / R.total * 100, 0) : 0} %</td></tr>`).join('')}
+        <tr><td class="i-ref">TOTAL</td><td></td><td class="i-r i-b">${moCOP(R.total)}</td><td class="i-r">100 %</td></tr></tbody></table>
+      <h2>POR PERSONA</h2>
+      <table><thead><tr><th>PERSONA</th><th>ROL EN LA OBRA</th><th>SALARIO</th><th class="i-r">HORAS</th><th class="i-r">COSTO</th></tr></thead><tbody>
+        ${pers.map(x => `<tr><td class="i-ref">${esc(x.nombre)}</td><td>${Object.keys(x.roles).map(r => MO_ROL[r]).join(' · ')}</td><td>${fu[x.fuente] || x.fuente}</td><td class="i-r">${fmtN(x.h, 1)}</td><td class="i-r i-b">${moCOP(x.c)}</td></tr>`).join('') || '<tr><td colspan="5">Sin registros de mano de obra.</td></tr>'}</tbody></table>
+      ${meses.length ? `<h2>POR MES</h2><div class="i-rit" style="height:30mm">${meses.map(([m, v]) => `<div class="i-rc"><div class="i-rv" style="height:${Math.max(4, v / mx * 80)}%"><b style="font-size:8pt;top:-4.5mm">${fmtN(v / 1e6, 1)} M</b></div><span>${m.slice(5)}/${m.slice(2, 4)}</span></div>`).join('')}</div><div class="i-cap">Costo de mano de obra por mes, en millones de pesos.</div>` : ''}
+      ${contr.length || sinEst.length || minimos.length ? `<h2>PENDIENTES Y SUPUESTOS</h2><div class="i-obs" style="grid-template-columns:1fr">
+        ${contr.length ? `<div class="i-ob2"><b>CONTRATISTAS (NO INCLUIDOS EN EL COSTO)</b>${contr.map(([n, c]) => `${esc(n)}: ${fmtN(c.u)} unidades · ${fmtN(c.m2, 1)} m² instalados`).join('<br>')}</div>` : ''}
+        ${sinEst.length ? `<div class="i-ob2"><b>PROCESOS SIN TIEMPO ESTIMADO (NO INCLUIDOS)</b>${sinEst.map(([k, n]) => `${(MO_PROC.find(x => x[0] === k) || [, k])[1]}: ${fmtN(n)} unidades hechas antes del escáner`).join('<br>')}</div>` : ''}
+        ${minimos.length ? `<div class="i-ob2"><b>* PERSONAS QUE NO ESTÁN EN LA NÓMINA ACTUAL</b>Se costearon con el salario mínimo del año: ${minimos.map(x => esc(x.nombre)).join(', ')}.</div>` : ''}</div>` : ''}
+      <h2>BASES DEL CÁLCULO</h2>
+      <div class="i-glos" style="font-size:8.8pt">Costo mensual = salario × (1 + ${fmtN(carga, 2)} %) + auxilio de transporte × (1 + ${fmtN(p.prima + p.ces + p.intCes, 2)} %) a quien gane hasta 2 SMMLV (2026: SMMLV ${moCOP(MO_SMMLV[2026][0])}, auxilio ${moCOP(MO_SMMLV[2026][1])}).
+        Carga: prima ${p.prima} %, cesantías ${p.ces} %, intereses ${p.intCes} %, vacaciones ${p.vac} %, pensión ${p.pension} %, caja ${p.caja} %, ARL ${p.arl} %${p.exonerado ? ' (exonerado de salud, SENA e ICBF, art. 114-1 E.T.)' : `, salud ${p.salud} %, SENA ${p.sena} %, ICBF ${p.icbf} %`}.
+        Costo por hora = costo mensual ÷ horas laborables del mes (lunes 8 h, martes a viernes 8,5 h, sin festivos). Para meses de años anteriores el salario se ajusta con el mínimo de ese año.
+        No incluye horas extra, recargos, dotación ni el tiempo sin registro (días sin unidades en mesa, sin instalaciones o sin escaneos).</div>
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Calculado con los registros de la app de producción al ${infF(hoy)}. Documento confidencial.</p></div>
+    </div>
+    <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>${esc(R.obra)} · Costo de mano de obra · ${infF(hoy)}</span></div></div>`;
+}
+async function moObra(){
+  if(!isGerente()) return;
+  openSheet('Costo de mano de obra', esc(S.obra), `<div class="sc-note">Calcula cuánto costó la mano de obra de la obra con los salarios de la nómina, la carga prestacional y lo registrado en la app (ensamble, instalación, procesos y asistencia).</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px"><button class="btn primary" onclick="closeSheet();moVer()">Ver costo de la obra</button>
+    <button class="btn" onclick="closeSheet();goMO()">Personal, salarios y parámetros</button></div>`, 'Cerrar', async () => {});
+}
+async function moVer(obra){
+  obra = obra || S.obra; toast('Calculando la mano de obra…');
+  try{ await moCargarConfig(); if(!MO.nom.length){ toast('Primero carga la nómina en "Personal, salarios y parámetros"', true); return goMO(); }
+    const D = await moDatos(obra); const R = moCalcular(D, obra); window._moR = R;
+    docMostrar(moHTML(R), 'Mano_de_obra_' + obra, obra + ' · Costo de mano de obra');
+  }catch(e){ toast(/mo_param|mo_nomina|mo_alias|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(e), true); }
+}
+// ── Configuración: personas de la app ↔ nómina, salarios y parámetros ──
+function goMO(){ if(!isGerente()) return; if(S.view !== 'mo') history.pushState({v: 'mo'}, ''); S.view = 'mo'; aplicarEmpresa(); window.scrollTo(0, 0); moCfgCargar(); }
+async function moCfgCargar(){
+  $('#app').innerHTML = shell('<div class="loading"><div class="spin"></div>Cargando</div>');
+  try{ await moCargarConfig();
+    const desde = String(new Date().getFullYear() - 1) + '-01-01';
+    const [e, i] = await Promise.all([API.all(o => API.sb.from('items').select('ensamblador', o).gte('dia_inicio', desde).not('ensamblador', 'is', null).order('id')),
+      API.all(o => API.sb.from('items').select('instalador', o).gte('fecha_instalacion', desde).not('instalador', 'is', null).order('id'))]);
+    const c = {}; const add = (n, r) => { const k = normNom(n); if(!k) return; c[k] = c[k] || {n: 0, r: new Set()}; c[k].n++; c[k].r.add(r); };
+    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1]));
+    MO.app = Object.entries(c).sort((a, b) => b[1].n - a[1].n);
+  }catch(err){ MO.err = /mo_|PGRST205|42P01/.test(errMsg(err) + (err.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(err); }
+  renderMO();
+}
+function renderMO(){
+  if(MO.err){ $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button><div class="warn">${esc(MO.err)}</div>`); MO.err = null; return; }
+  const p = moPar();
+  const opts = (k) => { const per = moPersona(k), a = MO.ali[k], v = a ? (a.tipo === 'nomina' ? 'n' + a.nomina_id : a.tipo) : '';
+    return `<select onchange="moAlias(decodeURIComponent('${encodeURIComponent(k)}'), this.value)" style="max-width:300px">
+      <option value="" ${!v ? 'selected' : ''}>Automático: ${per.tipo === 'nomina' ? esc(per.n.nombre) : per.tipo === 'ignorar' ? 'no es una persona' : 'sin coincidencia (salario mínimo)'}</option>
+      ${MO.nom.map(n => `<option value="n${n.id}" ${v === 'n' + n.id ? 'selected' : ''}>${esc(n.nombre)}</option>`).join('')}
+      <option value="contratista" ${v === 'contratista' ? 'selected' : ''}>Contratista (sin costo de nómina)</option><option value="ignorar" ${v === 'ignorar' ? 'selected' : ''}>No es una persona / ignorar</option></select>`; };
+  $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
+    <div class="h1">Mano de obra · personal y salarios</div><div class="h1-sub">Solo usted ve esta información. Se usa para el costo de mano de obra de cada obra.</div>
+    <div class="cot-box"><div class="cot-h">Parámetros</div>
+      <div class="fgrid"><div class="field"><span class="lbl">ARL general (%)</span><input type="number" step="0.001" id="moArl" value="${p.arl}"></div>
+        <div class="field"><span class="lbl">Exonerado de salud, SENA e ICBF</span><select id="moExo"><option value="1" ${p.exonerado ? 'selected' : ''}>Sí (art. 114-1 E.T.)</option><option value="0" ${p.exonerado ? '' : 'selected'}>No</option></select></div></div>
+      <div class="cot-d">Carga prestacional resultante: <b>${fmtN(moCarga(p), 2)} %</b> sobre el salario (prima, cesantías, intereses, vacaciones, pensión, caja y ARL${p.exonerado ? '' : ', salud, SENA e ICBF'}) + auxilio de transporte a quien gane hasta 2 SMMLV.</div>
+      <div class="cot-h" style="margin-top:12px">Tiempo estimado por unidad, antes del escáner (minutos)</div>
+      <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
+      <button class="btn primary" style="margin-top:8px" onclick="moGuardarPar()">Guardar parámetros</button></div>
+    <div class="cot-box"><div class="cot-h">Personas en la app → nómina</div><div class="cot-d">Cómo aparece cada ensamblador, instalador u operario en la app y a quién de la nómina corresponde. Los contratistas no suman costo de nómina (se muestran aparte con lo que instalaron).</div>
+      ${(MO.app || []).map(([k, x]) => `<div class="as-row"><div class="as-n"><b>${esc(k)}</b><span class="cot-d" style="margin:0">${[...x.r].join(' · ')} · ${fmtN(x.n)}</span></div>${opts(k)}</div>`).join('')}</div>
+    <div class="cot-box"><div class="cot-h">Nómina (${fmtN(MO.nom.length)} personas)</div>
+      <div class="cot-d">Para actualizar los salarios suba el directorio de nómina en PDF (Nombre · Básico) o pegue el listado.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px"><label class="btn">Subir directorio (PDF)<input type="file" accept="application/pdf" style="display:none" onchange="moSubirPDF(this.files[0])"></label><button class="btn ghost" onclick="moPegar()">Pegar listado</button></div>
+      ${MO.nom.map(n => `<div class="as-row"><div class="as-n"><b>${esc(n.nombre)}</b><span class="cot-d" style="margin:0">${moCOP(n.salario)}${(n.aux_transporte ?? n.salario <= 2 * MO_SMMLV[2026][0]) ? ' · con auxilio de transporte' : ''} · costo mes ${moCOP(moCostoHora({n}, today().slice(0, 7)).mes)}</span></div></div>`).join('')}</div>`);
+}
+async function moGuardarPar(){
+  const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
+  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est};
+  const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
+  MO.par = par; toast('✓ Parámetros guardados'); renderMO();
+}
+async function moAlias(k, v){
+  const r = !v ? API.sb.from('mo_alias').delete().eq('nombre_app', k)
+    : API.sb.from('mo_alias').upsert({nombre_app: k, tipo: v[0] === 'n' ? 'nomina' : v, nomina_id: v[0] === 'n' ? +v.slice(1) : null, actualizado: new Date().toISOString()});
+  const {error} = await r; if(error) return toast(errMsg(error), true);
+  if(!v) delete MO.ali[k]; else MO.ali[k] = {nombre_app: k, tipo: v[0] === 'n' ? 'nomina' : v, nomina_id: v[0] === 'n' ? +v.slice(1) : null};
+  toast('✓ ' + k); renderMO();
+}
+// Directorio de nómina: líneas "APELLIDOS NOMBRES   1.750.905,00"
+function moParse(txt){
+  const out = [];
+  for(const ln of String(txt).split(/\n/)){ const m = ln.match(/^\s*(.+?)\s+\$?\s*([\d.]{5,}(?:,\d{1,2})?)\s*$/); if(!m) continue;
+    const nombre = m[1].replace(/\s+\.\s*$|\.$/, '').replace(/\s+/g, ' ').trim().toUpperCase(), sal = +m[2].replace(/\./g, '').replace(',', '.');
+    if(nombre && !/^NOMBRE/.test(nombre) && sal > 100000) out.push({nombre, salario: sal}); }
+  return out;
+}
+async function moSubirPDF(f){
+  if(!f) return;
+  try{ if(!window.pdfjsLib){ await loadScript('lib/pdfjs.js'); pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdfjs.worker.js'; }
+    const pdf = await pdfjsLib.getDocument({data: new Uint8Array(await f.arrayBuffer())}).promise; let txt = '';
+    for(let i = 1; i <= pdf.numPages; i++){ const c = await (await pdf.getPage(i)).getTextContent(), filas = {};
+      for(const t of c.items){ const y = Math.round(t.transform[5]); (filas[y] = filas[y] || []).push(t); }
+      txt += Object.keys(filas).sort((a, b) => b - a).map(y => filas[y].sort((a, b) => a.transform[4] - b.transform[4]).map(t => t.str).join('   ')).join('\n') + '\n'; }
+    moConfirmar(moParse(txt));
+  }catch(e){ toast(errMsg(e), true); }
+}
+function moPegar(){
+  openSheet('Pegar listado de nómina', 'Una persona por línea: nombre y salario básico', `<textarea id="moTxt" rows="12" placeholder="BERNAL HUERTAS GERSON ALBERTO   2.061.934,00"></textarea>`, 'Revisar', async () => { setTimeout(() => moConfirmar(moParse($('#moTxt').value)), 50); });
+}
+function moConfirmar(l){
+  if(!l.length) return toast('No encontré nombres con salario en el listado', true);
+  const ant = new Map(MO.nom.map(n => [n.nombre, n])), nuevos = l.filter(x => !ant.has(x.nombre)), cambian = l.filter(x => ant.has(x.nombre) && +ant.get(x.nombre).salario !== x.salario);
+  const salen = MO.nom.filter(n => n.activo && !l.some(x => x.nombre === n.nombre));
+  window._moL = l;
+  openSheet('Actualizar nómina', `${fmtN(l.length)} personas en el listado`, `<div class="summary">${fmtN(nuevos.length)} nuevas · ${fmtN(cambian.length)} con salario distinto · ${fmtN(l.length - nuevos.length - cambian.length)} sin cambios${salen.length ? ` · ${fmtN(salen.length)} ya no aparecen (quedan inactivas)` : ''}</div>
+    <div style="max-height:40vh;overflow:auto;font-size:13px;margin-top:8px">${l.map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)"><span>${esc(x.nombre)}${!ant.has(x.nombre) ? ' <b>nueva</b>' : ''}</span><span>${moCOP(x.salario)}${ant.has(x.nombre) && +ant.get(x.nombre).salario !== x.salario ? ' <small>(antes ' + moCOP(ant.get(x.nombre).salario) + ')</small>' : ''}</span></div>`).join('')}</div>`,
+    'Guardar nómina', async () => {
+      const {error} = await API.sb.from('mo_nomina').upsert(l.map(x => ({nombre: x.nombre, salario: x.salario, activo: true, actualizado: new Date().toISOString()})), {onConflict: 'nombre'});
+      if(error){ toast(errMsg(error), true); return false; }
+      if(salen.length){ const r = await API.sb.from('mo_nomina').update({activo: false}).in('id', salen.map(n => n.id)); if(r.error) toast(errMsg(r.error), true); }
+      toast('✓ Nómina actualizada'); moCfgCargar();
+    });
 }
 // ── Informe de productividad de planta (para junta directiva) ──
 function prodDocHTML(){
@@ -4148,6 +4419,7 @@ function onPop(ev){
   if(S.view === 'obra' && S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra}, ''); return; }
   if(st.v === 'carga'){ S.view='carga'; renderCarga(); return; }
   if(st.v === 'prod' && isGerente()){ S.view = 'prod'; aplicarEmpresa(); prodCargar(); return; }
+  if(st.v === 'mo' && isGerente()){ S.view = 'mo'; aplicarEmpresa(); moCfgCargar(); return; }
   if(st.v === 'asis' && puedeRegistrar()){ S.view = 'asis'; aplicarEmpresa(); asCargar(); return; }
   if(st.v === 'obra') openObra(st.obra, true, st.anio, st.pf || undefined);
   else { S.view='home'; S.obra=null; S.sel.clear(); S.detailId=null; S.draft=null; document.body.style.overflow=''; closeSheet(); renderHome(); }
@@ -4215,7 +4487,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button>${puedeRegistrar() ? `<button class="btn sm ghost" title="Informe de avance para enviar a la obra (PDF)" onclick="informeObra()">${ICON.down} Informe gerencial</button>` : ''}<button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" id="novBtn" title="Novedades: ítems que no se pudieron instalar (con fecha, hora y fotos)" onclick="novLista()">⚠ Novedades${(() => { const n = (S.nov || []).filter(novAbierta).length; return n ? ` <b style="margin-left:4px;color:var(--danger)">${fmtN(n)}</b>` : ''; })()}</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button>${puedeRegistrar() ? `<button class="btn sm ghost" title="Informe de avance para enviar a la obra (PDF)" onclick="informeObra()">${ICON.down} Informe gerencial</button>` : ''}<button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" id="novBtn" title="Novedades: ítems que no se pudieron instalar (con fecha, hora y fotos)" onclick="novLista()">⚠ Novedades${(() => { const n = (S.nov || []).filter(novAbierta).length; return n ? ` <b style="margin-left:4px;color:var(--danger)">${fmtN(n)}</b>` : ''; })()}</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Costo de mano de obra de esta obra (salarios + carga prestacional)" onclick="moObra()">Mano de obra</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
         </div>
         ${S.cerradas && S.cerradas.has(S.obra) ? `<div class="summary" style="margin:6px 0 10px">Obra <b>entregada</b> (contrato cerrado) el ${fmtD(String(S.cerradas.get(S.obra).cerrada_en).slice(0,10))}${S.cerradas.get(S.obra).quien ? ' por ' + esc(S.cerradas.get(S.obra).quien) : ''}. No aparece en Obras activas ni en Planta.</div>` : ''}
         <div class="chips" id="chips"></div>
