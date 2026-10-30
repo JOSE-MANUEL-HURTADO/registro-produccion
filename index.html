@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.82';
+const APP_VERSION = '7.83';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1891,7 +1891,7 @@ async function prodCargar(){
   try{
     const [d, p] = await Promise.all([API.sb.rpc('prod_resumen', {p_desde: a, p_hasta: b}), API.sb.rpc('prod_resumen', {p_desde: prodDia(a, -n), p_hasta: prodDia(a, -1)})]);
     if(d.error) throw d.error; P.data = d.data; P.prev = p.error ? null : p.data;
-    try{ const r = await API.sb.from('asistencia').select('fecha,tipo,clave,estado,motivo,operario').gte('fecha', a).lte('fecha', b).order('fecha'); P.asis = r.error ? [] : (r.data || []); }catch(e){ P.asis = []; }
+    try{ const r = await API.sb.from('asistencia').select('*').gte('fecha', a).lte('fecha', b).order('fecha'); P.asis = r.error ? [] : (r.data || []); }catch(e){ P.asis = []; }
   }catch(e){ P.data = null; P.err = /prod_resumen|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la productividad en la base (SQL 91)' : errMsg(e); }
   P.cargando = false; if(S.view === 'prod') renderProd();
 }
@@ -1908,8 +1908,8 @@ const prodActivos = (l, k) => new Set((l || []).filter(x => +x[k || 'u'] || +x.p
 const PROC_NOM = k => (PROCS.find(x => x[0] === k) || [k, k])[1];
 function prodAsis(){
   const l = P.asis || [], dias = new Set(l.filter(x => x.tipo === 'ensamble').map(x => x.fecha));
-  const nov = l.filter(x => ['obra', 'ausente', 'sin_operario'].includes(x.estado)).map(x => ({d: x.fecha, q: x.tipo === 'proceso' ? PROC_NOM(x.clave) + (x.operario ? ' · ' + x.operario : '') : x.clave,
-    e: x.estado === 'obra' ? 'En obra' : x.estado === 'ausente' ? 'Ausente' : 'Proceso sin operario', m: x.motivo || ''}));
+  const nov = l.filter(x => ['obra', 'ausente', 'sin_operario', 'cargue'].includes(x.estado)).map(x => ({d: x.fecha, q: x.tipo === 'proceso' ? PROC_NOM(x.clave) + (x.operario ? ' · ' + x.operario : '') : x.clave.split('|')[0],
+    e: x.estado === 'obra' ? 'En obra' : x.estado === 'ausente' ? 'Ausente' : x.estado === 'cargue' ? 'Cargue de camión' : 'Proceso sin operario', m: (x.motivo || '') + (x.estado === 'cargue' && x.horas ? ' · ' + fmtN(+x.horas, 1) + ' h' : '')}));
   const planta = [...grp(l.filter(x => x.tipo === 'ensamble' && x.estado === 'planta'), x => x.fecha).values()].map(v => v.length);
   return {dias: dias.size, prom: planta.length ? planta.reduce((a, b) => a + b, 0) / planta.length : 0, nov};
 }
@@ -2068,7 +2068,10 @@ function docMostrar(html, titulo, pie, hist){
 //  COSTO DE MANO DE OBRA POR OBRA (SQL 94 · solo el director)
 //  Cada día laborable de cada persona cuesta: (salario × (1 + carga prestacional) + auxilio de transporte con sus prestaciones)
 //  ÷ horas laborables del mes × horas del día. Ese costo se reparte entre las obras en que trabajó ese día:
-//   · ensamble: unidades en su mesa ese día (puntos de la unidad ÷ días que duró su ensamble)
+//   · ensamble: unidades en su mesa ese día, según las horas de jornada que cada una estuvo en la mesa (inicio → fin)
+//   · cargue de camión (asistencia): esas horas van a la obra del camión; el resto del día se reparte normal
+//   · prealistado (escáner): lo hace el ensamblador de la unidad; cuenta como trabajo de ensamble (½ h por unidad)
+//   · apoyo de planta (asistente que escanea): su día se reparte entre las obras según el trabajo de planta de ese día
 //   · instalación: unidades instaladas ese día (por m²); asistencia "en obra" con el nombre de la obra
 //   · procesos con escáner: lo que pasó por el proceso ese día (por m²); operario de la asistencia o el habitual
 //   · procesos antes del escáner: minutos estimados por unidad × costo hora del operario habitual
@@ -2077,8 +2080,12 @@ function docMostrar(html, titulo, pie, hist){
 const MO_SMMLV = {2023: [1160000, 140606], 2024: [1300000, 162000], 2025: [1423500, 200000], 2026: [1750905, 249095]};
 const moSM = y => MO_SMMLV[y] || MO_SMMLV[y < 2023 ? 2023 : 2026];
 const MO_DEF = {exonerado: true, arl: 4.35, prima: 8.33, ces: 8.33, intCes: 1, vac: 4.17, pension: 12, caja: 4, salud: 8.5, sena: 2, icbf: 3,
-  est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null, prealistado: null}};
-const MO_PROC = [['cortado', 'Corte'], ['troquelado', 'Troquelado'], ['mecanizado', 'Mecanizado'], ['vidrio_proc', 'Vidrio'], ['prealistado', 'Prealistado']];
+  est: {cortado: null, troquelado: null, mecanizado: null, vidrio_proc: null}, indirectos: ['JOHANA HERRERA']};
+const MO_PROC = [['cortado', 'Corte'], ['troquelado', 'Troquelado'], ['mecanizado', 'Mecanizado'], ['vidrio_proc', 'Vidrio']];
+// Ventanas de la jornada (horas decimales) y horas de un intervalo de trabajo que caen dentro de la jornada de un día
+const moVent = d => { const w = new Date(d + 'T12:00:00').getDay(); return w === 1 ? [[8, 12], [13, 17]] : [[7.5, 12], [13, 17]]; };
+const moHH = t => { if(!t) return null; const m = String(t).match(/(\d{1,2}):(\d{2})/); return m ? +m[1] + +m[2] / 60 : null; };
+const moSolape = (d, a, b) => moVent(d).reduce((s, [x, y]) => s + Math.max(0, Math.min(b, y) - Math.max(a, x)), 0);
 const MO_NOPERS = /^(ARTICA|ÁRTICA|OBRA|ELIPTICA|ELÍPTICA|TODOS|NO IDENTIFICADO|SIN NOMBRE)$/;
 const MO = {par: null, nom: [], ali: {}, cargado: false};
 // Festivos de Colombia (Ley 51 de 1983, "Ley Emiliani"): fijos + trasladables al lunes + los que dependen de la Pascua
@@ -2126,69 +2133,83 @@ async function moCargarConfig(){
   for(const r of [p, n, a]) if(r.error) throw r.error;
   MO.par = (p.data && p.data.p) || {}; MO.nom = n.data || []; MO.ali = Object.fromEntries((a.data || []).map(x => [x.nombre_app, x])); MO.cargado = true;
 }
-const MO_COLS = 'id,obra,op,m2,cant,puntos,ensamblador,dia_inicio,dia_final,despachado,instalador,fecha_instalacion,instalado,cortado,troquelado,mecanizado,vidrio_proc,prealistado,cortado_en,troquelado_en,mecanizado_en,vidrio_proc_en,prealistado_en';
+const MO_COLS = 'id,obra,op,m2,cant,ensamblador,ens_asignado,hora_inicio,hora_final,dia_inicio,dia_final,despachado,instalador,fecha_instalacion,instalado,cortado,troquelado,mecanizado,vidrio_proc,prealistado,cortado_en,troquelado_en,mecanizado_en,vidrio_proc_en,prealistado_en';
 const moDiaEn = ts => ts ? new Date(ts).toLocaleDateString('en-CA', {timeZone: 'America/Bogota'}) : null;
 async function moDatos(obra){
   const propios = await API.all(o => API.sb.from('items').select(MO_COLS, o).eq('obra', obra).order('id'));
   if(!propios.length) throw new Error('La obra no tiene ítems');
-  const fechas = propios.flatMap(i => [i.dia_inicio, i.dia_final, i.instalado && i.fecha_instalacion, ...MO_PROC.map(([k]) => moDiaEn(i[k + '_en']))]).filter(Boolean).sort();
+  const fechas = propios.flatMap(i => [i.dia_inicio, i.dia_final, i.instalado && i.fecha_instalacion, ...[...MO_PROC, ['prealistado']].map(([k]) => moDiaEn(i[k + '_en']))]).filter(Boolean).sort();
   if(!fechas.length) return {propios, todos: propios, asis: [], desde: null, hasta: null};
   const desde = fechas[0], hasta = fechas[fechas.length - 1] > today() ? today() : fechas[fechas.length - 1];
   const t0 = new Date(desde + 'T00:00:00-05:00').toISOString(), t1 = new Date(moSig(hasta) + 'T00:00:00-05:00').toISOString();
   const [ens, ins, pro, asis] = await Promise.all([
     API.all(o => API.sb.from('items').select(MO_COLS, o).not('dia_inicio', 'is', null).lte('dia_inicio', hasta).or(`dia_final.gte.${desde},dia_final.is.null`).order('id')),
     API.all(o => API.sb.from('items').select(MO_COLS, o).eq('instalado', true).gte('fecha_instalacion', desde).lte('fecha_instalacion', hasta).order('id')),
-    API.all(o => API.sb.from('items').select(MO_COLS, o).or(MO_PROC.map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
-    API.sb.from('asistencia').select('fecha,tipo,clave,estado,motivo,operario').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || [])]);
+    API.all(o => API.sb.from('items').select(MO_COLS, o).or([...MO_PROC, ['prealistado']].map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
+    API.sb.from('asistencia').select('*').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || [])]);
   const m = new Map(); for(const i of [...ens, ...ins, ...pro, ...propios]) m.set(i.id, i);
   return {propios, todos: [...m.values()], asis, desde, hasta};
 }
 function moCalcular(D, obra){
-  const p = moPar(), hoy = today();
-  const R = {obra, comp: {ens: 0, inst: 0, proc: 0, est: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, sinCosto: {}, desde: D.desde, hasta: D.hasta};
-  const dias = {};   // persona → día → {ens:[], inst:[], proc:[]}
+  const p = moPar(), hoy = today(), ahora = (() => { const n = new Date(); return n.getHours() + n.getMinutes() / 60; })();
+  const R = {obra, comp: {ens: 0, inst: 0, proc: 0, est: 0, cargue: 0, ind: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
+  const dias = {};   // persona → día → {ens:[], inst:[], proc:[], cargue:[]}
+  const planta = {}; // día → obra → costo de planta (ensamble + procesos), para repartir el apoyo de planta
   const claim = (nom, d, rol, ob, w, extra) => { if(!d || !nom || !(w > 0)) return; const per = moPersona(nom); if(per.tipo === 'ignorar') return;
     if(per.tipo === 'contratista'){ if(ob === obra && extra){ const c = R.contr[per.k] = R.contr[per.k] || {u: 0, m2: 0, rol}; c.u += 1; c.m2 += +extra.m2 || 0; } return; }
-    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: []}; x[rol].push({ob, w}); };
+    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: [], cargue: []}; x[rol].push({ob, w}); };
   const asisDia = {}; for(const a of D.asis) asisDia[a.fecha + '|' + a.tipo + '|' + normNom(a.clave)] = a;
-  const fuera = (nom, d) => { const a = asisDia[d + '|ensamble|' + normNom(nom)]; return a && a.estado !== 'planta'; };
+  const fuera = (nom, d) => { const a = asisDia[d + '|ensamble|' + normNom(nom)]; return a && !['planta'].includes(a.estado); };
   const obras = [...new Set(D.todos.map(i => i.obra))];
   for(const i of D.todos){
-    // Ensamble: puntos de la unidad repartidos en los días laborables que estuvo en la mesa
+    // Ensamble: horas de jornada que la unidad estuvo en la mesa cada día (de la hora de inicio a la hora de fin)
     if(i.ensamblador && i.dia_inicio){
-      let fin = i.dia_final || hoy, ds = [];
-      for(let d = i.dia_inicio, n = 0; d <= fin && n < 400; d = moSig(d), n++) if(moHorasDia(d) > 0) ds.push(d);
-      if(!i.dia_final) ds = ds.slice(0, 10);               // abiertas sin terminar: como máximo 10 días
-      if(!ds.length) ds = [i.dia_inicio];
-      const w = (+i.puntos || 1) / ds.length;
-      for(const d of ds) if(d >= D.desde && d <= D.hasta && !fuera(i.ensamblador, d)) claim(i.ensamblador, d, 'ens', i.obra, w);
+      const abierta = !i.dia_final, fin = i.dia_final || hoy; let n = 0;
+      for(let d = i.dia_inicio, k = 0; d <= fin && k < 400; d = moSig(d), k++){
+        if(!moHorasDia(d)) continue; if(abierta && ++n > 10) break;     // sin terminar: como máximo 10 días
+        const a = d === i.dia_inicio ? (moHH(i.hora_inicio) ?? 0) : 0, b = d === i.dia_final ? (moHH(i.hora_final) ?? 24) : abierta && d === hoy ? ahora : 24;
+        const h = Math.max(moSolape(d, a, b), 0.05);
+        if(d >= D.desde && d <= D.hasta && !fuera(i.ensamblador, d)) claim(i.ensamblador, d, 'ens', i.obra, h);
+      }
     }
     if(i.instalado && i.fecha_instalacion && i.instalador) claim(i.instalador, i.fecha_instalacion, 'inst', i.obra, Math.max(0.5, +i.m2 || 0), i);
     for(const [k] of MO_PROC){ const d = moDiaEn(i[k + '_en']); if(!d) continue;
       const a = asisDia[d + '|proceso|' + k]; if(a && a.estado === 'sin_operario') continue;
-      const op = (a && a.operario) || AS_OPER[k]; if(op) claim(op, d, 'proc', i.obra, Math.max(0.5, +i.m2 || 0)); else (R.sinCosto[k] = (R.sinCosto[k] || 0) + (i.obra === obra));
-    }
+      const op = (a && a.operario) || AS_OPER[k]; if(op) claim(op, d, 'proc', i.obra, Math.max(0.5, +i.m2 || 0)); }
+    { const d = moDiaEn(i.prealistado_en), e = i.ensamblador || i.ens_asignado; if(d && e) claim(e, d, 'ens', i.obra, 0.5); }
   }
-  // Asistencia "en obra": si el motivo nombra la obra, ese día es de la obra
-  for(const a of D.asis) if(a.tipo === 'ensamble' && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm.includes(moSinTilde(o)));
-    if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
-  const sum = (per, rol, c, h, ym) => { const r = R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
-    r.roles[rol] = (r.roles[rol] || 0) + c; r.h += h; r.c += c; R.comp[rol] += c; R.mes[ym] = (R.mes[ym] || 0) + c; };
+  for(const a of D.asis){
+    // Asistencia "en obra": si el motivo es una obra, ese día es de la obra
+    if(a.tipo === 'ensamble' && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
+      if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
+    // Cargue de camión: horas fijas para la obra del camión
+    if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas);
+  }
+  const fila = per => R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
+  const sum = (per, rol, c, h, ym) => { const r = fila(per); r.roles[rol] = (r.roles[rol] || 0) + c; r.h += h; r.c += c; R.comp[rol] += c; R.mes[ym] = (R.mes[ym] || 0) + c; };
   for(const P of Object.values(dias)) for(const [d, x] of Object.entries(P.d)){
     const H = moHorasDia(d); if(!H) continue;
-    const ym = d.slice(0, 7), ch = moCostoHora(P.per, ym).hora, roles = ['ens', 'inst', 'proc'].filter(r => x[r].length);
-    for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0), mia = x[r].filter(c => c.ob === obra).reduce((a, c) => a + c.w, 0);
-      if(mia > 0){ const h = H / roles.length * mia / tot; sum(P.per, r, h * ch, h, ym); } }
+    const ym = d.slice(0, 7), ch = moCostoHora(P.per, ym).hora;
+    const hc = Math.min(H, x.cargue.reduce((a, c) => a + c.w, 0));
+    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); if(c.ob === obra) sum(P.per, 'cargue', h * ch, h, ym); }
+    const roles = ['ens', 'inst', 'proc'].filter(r => x[r].length), Hr = H - hc;
+    for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0);
+      const porOb = {}; for(const c of x[r]) porOb[c.ob] = (porOb[c.ob] || 0) + c.w;
+      for(const [ob, w] of Object.entries(porOb)){ const h = Hr / roles.length * w / tot;
+        if(r !== 'inst'){ const pd = planta[d] = planta[d] || {}; pd[ob] = (pd[ob] || 0) + h * ch; }
+        if(ob === obra) sum(P.per, r, h * ch, h, ym); } }
   }
+  // Apoyo de planta (asistente que escanea): su día se reparte según el costo de planta de cada obra ese día
+  for(const nom of (p.indirectos || [])){ const per = moPersona(nom); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
+    for(const [d, pd] of Object.entries(planta)){ const H = moHorasDia(d), tot = Object.values(pd).reduce((a, b) => a + b, 0); if(!H || !tot || !pd[obra]) continue;
+      const ym = d.slice(0, 7), h = H * pd[obra] / tot; sum(per, 'ind', h * moCostoHora(per, ym).hora, h, ym); } }
   // Procesos antes del escáner: minutos estimados por unidad × costo hora del operario habitual
   for(const i of D.propios) for(const [k] of MO_PROC){
     if(!['X', '+'].includes(i[k]) || i[k + '_en']) continue;
     const min = +p.est[k]; if(!(min > 0)){ R.sinEst[k] = (R.sinEst[k] || 0) + 1; continue; }
     const op = AS_OPER[k], per = op ? moPersona(op) : {tipo: 'minimo', k: 'OPERARIO ' + k.toUpperCase()}; if(per.tipo === 'ignorar' || per.tipo === 'contratista') continue;
     const ym = (i.dia_inicio || i.dia_final || hoy).slice(0, 7), h = min / 60 * (i[k] === '+' ? 0.5 : 1) * (+i.cant || 1);
-    const c = h * moCostoHora(per, ym).hora;
-    const r = R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
-    r.roles.est = (r.roles.est || 0) + c; r.h += h; r.c += c; R.comp.est += c; R.mes[ym] = (R.mes[ym] || 0) + c;
+    sum(per, 'est', h * moCostoHora(per, ym).hora, h, ym);
   }
   R.total = Object.values(R.comp).reduce((a, b) => a + b, 0);
   R.u = D.propios.length; R.m2 = D.propios.reduce((a, i) => a + (+i.m2 || 0), 0);
@@ -2196,14 +2217,16 @@ function moCalcular(D, obra){
   return R;
 }
 const moCOP = v => '$ ' + fmtN(Math.round(v || 0));
-const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)'};
+const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', ind: 'Apoyo de planta'};
 function moHTML(R){
   const p = moPar(), carga = moCarga(p), hoy = today();
   const pers = Object.values(R.per).sort((a, b) => b.c - a.c);
-  const comp = [['ens', 'Ensamble', 'Días de cada ensamblador repartidos entre las unidades que tuvo en mesa (por puntos de la unidad).'],
+  const comp = [['ens', 'Ensamble', 'Horas de cada ensamblador repartidas según el tiempo que cada unidad estuvo en su mesa (hora de inicio a hora de fin, dentro de la jornada). Incluye el prealistado.'],
     ['inst', 'Instalación (nómina)', 'Días de cada instalador repartidos entre lo que instaló ese día (por m²) y días "en obra" de la asistencia.'],
     ['proc', 'Procesos con escáner', 'Días del operario de cada proceso repartidos por los m² procesados ese día.'],
-    ['est', 'Procesos antes del escáner', 'Minutos estimados por unidad × costo hora del operario habitual.']];
+    ['est', 'Procesos antes del escáner', 'Minutos estimados por unidad × costo hora del operario habitual.'],
+    ['cargue', 'Cargue de camión', 'Horas de cargue registradas en la asistencia para esta obra.'],
+    ['ind', 'Apoyo de planta', 'Asistente de planta: su día se reparte entre las obras según el trabajo de planta de cada una ese día.']];
   const meses = Object.entries(R.mes).sort();
   const mx = Math.max(1, ...meses.map(m => m[1]));
   const fu = {asignado: 'Nómina', auto: 'Nómina', minimo: 'Salario mínimo*'};
@@ -2231,7 +2254,7 @@ function moHTML(R){
       <div class="i-glos" style="font-size:8.8pt">Costo mensual = salario × (1 + ${fmtN(carga, 2)} %) + auxilio de transporte × (1 + ${fmtN(p.prima + p.ces + p.intCes, 2)} %) a quien gane hasta 2 SMMLV (2026: SMMLV ${moCOP(MO_SMMLV[2026][0])}, auxilio ${moCOP(MO_SMMLV[2026][1])}).
         Carga: prima ${p.prima} %, cesantías ${p.ces} %, intereses ${p.intCes} %, vacaciones ${p.vac} %, pensión ${p.pension} %, caja ${p.caja} %, ARL ${p.arl} %${p.exonerado ? ' (exonerado de salud, SENA e ICBF, art. 114-1 E.T.)' : `, salud ${p.salud} %, SENA ${p.sena} %, ICBF ${p.icbf} %`}.
         Costo por hora = costo mensual ÷ horas laborables del mes (lunes 8 h, martes a viernes 8,5 h, sin festivos). Para meses de años anteriores el salario se ajusta con el mínimo de ese año.
-        No incluye horas extra, recargos, dotación ni el tiempo sin registro (días sin unidades en mesa, sin instalaciones o sin escaneos).</div>
+        No incluye horas extra, recargos, dotación ni el tiempo sin registro (días sin unidades en mesa, sin instalaciones, sin cargues ni escaneos).</div>
       <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Calculado con los registros de la app de producción al ${infF(hoy)}. Documento confidencial.</p></div>
     </div>
     <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>${esc(R.obra)} · Costo de mano de obra · ${infF(hoy)}</span></div></div>`;
@@ -2258,7 +2281,7 @@ async function moCfgCargar(){
     const [e, i] = await Promise.all([API.all(o => API.sb.from('items').select('ensamblador', o).gte('dia_inicio', desde).not('ensamblador', 'is', null).order('id')),
       API.all(o => API.sb.from('items').select('instalador', o).gte('fecha_instalacion', desde).not('instalador', 'is', null).order('id'))]);
     const c = {}; const add = (n, r) => { const k = normNom(n); if(!k) return; c[k] = c[k] || {n: 0, r: new Set()}; c[k].n++; c[k].r.add(r); };
-    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1]));
+    e.forEach(x => add(x.ensamblador, 'Ensamble')); i.forEach(x => add(x.instalador, 'Instalación')); Object.entries(AS_OPER).forEach(([k, n]) => add(n, MO_PROC.find(p => p[0] === k)[1])); (moPar().indirectos || []).forEach(n => add(n, 'Apoyo de planta'));
     MO.app = Object.entries(c).sort((a, b) => b[1].n - a[1].n);
   }catch(err){ MO.err = /mo_|PGRST205|42P01/.test(errMsg(err) + (err.code || '')) ? 'Falta activar el costo de mano de obra en la base (SQL 94)' : errMsg(err); }
   renderMO();
@@ -2279,6 +2302,7 @@ function renderMO(){
       <div class="cot-d">Carga prestacional resultante: <b>${fmtN(moCarga(p), 2)} %</b> sobre el salario (prima, cesantías, intereses, vacaciones, pensión, caja y ARL${p.exonerado ? '' : ', salud, SENA e ICBF'}) + auxilio de transporte a quien gane hasta 2 SMMLV.</div>
       <div class="cot-h" style="margin-top:12px">Tiempo estimado por unidad, antes del escáner (minutos)</div>
       <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
+      <div class="field" style="margin-top:8px"><span class="lbl">Apoyo de planta (separados por coma) · su costo se reparte entre las obras según el trabajo de planta del día</span><input id="moInd" value="${esc((p.indirectos || []).join(', '))}"></div>
       <button class="btn primary" style="margin-top:8px" onclick="moGuardarPar()">Guardar parámetros</button></div>
     <div class="cot-box"><div class="cot-h">Personas en la app → nómina</div><div class="cot-d">Cómo aparece cada ensamblador, instalador u operario en la app y a quién de la nómina corresponde. Los contratistas no suman costo de nómina (se muestran aparte con lo que instalaron).</div>
       ${(MO.app || []).map(([k, x]) => `<div class="as-row"><div class="as-n"><b>${esc(k)}</b><span class="cot-d" style="margin:0">${[...x.r].join(' · ')} · ${fmtN(x.n)}</span></div>${opts(k)}</div>`).join('')}</div>
@@ -2289,7 +2313,7 @@ function renderMO(){
 }
 async function moGuardarPar(){
   const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
-  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est};
+  const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean)};
   const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
   MO.par = par; toast('✓ Parámetros guardados'); renderMO();
 }
@@ -2403,7 +2427,7 @@ function prodPDF(){
 //  ASISTENCIA DIARIA DE PLANTA (SQL 93): quién está en planta / en obra / ausente, y procesos sin operario
 // ════════════════════════════════════════════════════════════════
 const AS = {fecha: null, ens: [], filas: {}, mesa: {}, err: null, cargando: false, hoyOk: null};
-const AS_PROC = () => PROCS.filter(([k]) => k !== 'programado');
+const AS_PROC = () => PROCS.filter(([k]) => !['programado', 'prealistado'].includes(k));   // el prealistado lo hace cada ensamblador
 const AS_MOT = ['Ausencia del operario', 'Incapacidad', 'Permiso', 'Vacaciones', 'Daño de máquina', 'Sin material', 'Otro'];
 const asKey = (t, c) => t + '|' + c;
 // Operario habitual de cada proceso (se precarga; se puede cambiar el día que lo cubra otro)
@@ -2437,6 +2461,35 @@ async function asPermite(ens, dia){
     AS._hoy = null; toast(`✓ ${k} quedó en planta en la asistencia de hoy`); return true; }
   catch(e){ toast(errMsg(e), true); return false; }
 }
+// Obras activas (para "en obra" y "cargue de camión"): las de Obras activas o, si no están cargadas, las con ensamble en los últimos 4 meses
+async function asObras(){
+  let l = (S.activos || []).map(i => i.obra).filter(Boolean);
+  if(!l.length){ try{ const d = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+    l = (await API.all(o => API.sb.from('items').select('obra', o).gte('dia_inicio', d).order('id'))).map(i => i.obra);
+    const c = new Set((await API.cerradas()).map(x => x.obra)); l = l.filter(o => !c.has(o)); }catch(e){} }
+  return [...new Set(l.filter(Boolean))].sort(nat);
+}
+const asObraSel = (val, on) => `<select class="as-mot" style="max-width:260px" onchange="${on}"><option value="">¿En qué obra?</option>${(AS.obras || []).map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}${val && !(AS.obras || []).includes(val) ? `<option selected>${esc(val)}</option>` : ''}</select>`;
+// Cargue de camión: la persona está en planta pero cargando (no cuenta como "sin OP en mesa"; su tiempo va a la obra del camión)
+const asCargues = per => Object.values(AS.filas).filter(f => f.tipo === 'cargue' && normNom(f.clave.split('|')[0]) === normNom(per));
+const asCargueHTML = per => { const l = asCargues(per); return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${l.map(f => `<span class="as-ok" style="background:var(--surface3);padding:2px 8px">🚚 ${esc(f.motivo || '')} · ${fmtN(+f.horas || 0, 1)} h <a href="javascript:void 0" onclick="asCargueQuitar(decodeURIComponent('${encodeURIComponent(f.clave)}'))" style="margin-left:4px">✕</a></span>`).join('')}
+  <button class="btn sm ghost" onclick="asCargueSheet(decodeURIComponent('${encodeURIComponent(per)}'))">+ Cargue de camión</button></div>`; };
+function asCargueSheet(per){
+  openSheet('Cargue de camión', esc(per) + ' · ' + fmtD(AS.fecha), `<div class="field"><span class="lbl">Obra del camión</span>${asObraSel('', "window._acOb=this.value")}</div>
+    <div class="field"><span class="lbl">Horas de cargue</span><input type="number" id="acH" min="0.25" step="0.25" value="2" inputmode="decimal"></div>
+    <div class="sc-note">Mientras dure el cargue no se avisa que no tiene OP en mesa, y esas horas se cargan al costo de mano de obra de la obra.</div>`, 'Registrar', async () => {
+      const ob = window._acOb, h = +$('#acH').value; if(!ob){ toast('Elige la obra', true); return false; } if(!(h > 0)){ toast('Escribe las horas', true); return false; }
+      const fila = {fecha: AS.fecha, tipo: 'cargue', clave: normNom(per) + '|' + ob, estado: 'cargue', motivo: ob, horas: h, operario: null};
+      const {error} = await API.sb.from('asistencia').upsert([fila], {onConflict: 'fecha,tipo,clave'});
+      if(error){ toast(/horas|cargue|check/.test(errMsg(error)) ? 'Falta activar el cargue de camión en la base (SQL 95)' : errMsg(error), true); return false; }
+      AS.filas[asKey('cargue', fila.clave)] = fila; window._acOb = null; toast(`✓ Cargue de ${per} para ${ob}`); setTimeout(renderAsis, 30); });
+  window._acOb = null;
+}
+async function asCargueQuitar(clave){
+  if(!confirm('¿Quitar este cargue de camión?')) return;
+  const {error} = await API.sb.from('asistencia').delete().eq('fecha', AS.fecha).eq('tipo', 'cargue').eq('clave', clave); if(error) return toast(errMsg(error), true);
+  delete AS.filas[asKey('cargue', clave)]; renderAsis();
+}
 function goAsis(fecha){
   if(!puedeRegistrar()) return;
   if(S.view !== 'asis') history.pushState({v: 'asis'}, '');
@@ -2454,6 +2507,7 @@ async function asCargar(){
     AS.ens = [...nombres].sort(nat);
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
     AS.mesaHoy = !!mesa;
+    AS.obras = await asObras();
   }catch(e){ AS.err = /asistencia|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la asistencia en la base (SQL 93)' : errMsg(e); }
   AS.cargando = false; AS.sucio = false; if(S.view === 'asis') renderAsis();
 }
@@ -2480,15 +2534,17 @@ function renderAsis(){
   else if(AS.cargando && !AS.ens.length) body = '<div class="loading"><div class="spin"></div>Cargando</div>';
   else {
     const enP = AS.ens.filter(n => (AS.filas[asKey('ensamble', n)] || {}).estado === 'planta');
-    const sinMesa = AS.mesaHoy ? enP.filter(n => !(AS.mesa[n] || []).some(i => !i.ens_novedad_id)) : [];
+    const sinMesa = AS.mesaHoy ? enP.filter(n => !(AS.mesa[n] || []).some(i => !i.ens_novedad_id) && !asCargues(n).length) : [];
     const ensF = AS.ens.map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
-      const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
+      const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : asCargues(n).length ? '<span class="as-ok">🚚 Cargando camión</span>' : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
-        ${['obra', 'ausente'].includes(f.estado) ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="${f.estado === 'obra' ? '¿En qué obra?' : 'Motivo (incapacidad, permiso…)'}" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">` : ''}</div>`; }).join('');
+        ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`)
+          : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
+          : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
     const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {};
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b></div>${seg('proceso', k, [['activo', 'Con operario'], ['sin_operario', 'Sin operario']], f.estado)}
         <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" oninput="asSet('proceso', '${k}', 'operario', this.value)" style="max-width:180px">
-        ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : ''}</div>`; }).join('');
+        ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : (() => { const o = f.operario != null && f.operario !== '' ? f.operario : AS_OPER[k]; return o ? asCargueHTML(o) : ''; })()}</div>`; }).join('');
     body = `${AS.mesaHoy && sinMesa.length ? `<div class="warn" style="margin-bottom:12px"><b>${sinMesa.length === 1 ? sinMesa[0] + ' está' : sinMesa.join(', ') + ' están'} en planta sin una OP en mesa.</b> Asígnales trabajo o registra su inicio de ensamble.</div>` : ''}
       <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
       <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Si un proceso no tiene operario hoy, márcalo con su motivo: queda como novedad que justifica que ese día no se produjo.</div>${procF}</div>
