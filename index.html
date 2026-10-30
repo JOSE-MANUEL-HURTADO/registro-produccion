@@ -87,6 +87,13 @@ body.artica .sheet{background:#2e2e2e;}
 .cola-opn{font-weight:700;white-space:nowrap}.cola-med{font-size:12px;color:var(--muted)}.cola-med b{color:var(--text)}.cola-med i{font-style:normal;font-weight:700}.cola-n{font-weight:700;font-size:16px}
 .nov-g{border:1px solid var(--border);border-left:3px solid var(--danger);padding:10px 12px;margin:10px 0}.nov-h{display:flex;justify-content:space-between;gap:8px}.nov-h b{text-transform:uppercase}.nov-h span{color:var(--danger);font-size:12px;font-weight:700}
 .nov-m{margin-top:4px}.nov-s{font-size:12px;color:var(--muted);margin-top:2px}.nov-op{font-size:13px;margin-top:4px}.nov-op span{color:var(--muted)}
+.cot-box{background:var(--surface);border:1px solid var(--border);padding:14px 16px;margin-bottom:12px}.cot-h{font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}.cot-d{color:var(--muted);font-size:13px;margin:-4px 0 8px}
+.cot-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:800px){.cot-cards{grid-template-columns:1fr}}
+.cot-tab{border-collapse:collapse;width:100%;font-size:13px}.cot-tab th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:4px 4px;white-space:nowrap}
+.cot-tab td{padding:3px 4px;border-top:1px solid var(--border);vertical-align:middle}.cot-tab select,.cot-tab input{min-height:32px;padding:4px 6px;font-size:13px}
+.cot-m2{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cot-g{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)}.cot-g>div{display:flex;flex-direction:column}.cot-g span{font-size:12px;color:var(--muted)}.cot-g label{display:flex;gap:8px;align-items:center;font-size:13px}
+.cot-tot>div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px}.cot-tot div span{color:var(--muted)}.cot-tot .T{font-size:20px;border:0}.cot-tot .T span{color:var(--text);font-weight:700}
 .art-ley{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12px;color:var(--muted);margin:4px 0 12px}.art-ley .art-ruta span{width:30px;font-size:13px;padding:2px 0}.art-ley .art-ruta span small{font-size:8px}.art-ley-ab{flex-basis:100%;font-size:12px}.art-ley-ab b{color:var(--text)}
 .art-ruta{display:flex;gap:3px;}.art-ruta span{width:40px;text-align:center;border:1px solid var(--border2);padding:3px 0;font-family:var(--art-t,var(--mono));font-weight:700;font-size:16px;line-height:1.1;color:var(--muted);}
 .art-ruta span small{display:block;font-size:10px;font-weight:400;}.art-ruta span.mid{color:var(--text);background:var(--art-acento,#5b6a6d);border-color:var(--art-acento,#5b6a6d);}.art-ruta span.ok{background:#fff;color:#272727;border-color:#fff;}.art-ruta span.now{outline:2px solid #fff;}
@@ -556,7 +563,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.63';
+const APP_VERSION = '7.64';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1451,7 +1458,7 @@ async function informeMostrar(l, o){
   const root = document.createElement('div'); root.id = 'infRoot';
   root.innerHTML = `<div class="inf-bar"><button class="btn primary" onclick="informeImprimir()">${ICON.down} Guardar en PDF / imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>
     <div class="inf-wrap">${informeHTML(l, o)}</div>`;
-  document.body.appendChild(root); document.body.classList.add('inf-imprime');
+  document.body.appendChild(root); document.body.classList.add('inf-imprime'); window._docTitulo = null;
   const ajusta = () => { const w = root.querySelector('.inf-wrap'); if(!w) return; const px = w.offsetWidth, s = Math.min(1, (window.innerWidth - 16) / px);
     w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
   ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
@@ -1460,7 +1467,7 @@ async function informeMostrar(l, o){
 async function informeImprimir(){
   try{ await document.fonts.ready; }catch(e){}
   const img = $('#infRoot .i-band img'); if(img && !img.complete) await new Promise(r => { img.onload = img.onerror = r; });
-  const t = document.title; document.title = `Informe de avance ${S.obra} ${today()}`;
+  const t = document.title; document.title = window._docTitulo || `Informe de avance ${S.obra} ${today()}`;
   window.print();
   setTimeout(() => { document.title = t; }, 1000);
 }
@@ -1468,6 +1475,355 @@ function informeCerrar(sinHist){
   const r = $('#infRoot'); if(r){ window.removeEventListener('resize', r._ajusta); r.remove(); }
   document.body.classList.remove('inf-imprime');
   if(!sinHist && history.state && history.state.inf) history.back();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ÁRTICA · COTIZACIONES DE VIDRIO (por m², agrupadas por tipo de vidrio) → PDF, Excel y OP (SQL 88)
+// ════════════════════════════════════════════════════════════════
+const COT_TIPOS = ['TEMPLADO', 'LAMINADO', 'CRUDO', 'ESPEJO', 'REFLECTIVO'];
+const COT_CAL = ['3', '4', '5', '6', '8', '10', '12', '15', '19', '3+3', '4+4', '5+5', '6+6', '8+8', '10+10'];
+const COT_COL = ['INCOLORO', 'EXTRACLARO', 'BRONCE', 'GRIS', 'AZUL', 'VERDE', 'SATINADO'];
+const COT_CANTO = ['PULIDO BRILLADO', 'PULIDO MATE', 'CANTO A CANTO', 'BISELADO', 'FILETEADO'];
+const COT_COND = {pago: '50 % anticipo · 50 % previo al despacho', entrega: '10 días hábiles', transporte: 'Recoge en planta'};
+const cotPuede = () => isGerente() || esArticaOps();
+const cotTipo = l => artTipoTxt(l.tipo, l.cal, l.col);
+const cotM2 = l => (+l.cant || 0) * (+l.ancho || 0) * (+l.alto || 0) / 1e6;
+const cot$ = v => '$ ' + fmtN(Math.round(v || 0));
+const cotNum = c => 'COT-' + String(c.fecha || today()).slice(0, 4) + '-' + String(c.num || 0).padStart(4, '0');
+function cotGrupos(c){
+  const g = new Map();
+  for(const l of c.lineas || []){ if(!l.tipo) continue; const k = cotTipo(l); if(!g.has(k)) g.set(k, {k, lineas: [], m2: 0}); const x = g.get(k); x.lineas.push(l); x.m2 += cotM2(l); }
+  return [...g.values()];
+}
+function cotCalc(c){
+  const precios = c.precios || {}; let vid = 0, m2 = 0, pz = 0;
+  for(const l of c.lineas || []){ const v = cotM2(l) * (+precios[cotTipo(l)] || 0); vid += v; m2 += cotM2(l); pz += +l.cant || 0; }
+  const adic = (c.adicionales || []).reduce((a, x) => a + (+x.cant || 0) * (+x.valor || 0), 0), sub = vid + adic, iva = sub * .19;
+  return {vid, adic, sub, iva, total: sub + iva, m2, pz};
+}
+const API_COT = {
+  async lista(){ const {data, error} = await API.sb.from('art_cotizaciones').select('id,num,fecha,cliente,proyecto,total,estado,op,actualizada').order('num', {ascending: false}).limit(300); if(error) throw error; return data || []; },
+  async una(id){ const {data, error} = await API.sb.from('art_cotizaciones').select('*').eq('id', id).single(); if(error) throw error; return data; },
+  async guardar(c){ const row = {fecha: c.fecha, validez: +c.validez || 15, cliente: c.cliente, proyecto: c.proyecto, lineas: c.lineas, adicionales: c.adicionales,
+      condiciones: {...c.condiciones, precios: c.precios}, total: Math.round(cotCalc(c).total), estado: c.estado || 'borrador', op: c.op || null, quien: (S.perfil && S.perfil.nombre) || null};
+    const q = c.id ? API.sb.from('art_cotizaciones').update(row).eq('id', c.id) : API.sb.from('art_cotizaciones').insert(row);
+    const {data, error} = await q.select('*').single(); if(error) throw error; return data; },
+  async precios(){ const {data, error} = await API.sb.from('art_precios').select('clave,valor'); if(error) throw error; return Object.fromEntries((data || []).map(x => [x.clave, +x.valor])); },
+  async guardarPrecios(p){ const rows = Object.entries(p).filter(([, v]) => +v > 0).map(([clave, valor]) => ({clave, valor: +valor, actualizado: new Date().toISOString(), quien: (S.perfil && S.perfil.nombre) || null}));
+    if(!rows.length) return; const {error} = await API.sb.from('art_precios').upsert(rows); if(error) throw error; }
+};
+const cotDesdeFila = r => ({...r, precios: (r.condiciones || {}).precios || {}, condiciones: {...COT_COND, ...(r.condiciones || {})}, lineas: r.lineas || [], adicionales: r.adicionales || []});
+const cotFaltaSQL = e => /art_cotizaciones|art_precios|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar las cotizaciones en la base (SQL 88)' : errMsg(e);
+async function cotCargarLista(){ A.cots = null; renderArtica(); try{ A.cots = await API_COT.lista(); }catch(e){ A.cots = []; A.cotErr = cotFaltaSQL(e); } if(S.view === 'artica' && A.tab === 'cot') renderArtica(); }
+function artCotHTML(){
+  if(A.cot) return cotEditorHTML();
+  if(!A.cots){ if(!A.cotCargando){ A.cotCargando = true; setTimeout(() => { cotCargarLista().finally(() => { A.cotCargando = false; }); }, 0); } return '<div class="loading"><div class="spin"></div>Cargando cotizaciones</div>'; }
+  const q = String(A.cotQ || '').toUpperCase();
+  const l = A.cots.filter(c => !q || JSON.stringify([c.num, c.cliente, c.proyecto, c.op]).toUpperCase().includes(q));
+  const est = {borrador: 'Borrador', enviada: 'Enviada', aprobada: 'Aprobada', rechazada: 'Rechazada'};
+  return `${A.cotErr ? `<div class="warn">${esc(A.cotErr)}</div>` : ''}
+    <div class="art-head"><div><div class="h1">Cotizaciones</div><div class="h1-sub">Vidrio para clientes · por m² · se convierten en OP al aprobarse</div></div>
+      <button class="btn primary" onclick="cotNueva()">+ Nueva cotización</button></div>
+    <div class="filters" style="grid-template-columns:1fr"><div class="search">${ICON.search}<input id="cotQ" placeholder="Cliente, referencia, número u OP…" value="${esc(A.cotQ || '')}" oninput="A.cotQ=this.value;const p=this.selectionStart;renderArtica();const j=document.getElementById('cotQ');if(j){j.focus();j.setSelectionRange(p,p);}"></div></div>
+    ${l.length ? `<div class="art-ops">${l.map(c => `<button class="art-lote" style="width:100%;text-align:left;cursor:pointer" onclick="cotAbrir(${c.id})">
+      <div><b>${cotNum(c)} · ${esc((c.cliente || {}).nombre || 'Sin cliente')}</b><span>${fmtD(c.fecha)}${(c.proyecto || {}).referencia ? ' · ' + esc(c.proyecto.referencia) : ''}${c.op ? ' · OP ' + esc(c.op) : ''}</span></div>
+      <div style="text-align:right"><b>${cot$(c.total)}</b><span>${est[c.estado] || c.estado}</span></div></button>`).join('')}</div>`
+      : `<div class="empty">${A.cots.length ? 'Ninguna cotización coincide.' : 'Todavía no hay cotizaciones. Crea la primera con "+ Nueva cotización".'}</div>`}`;
+}
+async function cotNueva(){
+  let precios = {}; try{ precios = await API_COT.precios(); }catch(e){}
+  A.cotPreciosBase = precios;
+  A.cot = {fecha: today(), validez: 15, cliente: {}, proyecto: {entrega: 'Recoge en planta', ciudad: 'Ibagué'}, condiciones: {...COT_COND, asesor: (S.perfil && S.perfil.nombre) || ''},
+    lineas: [{ref: '', cant: 1, tipo: 'TEMPLADO', cal: '10', col: 'INCOLORO', canto: 'PULIDO BRILLADO', ancho: '', alto: '', mec: false, proc: ''}], adicionales: [], precios: {}, estado: 'borrador'};
+  cotPreciosDefecto(); renderArtica(); window.scrollTo(0, 0);
+}
+async function cotAbrir(id){
+  try{ const [r, p] = await Promise.all([API_COT.una(id), API_COT.precios().catch(() => ({}))]); A.cotPreciosBase = p; A.cot = cotDesdeFila(r); cotPreciosDefecto(); renderArtica(); window.scrollTo(0, 0); }
+  catch(e){ toast(cotFaltaSQL(e), true); }
+}
+function cotPreciosDefecto(){ const c = A.cot; for(const g of cotGrupos(c)) if(c.precios[g.k] == null && A.cotPreciosBase && A.cotPreciosBase[g.k]) c.precios[g.k] = A.cotPreciosBase[g.k]; }
+function cotCerrar(){ if(A.cotSucio && !confirm('Hay cambios sin guardar. ¿Salir sin guardar?')) return; A.cot = null; A.cotSucio = false; A.cots = null; renderArtica(); }
+const cotSel = (lista, v, on, w) => `<select style="min-width:${w || 90}px" onchange="${on}">${[...new Set([...lista, v].filter(Boolean))].map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
+function cotEditorHTML(){
+  const c = A.cot, t = cotCalc(c), cl = c.cliente || {}, pr = c.proyecto || {}, cd = c.condiciones || {};
+  const inp = (path, v, ph, extra) => `<input value="${esc(v ?? '')}" placeholder="${esc(ph || '')}" oninput="cotSet('${path}', this.value)" ${extra || ''}>`;
+  const lin = (c.lineas || []).map((l, i) => `<tr>
+      <td><input class="cot-in" style="width:64px" value="${esc(l.ref || '')}" placeholder="V-1" oninput="cotL(${i},'ref',this.value)"></td>
+      <td><input class="cot-in" type="number" min="1" style="width:56px" value="${esc(l.cant)}" oninput="cotL(${i},'cant',this.value)"></td>
+      <td>${cotSel(COT_TIPOS, l.tipo, `cotL(${i},'tipo',this.value,1)`, 120)}</td><td>${cotSel(COT_CAL, l.cal, `cotL(${i},'cal',this.value,1)`, 76)}</td><td>${cotSel(COT_COL, l.col, `cotL(${i},'col',this.value,1)`, 118)}</td>
+      <td>${cotSel(COT_CANTO, l.canto, `cotL(${i},'canto',this.value)`, 150)}</td>
+      <td><input class="cot-in" type="number" inputmode="numeric" style="width:76px" value="${esc(l.ancho)}" placeholder="mm" oninput="cotL(${i},'ancho',this.value)"></td>
+      <td><input class="cot-in" type="number" inputmode="numeric" style="width:76px" value="${esc(l.alto)}" placeholder="mm" oninput="cotL(${i},'alto',this.value)"></td>
+      <td class="cot-m2" id="cotM2_${i}">${fmtN(cotM2(l), 2)}</td>
+      <td style="text-align:center"><input type="checkbox" ${l.mec ? 'checked' : ''} onchange="cotL(${i},'mec',this.checked)" title="Mecanizado"></td>
+      <td><input class="cot-in" style="width:160px" value="${esc(l.proc || '')}" placeholder="Ej. 2 perforaciones" oninput="cotL(${i},'proc',this.value)"></td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" title="Duplicar" onclick="cotLDup(${i})">⧉</button><button class="btn sm ghost" title="Quitar" onclick="cotLDel(${i})">✕</button></td></tr>`).join('');
+  const grupos = cotGrupos(c).map(g => `<div class="cot-g"><div><b>${esc(g.k)}</b><span>${fmtN(g.m2, 2)} m² · ${g.lineas.reduce((a, l) => a + (+l.cant || 0), 0)} piezas</span></div>
+      <label>Valor m² <input class="cot-in" type="number" min="0" step="1000" style="width:120px" value="${esc(c.precios[g.k] ?? '')}" placeholder="$" oninput="cotP(decodeURIComponent('${encodeURIComponent(g.k)}'), this.value)"></label>
+      <b id="cotGv_${encodeURIComponent(g.k).replace(/%/g, '')}">${cot$(g.m2 * (+c.precios[g.k] || 0))}</b></div>`).join('');
+  const adic = (c.adicionales || []).map((x, i) => `<tr><td><input class="cot-in" style="width:220px" value="${esc(x.desc || '')}" placeholder="Ej. Perforación" oninput="cotA(${i},'desc',this.value)"></td>
+      <td><input class="cot-in" type="number" min="0" style="width:64px" value="${esc(x.cant ?? '')}" oninput="cotA(${i},'cant',this.value)"></td>
+      <td><input class="cot-in" type="number" min="0" step="1000" style="width:110px" value="${esc(x.valor ?? '')}" placeholder="$" oninput="cotA(${i},'valor',this.value)"></td>
+      <td><button class="btn sm ghost" onclick="A.cot.adicionales.splice(${i},1);A.cotSucio=true;renderArtica()">✕</button></td></tr>`).join('');
+  const est = ['borrador', 'enviada', 'aprobada', 'rechazada'];
+  return `<button class="back" onclick="cotCerrar()">${ICON.back} Cotizaciones</button>
+    <div class="art-head"><div><div class="h1">${c.id ? cotNum(c) : 'Nueva cotización'}</div><div class="h1-sub">${c.op ? 'Convertida en la OP ' + esc(c.op) + ' · ' : ''}Vidrio por m², agrupado por tipo de vidrio</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><select onchange="cotSet('estado',this.value)">${est.map(x => `<option value="${x}" ${c.estado === x ? 'selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select>
+      <button class="btn primary" onclick="cotGuardar()">Guardar</button><button class="btn" onclick="cotPDF()">${ICON.down} PDF</button><button class="btn" onclick="cotExcel()">${ICON.down} Excel</button>
+      <button class="btn" onclick="cotAOP()">Convertir en OP</button></div></div>
+    <div class="cot-cards">
+      <div class="cot-box"><div class="cot-h">Cliente</div><div class="fgrid">
+        <div class="field"><span class="lbl">Nombre</span>${inp('cliente.nombre', cl.nombre, 'Nombre o razón social')}</div><div class="field"><span class="lbl">NIT / C.C.</span>${inp('cliente.nit', cl.nit)}</div>
+        <div class="field"><span class="lbl">Contacto</span>${inp('cliente.contacto', cl.contacto)}</div><div class="field"><span class="lbl">Teléfono</span>${inp('cliente.tel', cl.tel)}</div>
+        <div class="field"><span class="lbl">Correo</span>${inp('cliente.correo', cl.correo)}</div></div></div>
+      <div class="cot-box"><div class="cot-h">Proyecto y condiciones</div><div class="fgrid">
+        <div class="field"><span class="lbl">Referencia</span>${inp('proyecto.referencia', pr.referencia, 'Ej. Casa 19 · cerramientos')}</div><div class="field"><span class="lbl">Ciudad</span>${inp('proyecto.ciudad', pr.ciudad)}</div>
+        <div class="field"><span class="lbl">Entrega</span>${inp('proyecto.entrega', pr.entrega, 'Recoge en planta / Entrega en obra')}</div><div class="field"><span class="lbl">Fecha</span><input type="date" value="${esc(c.fecha)}" oninput="cotSet('fecha',this.value)"></div>
+        <div class="field"><span class="lbl">Validez (días)</span>${inp('validez', c.validez, '15', 'type="number" min="1"')}</div><div class="field"><span class="lbl">Forma de pago</span>${inp('condiciones.pago', cd.pago)}</div>
+        <div class="field"><span class="lbl">Tiempo de entrega</span>${inp('condiciones.entrega', cd.entrega)}</div><div class="field"><span class="lbl">Asesor</span>${inp('condiciones.asesor', cd.asesor)}</div></div></div>
+    </div>
+    <div class="cot-box"><div class="cot-h">Medidas (mm)</div>
+      <div style="overflow-x:auto"><table class="cot-tab"><thead><tr><th>Ref.</th><th>Cant</th><th>Tipo</th><th>Calibre</th><th>Color</th><th>Canto</th><th>Ancho</th><th>Alto</th><th>m²</th><th title="Mecanizado">Mec.</th><th>Procesos / observación</th><th></th></tr></thead><tbody>${lin}</tbody></table></div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn sm" onclick="cotLAdd()">+ Agregar medida</button></div></div>
+    <div class="cot-box"><div class="cot-h">Valor por m² de cada vidrio</div><div class="cot-d">Se recuerda el último valor usado para cada vidrio.</div>${grupos || '<div class="empty">Agrega medidas.</div>'}</div>
+    <div class="cot-box"><div class="cot-h">Procesos adicionales</div><div class="cot-d">Perforaciones, boquetes y otros procesos que se cobran por unidad.</div>
+      ${adic ? `<table class="cot-tab"><thead><tr><th>Descripción</th><th>Cant</th><th>Valor unit.</th><th></th></tr></thead><tbody>${adic}</tbody></table>` : ''}
+      <button class="btn sm" style="margin-top:8px" onclick="A.cot.adicionales.push({desc:'',cant:1,valor:''});A.cotSucio=true;renderArtica()">+ Agregar proceso</button></div>
+    <div class="cot-box cot-tot" id="cotTot">${cotTotHTML(t)}</div>`;
+}
+const cotTotHTML = t => `<div><span>Vidrio · ${fmtN(t.pz)} piezas · ${fmtN(t.m2, 2)} m²</span><b>${cot$(t.vid)}</b></div><div><span>Procesos adicionales</span><b>${cot$(t.adic)}</b></div>
+  <div><span>Subtotal</span><b>${cot$(t.sub)}</b></div><div><span>IVA 19 %</span><b>${cot$(t.iva)}</b></div><div class="T"><span>Total</span><b>${cot$(t.total)}</b></div>`;
+function cotRefrescar(){ const c = A.cot; const box = $('#cotTot'); if(box) box.innerHTML = cotTotHTML(cotCalc(c));
+  (c.lineas || []).forEach((l, i) => { const e = $('#cotM2_' + i); if(e) e.textContent = fmtN(cotM2(l), 2); });
+  for(const g of cotGrupos(c)){ const e = document.getElementById('cotGv_' + encodeURIComponent(g.k).replace(/%/g, '')); if(e) e.textContent = cot$(g.m2 * (+c.precios[g.k] || 0)); } }
+function cotSet(path, v){ const c = A.cot, [a, b] = path.split('.'); if(b){ c[a] = c[a] || {}; c[a][b] = v; } else c[a] = v; A.cotSucio = true; }
+function cotL(i, k, v, regrupa){ const l = A.cot.lineas[i]; if(!l) return; l[k] = v; A.cotSucio = true; if(regrupa){ cotPreciosDefecto(); renderArtica(); } else if(['cant', 'ancho', 'alto'].includes(k)) cotRefrescar(); }
+function cotP(k, v){ A.cot.precios[k] = v === '' ? null : +v; A.cotSucio = true; cotRefrescar(); }
+function cotA(i, k, v){ const x = A.cot.adicionales[i]; if(!x) return; x[k] = v; A.cotSucio = true; cotRefrescar(); }
+function cotLAdd(){ const u = A.cot.lineas[A.cot.lineas.length - 1] || {}; A.cot.lineas.push({ref: '', cant: 1, tipo: u.tipo || 'TEMPLADO', cal: u.cal || '10', col: u.col || 'INCOLORO', canto: u.canto || 'PULIDO BRILLADO', ancho: '', alto: '', mec: false, proc: ''}); A.cotSucio = true; renderArtica(); }
+function cotLDup(i){ A.cot.lineas.splice(i + 1, 0, {...A.cot.lineas[i]}); A.cotSucio = true; renderArtica(); }
+function cotLDel(i){ A.cot.lineas.splice(i, 1); A.cotSucio = true; renderArtica(); }
+function cotValida(c){
+  if(!String((c.cliente || {}).nombre || '').trim()) return 'Escribe el nombre del cliente';
+  const ls = (c.lineas || []).filter(l => +l.cant && +l.ancho && +l.alto); if(!ls.length) return 'Agrega al menos una medida con cantidad, ancho y alto';
+  const sinP = cotGrupos(c).filter(g => !(+c.precios[g.k] > 0)).map(g => g.k); if(sinP.length) return 'Falta el valor por m² de: ' + sinP.join(', ');
+  return null;
+}
+async function cotGuardar(silencio){
+  const c = A.cot; c.lineas = (c.lineas || []).filter(l => +l.cant || +l.ancho || +l.alto || l.ref);
+  const err = cotValida(c); if(err){ toast(err, true); return false; }
+  try{ const r = await API_COT.guardar(c); const pr = c.precios; A.cot = cotDesdeFila(r); A.cot.precios = pr; A.cotSucio = false;
+    try{ await API_COT.guardarPrecios(pr); A.cotPreciosBase = {...(A.cotPreciosBase || {}), ...pr}; }catch(e){}
+    if(!silencio) toast('✓ Cotización ' + cotNum(A.cot) + ' guardada'); renderArtica(); return true; }
+  catch(e){ toast(cotFaltaSQL(e), true); return false; }
+}
+// ── Documento (PDF con Imprimir), con el manual de identidad de Ártica ──
+function cotDocHTML(c){
+  const t = cotCalc(c), cl = c.cliente || {}, pr = c.proyecto || {}, cd = c.condiciones || {};
+  const venc = (() => { const d = new Date(c.fecha + 'T12:00:00'); d.setDate(d.getDate() + (+c.validez || 15)); return d.toISOString().slice(0, 10); })();
+  let k = 0;
+  const filas = cotGrupos(c).map(g => { const vm = +c.precios[g.k] || 0, canto = [...new Set(g.lineas.map(l => l.canto).filter(Boolean))].map(x => x[0] + x.slice(1).toLowerCase()).join(' / ');
+    return `<tr class="c-grp"><td colspan="9"><b>${esc(g.k)}</b><span>${esc(canto ? 'Canto ' + canto.toLowerCase() + ' · ' : '')}${fmtN(g.m2, 2)} m²</span></td></tr>` + g.lineas.map(l => { k++; const m2 = cotM2(l);
+      return `<tr><td class="c-c c-g3">${k}</td><td class="c-ref">${esc(l.ref || '')}</td><td class="c-r c-b">${fmtN(+l.cant)}</td><td class="c-r">${Math.round(+l.ancho)}</td><td class="c-r">${Math.round(+l.alto)}</td><td class="c-r">${fmtN(m2, 2)}</td>
+        <td class="c-pr">${esc([l.mec ? 'Mecanizado' : '', l.proc || ''].filter(Boolean).join(' · '))}</td><td class="c-r">${cot$(vm)}</td><td class="c-r c-b">${cot$(m2 * vm)}</td></tr>`; }).join(''); }).join('');
+  const ad = (c.adicionales || []).filter(x => +x.cant && +x.valor);
+  const cli = [['Nombre', cl.nombre], ['NIT / C.C.', cl.nit], ['Contacto', cl.contacto], ['Teléfono', cl.tel], ['Correo', cl.correo]].filter(x => x[1]);
+  const pro = [['Referencia', pr.referencia], ['Entrega', pr.entrega], ['Ciudad', pr.ciudad]].filter(x => x[1]);
+  const con = [['Validez', (c.validez || 15) + ' días calendario'], ['Pago', cd.pago], ['Entrega', cd.entrega], ['Asesor', cd.asesor]].filter(x => x[1]);
+  const kv = l => `<div class="c-k">${l.map(([a, b]) => `<span>${esc(a)}</span><span>${esc(b)}</span>`).join('')}</div>`;
+  return `<div class="inf-pag c-pag">
+    <div class="c-band"><img class="c-logo" src="icons/artica_logo.png" alt="Ártica"><img class="c-tri" src="icons/artica_triangulos.png" alt="">
+      <div class="c-tit"><h1>COTIZACIÓN</h1><div class="c-num">N.º ${cotNum(c)}</div><div class="c-f">${infF(c.fecha)} · VÁLIDA HASTA ${infF(venc)}</div></div></div>
+    <div class="c-lin"></div><div class="c-sub"><span>Vidrio procesado a la medida</span><span>${esc(pr.ciudad || 'Ibagué · Tolima')}</span></div>
+    <div class="c-hoja">
+      <div class="c-cards"><div class="c-card"><h3>CLIENTE</h3>${kv(cli)}</div><div class="c-card"><h3>PROYECTO</h3>${kv(pro)}</div><div class="c-card"><h3>CONDICIONES</h3>${kv(con)}</div></div>
+      <table class="c-tab"><thead><tr><th class="c-c">#</th><th>REF.</th><th class="c-r">CANT</th><th class="c-r">ANCHO</th><th class="c-r">ALTO</th><th class="c-r">M²</th><th>PROCESOS</th><th class="c-r">VALOR M²</th><th class="c-r">VALOR</th></tr></thead>
+        <tbody>${filas}<tr class="c-tf"><td colspan="2">TOTAL VIDRIO</td><td class="c-r">${fmtN(t.pz)}</td><td colspan="2"></td><td class="c-r">${fmtN(t.m2, 2)}</td><td colspan="2" class="c-r" style="font-weight:400;font-size:8.6pt">${fmtN(t.pz)} piezas · medidas en mm</td><td class="c-r">${cot$(t.vid)}</td></tr></tbody></table>
+      <div class="c-bajo"><div>${ad.length ? `<h4>PROCESOS ADICIONALES</h4><table class="c-tab c-ad"><thead><tr><th>DESCRIPCIÓN</th><th class="c-r">CANT</th><th class="c-r">VALOR UNIT.</th><th class="c-r">VALOR</th></tr></thead><tbody>${ad.map(x => `<tr><td class="c-ref">${esc(x.desc)}</td><td class="c-r c-b">${fmtN(+x.cant)}</td><td class="c-r">${cot$(+x.valor)}</td><td class="c-r c-b">${cot$(x.cant * x.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
+          ${c.lineas.some(l => l.tipo === 'TEMPLADO') ? '<div class="c-nota">El vidrio templado no admite cortes, perforaciones ni pulidos después de templado: todos los procesos se hacen antes.</div>' : ''}</div>
+        <div class="c-tot"><h4>VALOR DE LA COTIZACIÓN</h4><div><span>Vidrio</span><span>${cot$(t.vid)}</span></div>${t.adic ? `<div><span>Procesos adicionales</span><span>${cot$(t.adic)}</span></div>` : ''}<div><span>Subtotal</span><span>${cot$(t.sub)}</span></div><div><span>IVA 19 %</span><span>${cot$(t.iva)}</span></div><div class="c-T"><span>TOTAL</span><span>${cot$(t.total)}</span></div></div></div>
+      <div class="c-cond"><div><h4>CONDICIONES COMERCIALES</h4><ol><li>Forma de pago: ${esc(cd.pago || COT_COND.pago)}.</li><li>Tiempo de entrega: ${esc(cd.entrega || COT_COND.entrega)}, contados desde el pago del anticipo y la confirmación escrita de medidas.</li><li>Los precios incluyen el corte, los cantos y los procesos indicados. No incluyen transporte ni instalación, salvo que se indique.</li><li>Los precios pueden cambiar si cambian las medidas, las cantidades o los procesos cotizados.</li></ol></div>
+        <div><h4>CONDICIONES TÉCNICAS</h4><ol><li>Las medidas son responsabilidad del cliente; se fabrica con las medidas confirmadas en la orden de producción.</li><li>Tolerancia de fabricación de ± 2 mm en ancho y alto.</li><li>Al aprobarse, esta cotización se convierte en la orden de producción de Ártica con las mismas líneas.</li></ol></div></div>
+      <div class="c-firmas"><div><b>ELABORÓ</b>${esc(cd.asesor || 'Ártica · Vidrio arquitectónico')}</div><div><b>ACEPTA EL CLIENTE</b>Firma, nombre y fecha</div></div>
+    </div>
+    <div class="c-pie"><span>Cra. 16 Sur # 67-406, Interior Bodega 5-6 · Zona Industrial el Papayo, Ibagué – Tolima</span><span>Tel. 310 210 0257 · www.artica.com.co</span></div></div>`;
+}
+const COT_CSS = `
+.c-pag{--ac:#324549;padding-bottom:0 !important}
+.c-pag .c-band{background:#272727;height:40mm;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 14mm;overflow:hidden}
+.c-pag .c-logo{height:27mm;position:relative;z-index:1}.c-pag .c-tri{position:absolute;left:62mm;top:-6mm;height:52mm;opacity:.9}
+.c-pag .c-tit{text-align:right;color:#fff;position:relative;z-index:1}.c-pag .c-tit h1{margin:0;font-family:'DINC';font-weight:700;font-size:28pt;letter-spacing:.2em;line-height:1;color:#fff}
+.c-pag .c-num{font-weight:500;font-size:12.5pt;letter-spacing:.1em;margin-top:2mm}.c-pag .c-f{font-size:9pt;color:#bdbdbd;letter-spacing:.08em;margin-top:.6mm}
+.c-pag .c-lin{height:1.4mm;background:var(--ac)}
+.c-pag .c-sub{background:#d9d9d9;padding:2mm 14mm;font-size:8.6pt;letter-spacing:.32em;text-transform:uppercase;display:flex;justify-content:space-between;color:#4a4a4a}
+.c-pag .c-hoja{padding:0 14mm 6mm}
+.c-pag .c-cards{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:5mm;margin:4mm 0}
+.c-pag .c-card{border-top:2pt solid #272727;padding-top:1.8mm}.c-pag h3,.c-pag h4{margin:0 0 1.4mm;font-family:'DINC';font-weight:700;font-size:9pt;letter-spacing:.18em;color:#272727}
+.c-pag .c-k{display:grid;grid-template-columns:19mm 1fr;row-gap:.5mm;font-size:9.4pt}.c-pag .c-k span:nth-child(odd){color:#8a8a8a;text-transform:uppercase;font-size:7.8pt;letter-spacing:.08em;padding-top:.5mm}.c-pag .c-k span:nth-child(even){font-weight:400}
+.c-pag table{width:100%;border-collapse:collapse;margin:0}
+.c-pag thead th{background:#272727;color:#fff;font-weight:600;font-size:8.2pt;letter-spacing:.12em;padding:1.8mm;text-align:left;white-space:nowrap;border:0}
+.c-pag .c-r{text-align:right}.c-pag .c-c{text-align:center}
+.c-pag tbody td{padding:.85mm 1.8mm;border:0;border-bottom:.5pt solid #d9d9d9;font-size:9.6pt;color:#272727}
+.c-pag .c-grp td{background:#e9eaea !important;padding:1.3mm 1.8mm;border-bottom:0;border-left:2.4pt solid var(--ac)}.c-pag .c-grp b{letter-spacing:.12em;margin-right:3mm}.c-pag .c-grp span{color:#4a4a4a;font-size:9pt}
+.c-pag .c-ref{font-weight:600;white-space:nowrap}.c-pag .c-b{font-weight:600}.c-pag .c-g3{color:#8a8a8a}.c-pag .c-pr{font-size:8.8pt;color:#4a4a4a;font-style:italic}
+.c-pag .c-tf td{background:#272727 !important;color:#fff;font-weight:600;padding:1.8mm;letter-spacing:.06em}
+.c-pag .c-bajo{display:grid;grid-template-columns:1fr 66mm;gap:6mm;margin-top:3.5mm}.c-pag .c-ad thead th{background:#4a4a4a}
+.c-pag .c-tot div{display:flex;justify-content:space-between;padding:1.25mm 0;border-bottom:.5pt solid #d9d9d9;font-size:9.8pt}.c-pag .c-tot div span:first-child{color:#8a8a8a;letter-spacing:.08em;text-transform:uppercase;font-size:8.4pt}
+.c-pag .c-tot .c-T{background:#272727;color:#fff;padding:2.2mm 2.5mm;border:0;margin-top:1.4mm;font-size:13pt;font-weight:700}.c-pag .c-tot .c-T span:first-child{color:#fff;font-size:9.4pt;font-weight:600;align-self:center}
+.c-pag .c-cond{display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-top:3.5mm;break-inside:avoid}.c-pag .c-cond ol{margin:0;padding-left:4mm;font-size:8.8pt;line-height:1.36;color:#4a4a4a}
+.c-pag .c-firmas{display:grid;grid-template-columns:1fr 1fr;gap:12mm;margin-top:9mm;break-inside:avoid}.c-pag .c-firmas div{border-top:.8pt solid #272727;padding-top:1.4mm;font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;color:#4a4a4a}.c-pag .c-firmas b{display:block;color:#272727;letter-spacing:.14em}
+.c-pag .c-nota{font-style:italic;font-size:8.4pt;color:#8a8a8a;margin-top:1.2mm}
+.c-pag .c-pie{background:#272727;color:#fff;font-size:8.8pt;letter-spacing:.08em;padding:2.6mm 14mm;display:flex;justify-content:space-between;gap:6mm}
+@media print{ #infRoot .c-pag{padding-bottom:0} }`;
+async function cotPDF(){
+  const c = A.cot; const err = cotValida(c); if(err) return toast(err, true);
+  if(A.cotSucio || !c.id){ if(!(await cotGuardar(true))) return; }
+  let st = $('#infCss'); if(!st){ st = document.createElement('style'); st.id = 'infCss'; st.textContent = INF_CSS; document.head.appendChild(st); }
+  let st2 = $('#cotCss'); if(!st2){ st2 = document.createElement('style'); st2.id = 'cotCss'; st2.textContent = COT_CSS; document.head.appendChild(st2); }
+  const old = $('#infRoot'); if(old) old.remove();
+  const root = document.createElement('div'); root.id = 'infRoot';
+  root.innerHTML = `<div class="inf-bar"><button class="btn primary" onclick="informeImprimir()">${ICON.down} Guardar en PDF / imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div><div class="inf-wrap">${cotDocHTML(A.cot)}</div>`;
+  document.body.appendChild(root); document.body.classList.add('inf-imprime');
+  window._docTitulo = `Cotizacion ${cotNum(A.cot)} ${(A.cot.cliente || {}).nombre || ''}`.trim();
+  const ajusta = () => { const w = root.querySelector('.inf-wrap'); if(!w) return; const s = Math.min(1, (window.innerWidth - 16) / w.offsetWidth);
+    w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
+  ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
+  history.pushState({v: 'artica', inf: 1}, '');
+}
+// ── Excel con fórmulas (m², valores, IVA y total se recalculan si cambian medidas o precios) ──
+async function cotExcelBlob(c){
+  await cargarExcelJS();
+  const GRAF = 'FF272727', AC = 'FF324549', BLANCO = 'FFFFFFFF', GRIS = 'FFE9EAEA', GRIS2 = 'FFF4F4F4', TXT2 = 'FF8A8A8A', DIN = 'DIN Condensed', FUT = 'Futura';
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Ártica · Registro de producción';
+  const ws = wb.addWorksheet('COTIZACIÓN', {views: [{showGridLines: false}], pageSetup: {paperSize: 1, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    margins: {left: .3, right: .3, top: .3, bottom: .4, header: .1, footer: .2}, horizontalCentered: true}});
+  ws.columns = [5, 9, 7, 9, 9, 9, 28, 13, 24].map(w => ({width: w}));
+  const fill = col => ({type: 'pattern', pattern: 'solid', fgColor: {argb: col}});
+  const cel = (ref, v, font, f, al, fmt) => { const x = ws.getCell(ref); x.value = v; if(font) x.font = font; if(f) x.fill = fill(f); x.alignment = al || {vertical: 'middle'}; if(fmt) x.numFmt = fmt; return x; };
+  const $fmt = '"$" #,##0', m2fmt = '#,##0.00';
+  for(let r = 1; r <= 5; r++){ ws.getRow(r).height = 19; for(let k = 1; k <= 9; k++) ws.getCell(r, k).fill = fill(GRAF); }
+  const logo = await b64Icono('icons/artica_logo.png'), tri = await b64Icono('icons/artica_triangulos.png');
+  if(tri) ws.addImage(wb.addImage({base64: tri, extension: 'png'}), {tl: {col: 3.2, row: 0}, ext: {width: 190, height: 127}});
+  if(logo) ws.addImage(wb.addImage({base64: logo, extension: 'png'}), {tl: {col: 0.3, row: 0.15}, ext: {width: 105, height: 90}});
+  const venc = (() => { const d = new Date(c.fecha + 'T12:00:00'); d.setDate(d.getDate() + (+c.validez || 15)); return d.toISOString().slice(0, 10); })();
+  ws.mergeCells('G1:I2'); cel('G1', 'COTIZACIÓN', {name: DIN, size: 26, bold: true, color: {argb: BLANCO}}, GRAF, {vertical: 'bottom', horizontal: 'right'});
+  ws.mergeCells('G3:I3'); cel('G3', 'N.º ' + cotNum(c), {name: DIN, size: 13, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'right'});
+  ws.mergeCells('G4:I4'); cel('G4', `${fmtD(c.fecha)} · válida hasta ${fmtD(venc)}`, {name: FUT, size: 9, color: {argb: 'FFBDBDBD'}}, GRAF, {vertical: 'top', horizontal: 'right'});
+  ws.getRow(6).height = 4; for(let k = 1; k <= 9; k++) ws.getCell(6, k).fill = fill(AC);
+  ws.getRow(7).height = 16; ws.mergeCells('A7:I7'); cel('A7', 'V I D R I O   P R O C E S A D O   A   L A   M E D I D A', {name: FUT, size: 8, color: {argb: 'FF4A4A4A'}}, 'FFD9D9D9', {vertical: 'middle', indent: 1});
+  // Cliente / proyecto / condiciones
+  const cl = c.cliente || {}, pr = c.proyecto || {}, cd = c.condiciones || {};
+  ws.getRow(8).height = 8;
+  const izq = [['CLIENTE', null], ['Nombre', cl.nombre], ['NIT / C.C.', cl.nit], ['Contacto', cl.contacto], ['Teléfono', cl.tel], ['Correo', cl.correo],
+    ['PROYECTO', null], ['Referencia', pr.referencia], ['Entrega', pr.entrega], ['Ciudad', pr.ciudad]].filter(x => x[1] !== undefined && (x[1] === null || x[1] !== ''));
+  const der = [['CONDICIONES', null], ['Validez', (c.validez || 15) + ' días'], ['Pago', cd.pago], ['Entrega', cd.entrega], ['Asesor', cd.asesor]].filter(x => x[1] === null || x[1]);
+  const encab = (ref, t) => { const h = cel(ref, t, {name: DIN, size: 10, bold: true, color: {argb: GRAF}}, null, {vertical: 'bottom'}); h.border = {top: {style: 'medium', color: {argb: GRAF}}}; };
+  let ri = 9;
+  for(const [a, b] of izq){ ws.getRow(ri).height = b === null ? 18 : 15;
+    if(b === null){ ws.mergeCells(`A${ri}:F${ri}`); encab(`A${ri}`, a); }
+    else { ws.mergeCells(`A${ri}:B${ri}`); cel(`A${ri}`, a.toUpperCase(), {name: FUT, size: 7.5, color: {argb: TXT2}}); ws.mergeCells(`C${ri}:F${ri}`); cel(`C${ri}`, b, {name: FUT, size: 9.5}); }
+    ri++; }
+  let rd = 9;
+  for(const [a, b] of der){
+    if(b === null){ ws.mergeCells(`H${rd}:I${rd}`); encab(`H${rd}`, a); }
+    else { cel(`H${rd}`, a.toUpperCase(), {name: FUT, size: 7.5, color: {argb: TXT2}}); cel(`I${rd}`, b, {name: FUT, size: 9.5}, null, {vertical: 'middle', wrapText: true}); }
+    rd++; }
+  const fin = Math.max(ri, rd);
+  ws.getRow(fin).height = 8;
+  // Tabla
+  let r = fin + 1; const heads = ['#', 'REF.', 'CANT', 'ANCHO', 'ALTO', 'M²', 'PROCESOS', 'VALOR M²', 'VALOR'];
+  ws.getRow(r).height = 20; heads.forEach((h, i) => { const x = ws.getCell(r, i + 1); x.value = h; x.font = {name: DIN, size: 10, bold: true, color: {argb: BLANCO}}; x.fill = fill(GRAF); x.alignment = {vertical: 'middle', horizontal: i >= 2 && i !== 6 ? 'right' : i === 0 ? 'center' : 'left'}; });
+  const linea = {style: 'thin', color: {argb: 'FFD9D9D9'}}, filasVal = []; let k = 0; r++;
+  const r0 = r;
+  for(const g of cotGrupos(c)){
+    ws.getRow(r).height = 18; ws.mergeCells(`A${r}:I${r}`);
+    const canto = [...new Set(g.lineas.map(l => l.canto).filter(Boolean))].join(' / ');
+    const x = cel(`A${r}`, {richText: [{text: g.k + '   ', font: {name: DIN, size: 10.5, bold: true, color: {argb: GRAF}}}, {text: canto ? 'Canto ' + canto.toLowerCase() : '', font: {name: FUT, size: 9, color: {argb: 'FF4A4A4A'}}}]}, null, GRIS, {vertical: 'middle', indent: 1});
+    x.border = {left: {style: 'thick', color: {argb: AC}}}; r++;
+    for(const l of g.lineas){ k++; ws.getRow(r).height = 17;
+      const vals = [k, l.ref || '', +l.cant, +l.ancho, +l.alto, {formula: `C${r}*D${r}*E${r}/1000000`}, [l.mec ? 'Mecanizado' : '', l.proc || ''].filter(Boolean).join(' · '), +c.precios[g.k] || 0, {formula: `F${r}*H${r}`}];
+      vals.forEach((v, i) => { const y = ws.getCell(r, i + 1); y.value = v; y.font = {name: FUT, size: 9.5, bold: i === 2 || i === 8 || i === 1, italic: i === 6, color: {argb: i === 0 ? TXT2 : GRAF}};
+        y.alignment = {vertical: 'middle', horizontal: i === 0 ? 'center' : (i >= 2 && i !== 6) ? 'right' : 'left'}; y.border = {bottom: linea};
+        if(i === 5) y.numFmt = m2fmt; if(i === 7 || i === 8) y.numFmt = $fmt; if(i === 3 || i === 4) y.numFmt = '0'; });
+      filasVal.push(r); r++; }
+  }
+  const rv = r; ws.getRow(r).height = 20;
+  const tv = (col, v, fmt, al) => { const y = ws.getCell(`${col}${r}`); y.value = v; y.font = {name: DIN, size: 10.5, bold: true, color: {argb: BLANCO}}; y.fill = fill(GRAF); y.alignment = {vertical: 'middle', horizontal: al || 'right'}; if(fmt) y.numFmt = fmt; };
+  for(let col = 1; col <= 9; col++) ws.getCell(r, col).fill = fill(GRAF);
+  tv('A', 'TOTAL VIDRIO', null, 'left'); ws.mergeCells(`A${r}:B${r}`);
+  tv('C', {formula: `SUM(C${r0}:C${r - 1})`}, '0'); tv('F', {formula: `SUM(F${r0}:F${r - 1})`}, m2fmt); tv('I', {formula: `SUM(I${r0}:I${r - 1})`}, $fmt);
+  r += 2;
+  // Procesos adicionales y totales
+  const ad = (c.adicionales || []).filter(x => x.desc || +x.valor);
+  const ra = r; ws.mergeCells(`A${r}:E${r}`); cel(`A${r}`, 'PROCESOS ADICIONALES', {name: DIN, size: 10, bold: true, color: {argb: GRAF}});
+  ws.mergeCells(`G${r}:I${r}`); cel(`G${r}`, 'VALOR DE LA COTIZACIÓN', {name: DIN, size: 10, bold: true, color: {argb: GRAF}}); r++;
+  ['DESCRIPCIÓN', '', '', 'CANT', 'V. UNIT.', 'VALOR'].forEach((h, i) => { const col = ['A', 'B', 'C', 'D', 'E', 'F'][i]; const y = ws.getCell(`${col}${r}`); y.value = h; y.font = {name: DIN, size: 9, bold: true, color: {argb: BLANCO}}; y.fill = fill('FF4A4A4A'); y.alignment = {vertical: 'middle', horizontal: i >= 3 ? 'right' : 'left'}; });
+  ws.mergeCells(`A${r}:C${r}`); const rh = r; r++;
+  const n = Math.max(3, ad.length), radi0 = r;
+  for(let i = 0; i < n; i++){ const x = ad[i] || {}; ws.mergeCells(`A${r}:C${r}`);
+    cel(`A${r}`, x.desc || '', {name: FUT, size: 9.5, bold: true}).border = {bottom: linea};
+    cel(`D${r}`, x.cant ? +x.cant : null, {name: FUT, size: 9.5}, null, {horizontal: 'right'}).border = {bottom: linea};
+    cel(`E${r}`, x.valor ? +x.valor : null, {name: FUT, size: 9.5}, null, {horizontal: 'right'}, $fmt).border = {bottom: linea};
+    cel(`F${r}`, {formula: `IF(D${r}="","",D${r}*E${r})`}, {name: FUT, size: 9.5, bold: true}, null, {horizontal: 'right'}, $fmt).border = {bottom: linea}; r++; }
+  const radi1 = r - 1;
+  const tot = [['Vidrio', `I${rv}`], ['Procesos adicionales', `SUM(F${radi0}:F${radi1})`], ['Subtotal', null], ['IVA 19 %', null], ['TOTAL', null]];
+  let rt = rh; const refT = {};
+  for(const [t, f] of tot){
+    ws.mergeCells(`G${rt}:H${rt}`); const big = t === 'TOTAL';
+    const formula = f || (t === 'Subtotal' ? `${refT['Vidrio']}+${refT['Procesos adicionales']}` : t === 'IVA 19 %' ? `ROUND(${refT['Subtotal']}*0.19,0)` : `${refT['Subtotal']}+${refT['IVA 19 %']}`);
+    cel(`G${rt}`, big ? 'TOTAL' : t.toUpperCase(), {name: big ? DIN : FUT, size: big ? 11 : 8.5, bold: big, color: {argb: big ? BLANCO : TXT2}}, big ? GRAF : null, {vertical: 'middle', indent: 1}).border = {bottom: linea};
+    cel(`I${rt}`, {formula}, {name: DIN, size: big ? 14 : 10.5, bold: true, color: {argb: big ? BLANCO : GRAF}}, big ? GRAF : null, {vertical: 'middle', horizontal: 'right'}, $fmt).border = {bottom: linea};
+    refT[t] = `I${rt}`; ws.getRow(rt).height = big ? 24 : 17; rt++; }
+  r = Math.max(r, rt) + 1;
+  // Condiciones
+  ws.mergeCells(`A${r}:E${r}`); cel(`A${r}`, 'CONDICIONES COMERCIALES', {name: DIN, size: 10, bold: true, color: {argb: GRAF}});
+  ws.mergeCells(`F${r}:I${r}`); cel(`F${r}`, 'CONDICIONES TÉCNICAS', {name: DIN, size: 10, bold: true, color: {argb: GRAF}}); r++;
+  const cc = [`1. Forma de pago: ${cd.pago || COT_COND.pago}.`, `2. Tiempo de entrega: ${cd.entrega || COT_COND.entrega}, desde el pago del anticipo y la confirmación escrita de medidas.`, '3. Incluye corte, cantos y procesos indicados. No incluye transporte ni instalación, salvo que se indique.', '4. Los precios pueden cambiar si cambian medidas, cantidades o procesos.'];
+  const ct = ['1. Las medidas son responsabilidad del cliente; se fabrica con las medidas confirmadas en la OP.', '2. Tolerancia de fabricación de ± 2 mm en ancho y alto.', '3. El vidrio templado no admite procesos después de templado.', '4. Al aprobarse, la cotización se convierte en la orden de producción de Ártica.'];
+  for(let i = 0; i < 4; i++){ ws.getRow(r).height = 32; ws.mergeCells(`A${r}:E${r}`); cel(`A${r}`, cc[i], {name: FUT, size: 8.5, color: {argb: 'FF4A4A4A'}}, null, {vertical: 'top', wrapText: true});
+    ws.mergeCells(`F${r}:I${r}`); cel(`F${r}`, ct[i], {name: FUT, size: 8.5, color: {argb: 'FF4A4A4A'}}, null, {vertical: 'top', wrapText: true}); r++; }
+  r += 2; ws.getRow(r - 1).height = 26;
+  ws.mergeCells(`A${r}:D${r}`); cel(`A${r}`, 'ELABORÓ · ' + (cd.asesor || 'Ártica'), {name: DIN, size: 9, bold: true, color: {argb: TXT2}}).border = {top: {style: 'medium', color: {argb: GRAF}}};
+  ws.mergeCells(`F${r}:I${r}`); cel(`F${r}`, 'ACEPTA EL CLIENTE · firma, nombre y fecha', {name: DIN, size: 9, bold: true, color: {argb: TXT2}}).border = {top: {style: 'medium', color: {argb: GRAF}}};
+  r += 2; ws.getRow(r).height = 20; for(let col = 1; col <= 9; col++) ws.getCell(r, col).fill = fill(GRAF);
+  ws.mergeCells(`A${r}:I${r}`); cel(`A${r}`, 'Cra. 16 Sur # 67-406, Interior Bodega 5-6 · Zona Industrial el Papayo, Ibagué – Tolima · Tel. 310 210 0257 · www.artica.com.co', {name: DIN, size: 9.5, color: {argb: BLANCO}}, GRAF, {vertical: 'middle', horizontal: 'center'});
+  ws.pageSetup.printArea = `A1:I${r}`;
+  return new Blob([await wb.xlsx.writeBuffer()], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+async function cotExcel(){
+  const c = A.cot; const err = cotValida(c); if(err) return toast(err, true);
+  if(A.cotSucio || !c.id){ if(!(await cotGuardar(true))) return; }
+  try{ toast('Preparando el Excel…'); const blob = await cotExcelBlob(A.cot);
+    cotEntregar(blob, artArchivo(`Cotizacion_${cotNum(A.cot)}_${(A.cot.cliente || {}).nombre || ''}`) + '.xlsx'); }
+  catch(e){ toast('No se pudo generar el Excel: ' + errMsg(e), true); }
+}
+function cotEntregar(blob, nombre){
+  const url = URL.createObjectURL(blob), file = new File([blob], nombre, {type: blob.type});
+  window._cotArch = file;
+  const puede = !!(navigator.canShare && navigator.canShare({files: [file]}));
+  if(!esIOS()){ const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); }
+  openSheet('Cotización en Excel', esc(nombre), `<div style="display:flex;flex-direction:column;gap:8px">
+    <a class="btn ${puede && esIOS() ? '' : 'primary'}" href="${url}" download="${esc(nombre)}" style="text-decoration:none;justify-content:center">${ICON.down} Descargar Excel</a>
+    ${puede ? `<button class="btn ${esIOS() ? 'primary' : ''}" onclick="navigator.share({files:[_cotArch], title:_cotArch.name}).catch(()=>{})">Compartir</button>` : ''}
+    <div class="sc-note">Las celdas de m², valores, IVA y total tienen fórmulas: si cambias una medida o un precio en el Excel, se recalcula.</div></div>`, 'Listo', async () => {});
+}
+// ── Aprobada → OP de clientes de Ártica con las mismas líneas ──
+async function cotAOP(){
+  const c = A.cot; const err = cotValida(c); if(err) return toast(err, true);
+  if(A.cotSucio || !c.id){ if(!(await cotGuardar(true))) return; }
+  let sug = c.op || '';
+  if(!sug){ try{ const {data} = await API.sb.from('art_piezas').select('op').eq('tercero', true).limit(5000); const ns = (data || []).map(x => String(x.op)).filter(x => /^\d+$/.test(x)).map(Number); sug = String((ns.length ? Math.max(...ns) : 0) + 1).padStart(5, '0'); }catch(e){} }
+  const op = prompt('Número de la OP de clientes que se crea con esta cotización:', sug); if(op === null) return;
+  const opN = String(op).trim(); if(!opN) return toast('Escribe el número de la OP', true);
+  const dias = parseInt((c.condiciones || {}).entrega) || 10, ent = new Date(today() + 'T12:00:00'); for(let n = 0; n < dias;){ ent.setDate(ent.getDate() + 1); if(ent.getDay() % 6) n++; }
+  const o = {op: opN, cliente: (c.cliente || {}).nombre || null, obra: null, fecha: today(), entrega: ent.toISOString().slice(0, 10), obs: null, tercero: true, artica: true, vidrios: []};
+  for(const l of c.lineas) artLineaFmt(o, {item: l.ref, cant: l.cant, tipo: l.tipo, cal: l.cal, col: l.col, canto: l.canto, ancho: +l.ancho, alto: +l.alto, mec: l.mec ? 'SI' : 'NO', forr: 'NO', obs: l.proc});
+  const rows = artFilasDeOps([o]); if(!rows.length) return toast('No hay medidas para la OP', true);
+  let ya = []; try{ ya = await API.artOpsExisten([opN]); }catch(e){}
+  if(!confirm(`${ya.length ? 'La OP ' + opN + ' YA EXISTE y se reemplaza con esta cotización.\n\n' : ''}¿Crear la OP ${opN} de ${o.cliente} con ${rows.length} medidas (${rows.reduce((a, r) => a + r.cant, 0)} piezas), entrega ${fmtD(o.entrega)}?`)) return;
+  try{ await API.artCargarOP(rows); A.cot.op = opN; A.cot.estado = 'aprobada'; await cotGuardar(true); A.piezas = null;
+    toast(`✓ OP ${opN} creada en Ártica · queda para mandar a OPTIMA`); }
+  catch(e){ toast(/art_cargar_op|PGRST202|42883/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la carga de OP en la base (SQL 78)' : artFaltaSQL(e), true); }
 }
 
 function renderObraNovBtn(){
@@ -1643,12 +1999,12 @@ async function artCargar(){
 }
 function artTab(t){ A.tab = t; if(t === 'rend') A.rend = null; renderArtica(); }
 function renderArtica(){
-  if(esArticaOps()) A.tab = 'etq';
-  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
+  if(esArticaOps() && !['etq', 'cot'].includes(A.tab)) A.tab = 'etq';
+  const t = A.tab, tabs = esArticaOps() ? [['etq','OP de clientes, OPTIMA y etiquetas'],['cot','Cotizaciones']] : [['avance','Avance'],['rend','Estaciones'],...(artImprime() ? [['etq','OPTIMA y etiquetas']] : []),...(cotPuede() ? [['cot','Cotizaciones']] : []),...(isGerente() ? [['oper','Operarios']] : [])];
   let body;
   if(!A.piezas && !A.err) body = '<div class="loading"><div class="spin"></div>Cargando Ártica</div>';
   else if(A.err) body = `<div class="warn">${esc(A.err)}</div>`;
-  else body = t === 'rend' ? artRendHTML() : t === 'etq' ? artEtqHTML() : t === 'oper' ? artOperHTML() : artAvanceHTML();
+  else body = t === 'rend' ? artRendHTML() : t === 'etq' ? artEtqHTML() : t === 'oper' ? artOperHTML() : t === 'cot' ? artCotHTML() : artAvanceHTML();
   $('#app').innerHTML = shell(`<div class="tabs">${tabs.map(([k, n]) => `<button class="tab ${t===k?'on':''}" onclick="artTab('${k}')">${n}</button>`).join('')}</div>
     <div class="art-wrap">${body}</div>`);
   if(t === 'avance'){ const q = $('#artQ'); if(q) q.oninput = () => { A.q = q.value; const pos = q.selectionStart; renderArtica(); const j = $('#artQ'); if(j){ j.focus(); j.setSelectionRange(pos, pos); } }; }
