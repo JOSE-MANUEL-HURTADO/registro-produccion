@@ -556,7 +556,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.62';
+const APP_VERSION = '7.63';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1230,6 +1230,246 @@ function novCard(n, conItems){
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${(n.fotos || []).length ? `<button class="btn sm" onclick="novFotos(${n.id})">📷 Fotos (${n.fotos.length})</button>` : '<span class="sc-note">Sin fotos</span>'}
       ${novAbierta(n) && rolEs('gerente','asistente') ? `<button class="btn sm" onclick="novResolver(${n.id})">Marcar resuelta</button>` : ''}</div></div>`;
 }
+// ════════════════════════════════════════════════════════════════
+//  INFORME GERENCIAL DE AVANCE POR OBRA (para enviar a obra) · manual de identidad de Elíptica
+//  Se arma con los ítems de la obra abierta, se revisa en pantalla y se guarda en PDF con Imprimir.
+// ════════════════════════════════════════════════════════════════
+const INF_CATS = [['ENT', 'Entregada (acta)', '#111111', 1], ['INS', 'Instalada', '#3f3f3f', 1], ['DES', 'Despachada', '#6e6e6e', 1],
+  ['ENS', 'Ensamblada en planta', '#a0a0a0', 0], ['EEN', 'En ensamble', '#bdbdbd', 0], ['FAB', 'En fabricación', '#d4d4d4', 0], ['PEN', 'Por iniciar', '#ededed', 0]];
+const infCat = r => r.acta_id ? 'ENT' : r.instalado ? 'INS' : r.despachado ? 'DES' : (r.status === 'ENSAMBLADO' || r.dia_final) ? 'ENS'
+  : r.status === 'PRODUCCIÓN' ? 'EEN' : ([r.cortado, r.troquelado, r.mecanizado, r.vidrio_proc].some(v => v === 'X' || v === '+') ? 'FAB' : 'PEN');
+const infN = (v, d = 0) => Number(v || 0).toLocaleString('es-CO', {minimumFractionDigits: d, maximumFractionDigits: d});
+const infF = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+const infPisoN = p => { const m = String(p || '').match(/(\d+)/); return m ? +m[1] : null; };
+function infPisos(l){   // "PISO 2, PISO 3, PISO 4" → "2 a 4"
+  const ns = [...new Set(l.map(r => infPisoN(r && typeof r === 'object' ? r.piso : r)).filter(x => x != null))].sort((a, b) => a - b); if(!ns.length) return '';
+  const r = []; let a = ns[0], b = ns[0];
+  for(const x of ns.slice(1).concat([null])){ if(x === b + 1){ b = x; continue; } r.push(a === b ? String(a) : b === a + 1 ? a + ', ' + b : a + '–' + b); if(x != null){ a = b = x; } }
+  return r.join(', ');
+}
+const infCuenta = l => { const m = {}; for(const r of l){ const c = infCat(r); m[c] = (m[c] || 0) + 1; } return m; };
+function infBarra(d, h){
+  const tot = Object.values(d).reduce((a, b) => a + b, 0) || 1;
+  return `<div class="i-hb" style="height:${h}mm">${INF_CATS.filter(c => d[c[0]]).map(([k, , col, osc]) => { const pc = d[k] / tot * 100;
+    return `<i style="width:${pc.toFixed(2)}%;background:${col};color:${osc ? '#fff' : '#272727'}">${pc > 4.5 ? d[k] : ''}</i>`; }).join('')}</div>`;
+}
+const infLey = usadas => `<div class="i-ley">${INF_CATS.filter(c => usadas.has(c[0])).map(([, t, col]) => `<span><i style="background:${col}"></i>${t}</span>`).join('')}</div>`;
+
+async function informeObra(){
+  const l = (S.items || []).filter(r => r.obra === S.obra);
+  if(!l.length) return toast('La obra no tiene ítems', true);
+  const k = 'elp.inf.' + S.obra; let prev = {}; try{ prev = JSON.parse(localStorage.getItem(k) || '{}'); }catch(e){}
+  const pasos = infPasos(l).join('\n');
+  openSheet('Informe gerencial de avance', esc(S.obra) + ' · se revisa en pantalla y se guarda en PDF', `
+    <div class="fgrid"><div class="field"><span class="lbl">Cliente (opcional)</span><input id="infCli" value="${esc(prev.cli || '')}" placeholder="Ej. Ríos Duarte y Cía. Ltda."></div>
+      <div class="field"><span class="lbl">Dirección (opcional)</span><input id="infDir" value="${esc(prev.dir || '')}" placeholder="Ej. Calle 80 N.º 19-07, Bogotá"></div>
+      <div class="field"><span class="lbl">Informe N.º</span><input id="infNum" type="number" min="1" value="${(prev.num || 0) + 1}"></div></div>
+    <div class="field"><span class="lbl">Próximos pasos (uno por línea, puedes editarlos)</span><textarea id="infPasos" rows="5">${esc(pasos)}</textarea></div>
+    <label class="switch"><span>Incluir observaciones de planta (corte parcial, unidades en espera)</span><button class="tgl on" id="infObs" onclick="this.classList.toggle('on')"></button></label>
+    <label class="switch"><span>Mostrar quién recibió en las actas</span><button class="tgl on" id="infRec" onclick="this.classList.toggle('on')"></button></label>`,
+    'Ver informe', async () => {
+      const o = {cli: $('#infCli').value.trim(), dir: $('#infDir').value.trim(), num: Math.max(1, +$('#infNum').value || 1),
+        pasos: $('#infPasos').value.split('\n').map(x => x.trim()).filter(Boolean), obs: $('#infObs').classList.contains('on'), rec: $('#infRec').classList.contains('on')};
+      try{ localStorage.setItem(k, JSON.stringify({cli: o.cli, dir: o.dir, num: o.num})); }catch(e){}
+      setTimeout(() => informeMostrar(l, o), 50);
+    });
+}
+function infPasos(l){
+  const c = infCuenta(l), p = [], des = l.filter(r => infCat(r) === 'DES'), ens = l.filter(r => infCat(r) === 'ENS'), falta = l.filter(r => ['EEN', 'FAB', 'PEN'].includes(infCat(r)));
+  const ins = l.filter(r => infCat(r) === 'INS');
+  if(des.length) p.push(`Instalar las ${infN(des.length)} unidades que están en obra${infPisos(des) ? ' (pisos ' + infPisos(des) + ')' : ''}.`);
+  if(ins.length) p.push(`Firmar el acta de entrega de las ${infN(ins.length)} unidades instaladas que aún no están en acta.`);
+  if(ens.length) p.push(`Despachar las ${infN(ens.length)} unidades ensambladas en planta${infPisos(ens) ? ' (pisos ' + infPisos(ens) + ')' : ''}, según la disponibilidad de la obra.`);
+  if(falta.length) p.push(`Terminar la fabricación de las ${infN(falta.length)} unidades restantes${infPisos(falta) ? ' (pisos ' + infPisos(falta) + ')' : ''}.`);
+  if(!p.length && c.ENT === l.length) p.push('Obra entregada en su totalidad.');
+  return p;
+}
+function informeHTML(l, o){
+  const U = l.length, m2 = l.reduce((a, r) => a + (+r.m2 || 0), 0), c = infCuenta(l), usadas = new Set(Object.keys(c));
+  const fab = (c.ENS || 0) + (c.DES || 0) + (c.INS || 0) + (c.ENT || 0), desp = (c.DES || 0) + (c.INS || 0) + (c.ENT || 0), inst = (c.INS || 0) + (c.ENT || 0), ent = c.ENT || 0;
+  const corX = l.filter(r => r.cortado === 'X').length, corP = l.filter(r => r.cortado === '+').length, vid = l.filter(r => r.vidrio_proc === 'X').length;
+  const pct = x => Math.round(x / U * 100);
+  const opb = r => String(r.op || '—').split('-')[0];
+  const ops = [...grp(l, opb).entries()].sort((a, b) => nat(a[0], b[0]));
+  const hoy = today(), actas = (S.actas || []).filter(a => !a.anulada);
+  // Fases
+  const fases = [['Perfilería cortada', corX, corP, corP ? `${infN(corP)} unidades con corte parcial.` : ''],
+    ...(vid ? [['Vidrio procesado', vid, 0, '']] : []),
+    ['Ensamble terminado', fab, c.EEN || 0, (c.EEN ? `${infN(c.EEN)} en ensamble. ` : '') + (c.ENS ? `${infN(c.ENS)} ensambladas en planta, listas para despacho.` : '')],
+    ['Despachado a obra', desp, 0, ''], ['Instalado', inst, 0, ''], ['Entregado con acta', ent, 0, actas.length ? `${actas.length} acta${actas.length === 1 ? '' : 's'} · la última del ${infF(actas[actas.length - 1].fecha)}.` : '']];
+  const fasHTML = fases.map(([t, x, p, nota]) => `<div class="i-fa"><div class="i-fat"><b>${t}</b><span>${infN(x)}${p ? ' + ' + infN(p) : ''} / ${infN(U)}</span><em>${pct(x)} %</em></div>
+    <div class="i-fab"><i style="width:${(x / U * 100).toFixed(1)}%"></i>${p ? `<i class="i-p" style="width:${(p / U * 100).toFixed(1)}%"></i>` : ''}</div>${nota ? `<div class="i-fan">${esc(nota)}</div>` : ''}</div>`).join('');
+  // Gráfica de actividad: instalación si ya hay, si no ensamble (últimos 8 días con actividad)
+  const porDia = (f) => { const m = {}; for(const r of l){ const d = f(r); if(d) m[d] = (m[d] || 0) + 1; } return Object.entries(m).sort().slice(-8); };
+  let dias = porDia(r => r.instalado && r.fecha_instalacion), titG = 'INSTALACIÓN POR DÍA', capG = 'Unidades instaladas por fecha (últimos días con instalación).';
+  if(!dias.length){ dias = porDia(r => r.dia_final); titG = 'ENSAMBLE POR DÍA'; capG = 'Unidades ensambladas por fecha (últimos días con ensamble).'; }
+  const mx = Math.max(1, ...dias.map(d => d[1]));
+  const graf = dias.length ? `<div class="i-rit">${dias.map(([d, v]) => `<div class="i-rc"><div class="i-rv" style="height:${Math.max(4, v / mx * 85)}%"><b>${v}</b></div><span>${infF(d).slice(0, 5)}</span></div>`).join('')}</div><div class="i-cap">${capG}</div>`
+    : '<div class="i-cap">Aún no hay unidades ensambladas.</div>';
+  // Resumen ejecutivo
+  const opTxt = ops.map(([op, x]) => `<b>${esc(op)}</b>${infPisos(x) ? ' (pisos ' + infPisos(x) + ')' : ''}`).join(', ');
+  const res = [`La obra comprende <b>${infN(U)} unidades (${infN(m2, 1)} m²)</b> en ${ops.length === 1 ? 'la OP' : 'las OP'} ${opTxt}.`,
+    `<b>${pct(fab)} % de las unidades está fabricado</b> (${infN(fab)} de ${infN(U)})${corX < U ? `; la perfilería está cortada en ${pct(corX)} %${corP ? ` (${pct(corX + corP)} % contando cortes parciales)` : ''}` : '; <b>toda la perfilería está cortada</b>'}.`];
+  if(desp) res.push(`<b>${infN(desp)} unidades despachadas</b> a obra, <b>${infN(inst)} instaladas</b>${ent ? ` y <b>${infN(ent)} entregadas con acta</b>` : ''}.`);
+  else res.push('Aún no hay despachos a obra.');
+  if(c.ENS) res.push(`<b>${infN(c.ENS)} unidades ensambladas en planta</b>, listas para despacho.`);
+  const rest = (c.EEN || 0) + (c.FAB || 0) + (c.PEN || 0); if(rest) res.push(`Restan <b>${infN(rest)} unidades</b> por terminar de fabricar.`);
+  // OP
+  const opHTML = ops.map(([op, x]) => { const d = infCuenta(x), f = (d.ENS || 0) + (d.DES || 0) + (d.INS || 0) + (d.ENT || 0), n = x.length;
+    const est = (d.ENT || 0) === n ? 'Entregada' : (d.INS || 0) + (d.ENT || 0) === n ? 'Instalada' : (d.DES || 0) + (d.INS || 0) + (d.ENT || 0) === n ? 'Despachada al 100 %'
+      : f === n ? 'Fabricada · lista para despacho' : (f || d.EEN) ? `En ensamble · ${Math.round(f / n * 100)} % ensamblada` : d.FAB ? 'En fabricación' : 'Programada · por iniciar';
+    const fop = x.map(r => r.fecha_op).filter(Boolean).sort()[0], sub = new Set(x.map(r => r.op)).size, sis = [...new Set(x.map(r => r.sistema).filter(Boolean))].map(s => s[0] + s.slice(1).toLowerCase()).join(', ');
+    return `<div class="i-opc"><span class="i-lb">ORDEN DE PRODUCCIÓN</span><div class="i-opn">${esc(op)}</div><div class="i-ops2">${est}</div>
+      <div class="i-opk"><span>${infPisos(x) ? 'Pisos ' + infPisos(x) : 'Sin piso'}</span><span>${infN(n)} unidad${n === 1 ? '' : 'es'} · ${infN(x.reduce((a, r) => a + (+r.m2 || 0), 0), 1)} m²</span><span>${sub} sub-orden${sub === 1 ? '' : 'es'}${fop ? ' · emitida ' + infF(fop) : ''}</span></div>
+      <div class="i-opt">${esc(sis ? 'Sistemas ' + sis : '')}</div>${infBarra(d, 4.5)}</div>`; }).join('');
+  // Pisos
+  const pisos = [...grp(l, r => infPisoN(r.piso) != null ? infPisoN(r.piso) : (r.piso || 'Sin piso')).entries()].sort((a, b) => (typeof a[0] === 'number' ? a[0] : 999) - (typeof b[0] === 'number' ? b[0] : 999));
+  const pisHTML = pisos.map(([p, x]) => `<div class="i-pr"><span>${typeof p === 'number' ? 'Piso ' + p : esc(p)}</span>${infBarra(infCuenta(x), 4.4)}<b>${x.length}</b></div>`).join('');
+  // Despachos y actas
+  const dsp = [...grp(l.filter(r => r.despachado), r => (r.fecha_despacho || '') + '|' + (r.remision || '')).entries()].sort();
+  const dspHTML = dsp.length ? `<table class="i-tb2"><thead><tr><th>FECHA</th><th>REMISIÓN</th><th class="i-r">UND</th><th>DESTINO</th></tr></thead><tbody>${dsp.map(([kk, x]) => { const [f, rm] = kk.split('|');
+    return `<tr><td>${infF(f) || '—'}</td><td>${esc(rm || '—')}</td><td class="i-r i-b">${x.length}</td><td>${infPisos(x) ? 'Pisos ' + infPisos(x) : 'OP ' + esc([...new Set(x.map(opb))].join(', '))}</td></tr>`; }).join('')}</tbody></table>` : '<div class="i-cap" style="margin-top:0">Aún no hay despachos.</div>';
+  const actHTML = actas.length ? `<table class="i-tb2"><thead><tr><th>ACTA</th><th>FECHA</th><th class="i-r">UND</th>${o.rec ? '<th>RECIBE</th>' : ''}<th>ESTADO</th></tr></thead><tbody>${actas.map(a => `<tr><td class="i-b">N.º ${a.num}</td><td>${infF(a.fecha)}</td><td class="i-r i-b">${a.n_items || ''}</td>${o.rec ? `<td>${esc(a.recibe || '')}</td>` : ''}<td>${esc(a.estado ? a.estado[0].toUpperCase() + a.estado.slice(1) : '')}</td></tr>`).join('')}</tbody></table>` : '<div class="i-cap" style="margin-top:0">Aún no hay actas de entrega.</div>';
+  // Observaciones de planta
+  const obs = [];
+  if(o.obs){ if(corP) obs.push(['CORTE PARCIAL DE PERFILERÍA', `${infN(corP)} unidades tienen el corte de perfilería parcial mientras se completa un perfil. Los demás procesos de esas unidades siguen avanzando.`]);
+    const esp = l.filter(r => r.ens_novedad_id && !r.dia_final && !r.despachado); if(esp.length) obs.push(['UNIDADES EN ESPERA', `${infN(esp.length)} unidad${esp.length === 1 ? '' : 'es'} en ensamble ${esp.length === 1 ? 'está' : 'están'} en espera por reposición de un componente; las demás siguen su curso.`]); }
+  // Ítems
+  const its = [...grp(l, r => r.item || '—').entries()].sort((a, b) => nat(a[0], b[0]));
+  const colU = inst ? 'INSTAL.' : 'FABRIC.';
+  const itHTML = its.map(([it, x]) => { const d = infCuenta(x), meds = [...new Set(x.map(r => r.ancho && r.alto ? `${Math.round(r.ancho)} × ${Math.round(r.alto)}` : ''))].filter(Boolean);
+    const sis = [...new Set(x.map(r => r.sistema).filter(Boolean))].map(s => s[0] + s.slice(1).toLowerCase()).join(' / ');
+    const v = inst ? (d.INS || 0) + (d.ENT || 0) : (d.ENS || 0) + (d.DES || 0) + (d.INS || 0) + (d.ENT || 0);
+    return `<tr><td class="i-ref">${esc(it)}</td><td>${esc(sis)}</td><td class="i-c">${esc(meds.length > 2 ? meds[0] + ' *' : meds.join(' · '))}</td><td class="i-c">${infPisos(x) || '—'}</td><td class="i-r">${x.length}</td><td class="i-r">${infN(x.reduce((a, r) => a + (+r.m2 || 0), 0), 1)}</td><td class="i-bc">${infBarra(d, 3.4)}</td><td class="i-r i-b">${v}</td></tr>`; }).join('');
+  const varias = its.some(([, x]) => new Set(x.map(r => r.ancho + 'x' + r.alto)).size > 2);
+  const kpis = [[infN(U), 'Unidades de la obra', `${infN(m2, 1)} m² · ${ops.length} orden${ops.length === 1 ? '' : 'es'}`], [infN(fab), 'Unidades fabricadas', `${pct(fab)} % de la obra`],
+    [infN(desp), 'Despachadas', desp ? `${pct(desp)} % de la obra` : 'Sin despachos aún'], [infN(inst), 'Instaladas', ent ? `${infN(ent)} entregadas con acta` : 'Entregadas con acta: 0'],
+    c.ENS ? [infN(c.ENS), 'Listas para despacho', 'Ensambladas en planta'] : [infN(c.EEN || 0), 'En ensamble', 'En la línea de ensamble']];
+  const diag = `<svg class="i-diag" viewBox="0 0 300 120" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="1.2"><path d="M40 120 L130 0 L300 0"/><path d="M70 120 L160 0"/><path d="M100 120 L190 0 L300 0"/><path d="M0 95 L210 95 L280 0"/></g></svg>`;
+  return `<div class="inf-pag">
+    <div class="i-band"><img src="icons/logo_blanco.png" alt="Elíptica">${diag}<h1>INFORME DE AVANCE DE PRODUCCIÓN</h1><div class="i-ob">${esc(S.obra)}</div></div>
+    <div class="i-sub"><span>${o.cli ? `Cliente <b>${esc(o.cli)}</b>${o.dir ? ' · ' + esc(o.dir) : ''}` : `Obra <b>${esc(S.obra)}</b>${o.dir ? ' · ' + esc(o.dir) : ''}`}</span><span>Corte al <b>${infF(hoy)}</b> · Informe N.º ${String(o.num).padStart(2, '0')}</span></div>
+    <div class="i-hoja">
+      <div class="i-kpis">${kpis.map(([v, t, s]) => `<div class="i-kpi"><b>${v}</b><span>${t}</span><small>${s}</small></div>`).join('')}</div>
+      <h2>RESUMEN EJECUTIVO</h2><ul class="i-res">${res.map(x => `<li>${x}</li>`).join('')}</ul>
+      <div class="i-dos"><div><h2>AVANCE ACUMULADO DE LA OBRA</h2>${fasHTML}
+        <div class="i-ley" style="margin-top:1mm"><span><i style="background:#272727"></i>Completo</span><span><i style="background:repeating-linear-gradient(45deg,#8a8a8a 0 2px,#bdbdbd 2px 4px)"></i>Parcial / en curso</span></div></div>
+        <div><h2>${titG}</h2>${graf}</div></div>
+      <div class="i-salto"></div>
+      <h2 class="i-h2t">ESTADO POR ORDEN DE PRODUCCIÓN</h2><div class="i-opg">${opHTML}</div>${infLey(usadas)}
+      <h2>AVANCE POR PISO</h2>${pisHTML}${infLey(usadas)}
+      <div class="i-dos2"><div><h2>DESPACHOS</h2>${dspHTML}</div><div><h2>ACTAS DE ENTREGA</h2>${actHTML}</div></div>
+      ${o.pasos.length || obs.length ? `<h2>${obs.length ? 'OBSERVACIONES Y PRÓXIMOS PASOS' : 'PRÓXIMOS PASOS'}</h2><div class="i-obs"><div>${obs.map(([t, x]) => `<div class="i-ob2"><b>${t}</b>${esc(x)}</div>`).join('')}
+        ${o.pasos.length ? `<div class="i-ob2"><b>PRÓXIMOS PASOS</b><ul>${o.pasos.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}</div>
+        <div class="i-glos"><b>Estados.</b> <b>Entregada:</b> instalada y recibida con acta. <b>Instalada:</b> instalada en obra. <b>Despachada:</b> en obra, por instalar. <b>Ensamblada en planta:</b> terminada, lista para despacho. <b>En ensamble:</b> en la línea de ensamble. <b>En fabricación:</b> con corte, mecanizado o vidrio iniciados. <b>Por iniciar:</b> programada, sin procesos aún.</div></div>` : ''}
+      <div class="i-salto"></div>
+      <h2 class="i-h2t">DETALLE POR ÍTEM</h2>
+      <table><thead><tr><th>ÍTEM</th><th>SISTEMA</th><th class="i-c">MEDIDA (MM)</th><th class="i-c">PISOS</th><th class="i-r">UND</th><th class="i-r">M²</th><th>ESTADO DE LAS UNIDADES</th><th class="i-r">${colU}</th></tr></thead><tbody>${itHTML}</tbody></table>
+      ${infLey(usadas)}${varias ? '<div class="i-nota">* El ítem tiene varias medidas; se muestra la primera.</div>' : ''}
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información tomada del sistema de registro de producción de Elíptica al ${infF(hoy)}.</p></div>
+    </div>
+    <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>${esc(S.obra)} · Informe de avance · ${infF(hoy)}</span></div></div>`;
+}
+const INF_CSS = `
+@font-face{font-family:'DINC';font-weight:300;src:url(fonts/barlow-condensed-latin-300-normal.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:300;font-style:italic;src:url(fonts/barlow-condensed-latin-300-italic.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:400;src:url(fonts/barlow-condensed-latin-400-normal.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:500;src:url(fonts/barlow-condensed-latin-500-normal.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:600;src:url(fonts/barlow-condensed-latin-600-normal.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:700;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format('woff2')}
+#infRoot{position:fixed;inset:0;z-index:9999;background:#5f5f5f;overflow:auto;-webkit-overflow-scrolling:touch}
+#infRoot .inf-bar{position:sticky;top:0;z-index:2;display:flex;gap:8px;justify-content:center;padding:10px;background:#272727;flex-wrap:wrap}
+#infRoot .inf-wrap{width:216mm;margin:16px auto;transform-origin:top left}
+#infRoot .inf-pag{width:216mm;background:#fff;box-shadow:0 4px 30px rgba(0,0,0,.35);position:relative;padding-bottom:16mm}
+.inf-pag,.inf-pag *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.inf-pag{--g:#272727;--g2:#4a4a4a;--g3:#8a8a8a;--l:#d9d9d9;--l2:#f2f2f2;font-family:'DINC',sans-serif;font-weight:300;color:var(--g);font-size:10.5pt;line-height:1.25;text-align:left;letter-spacing:0;text-transform:none}
+.inf-pag .i-hoja{padding:0 15mm}
+.inf-pag .i-band{background:var(--g);color:#fff;height:46mm;position:relative;padding:0 15mm;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.inf-pag .i-band img{height:11mm;width:auto;align-self:flex-start;position:relative;z-index:1;margin-bottom:6mm}
+.inf-pag .i-diag{position:absolute;right:0;top:0;width:125mm;height:46mm}
+.inf-pag .i-band h1{margin:0;font-weight:700;font-size:27pt;letter-spacing:.12em;position:relative;z-index:1;line-height:1;color:#fff;font-family:'DINC'}
+.inf-pag .i-band .i-ob{font-weight:400;font-size:15pt;letter-spacing:.2em;margin-top:1.8mm;position:relative;z-index:1;color:#d6d6d6;text-transform:uppercase}
+.inf-pag .i-sub{background:var(--l);padding:2.4mm 15mm;font-size:9pt;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between;gap:6mm;color:var(--g2)}
+.inf-pag .i-sub b{font-weight:600;color:var(--g)}
+.inf-pag h2{font-family:'DINC';font-weight:700;font-size:11pt;letter-spacing:.2em;margin:7mm 0 3mm;display:flex;align-items:center;gap:3mm;color:var(--g);text-transform:uppercase}
+.inf-pag h2:after{content:"";flex:1;border-top:.6pt solid var(--l)}
+.inf-pag h2.i-h2t{margin-top:2mm}
+.inf-pag .i-kpis{display:grid;grid-template-columns:repeat(5,1fr);border-top:2.4pt solid var(--g);margin-top:6mm}
+.inf-pag .i-kpi{padding:3mm 3mm 2.5mm;border-right:.6pt solid var(--l)}.inf-pag .i-kpi:last-child{border:0}
+.inf-pag .i-kpi b{display:block;font-weight:700;font-size:25pt;line-height:1}
+.inf-pag .i-kpi span{display:block;font-size:8.6pt;letter-spacing:.12em;text-transform:uppercase;color:var(--g3);margin-top:1.2mm}
+.inf-pag .i-kpi small{font-size:9pt;color:var(--g2)}
+.inf-pag .i-res{font-size:10.6pt;line-height:1.45;margin:0;padding-left:4.5mm}.inf-pag .i-res li{margin:.6mm 0}.inf-pag b{font-weight:600}
+.inf-pag .i-dos{display:grid;grid-template-columns:1.25fr 1fr;gap:9mm}.inf-pag .i-dos2{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
+.inf-pag .i-fa{margin:0 0 3mm}.inf-pag .i-fat{display:flex;align-items:baseline;gap:2mm;font-size:10pt}.inf-pag .i-fat b{letter-spacing:.04em;flex:1}.inf-pag .i-fat span{color:var(--g3);font-size:9pt}.inf-pag .i-fat em{font-style:normal;font-weight:700;font-size:11pt;width:11mm;text-align:right}
+.inf-pag .i-fab{height:3.2mm;background:var(--l2);display:flex;margin-top:.8mm;border:.4pt solid var(--l)}.inf-pag .i-fab i{display:block;height:100%;background:var(--g)}.inf-pag .i-fab i.i-p{background:repeating-linear-gradient(45deg,#8a8a8a 0 2px,#bdbdbd 2px 4px)}
+.inf-pag .i-fan{font-size:8.8pt;color:var(--g3);font-style:italic;margin-top:.6mm}
+.inf-pag .i-rit{display:flex;gap:4mm;align-items:flex-end;height:38mm;border-bottom:.8pt solid var(--g);padding:0 3mm;margin-top:6mm}
+.inf-pag .i-rc{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;position:relative}
+.inf-pag .i-rv{width:100%;background:var(--g);position:relative}.inf-pag .i-rv b{position:absolute;top:-5.5mm;left:0;right:0;text-align:center;font-weight:700;font-size:12pt}
+.inf-pag .i-rc span{position:absolute;bottom:-5mm;font-size:9pt;color:var(--g3)}
+.inf-pag .i-cap{font-size:9pt;color:var(--g3);margin-top:7mm;line-height:1.35}
+.inf-pag .i-opg{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm}
+.inf-pag .i-opc{border-top:2.4pt solid var(--g);padding-top:2.5mm;page-break-inside:avoid;break-inside:avoid}.inf-pag .i-lb{font-size:8pt;letter-spacing:.14em;color:var(--g3)}
+.inf-pag .i-opn{font-weight:700;font-size:23pt;line-height:1}
+.inf-pag .i-ops2{font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;background:var(--g);color:#fff;padding:.6mm 2mm;margin:1.2mm 0 0;display:inline-block}
+.inf-pag .i-opk{display:flex;flex-direction:column;font-size:9.6pt;margin:2mm 0 1.5mm}.inf-pag .i-opk span:first-child{font-weight:600}
+.inf-pag .i-opt{font-size:9pt;color:var(--g3);font-style:italic;margin-bottom:2mm;min-height:4mm}
+.inf-pag .i-hb{display:flex;width:100%;overflow:hidden}.inf-pag .i-hb i{display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:600;font-size:7.6pt;height:100%;white-space:nowrap}
+.inf-pag .i-ley{display:flex;gap:5mm;font-size:8.8pt;color:var(--g2);margin:3mm 0 0;flex-wrap:wrap}.inf-pag .i-ley i{display:inline-block;width:3.2mm;height:3.2mm;margin-right:1.4mm;vertical-align:-.4mm;border:.4pt solid #bdbdbd}
+.inf-pag .i-pr{display:grid;grid-template-columns:16mm 1fr 10mm;align-items:center;gap:3mm;margin:1.3mm 0;font-size:9.6pt}.inf-pag .i-pr b{text-align:right}
+.inf-pag table{width:100%;border-collapse:collapse;margin:0}
+.inf-pag thead th{background:var(--g);color:#fff;font-weight:600;font-size:8.6pt;letter-spacing:.12em;padding:2mm;text-align:left;white-space:nowrap;border:0}
+.inf-pag th.i-c,.inf-pag td.i-c{text-align:center}.inf-pag th.i-r,.inf-pag td.i-r{text-align:right}
+.inf-pag tbody td{padding:1.25mm 2mm;border:0;border-bottom:.5pt solid var(--l);font-size:9.8pt;color:var(--g)}.inf-pag tbody tr:nth-child(even) td{background:var(--l2)}
+.inf-pag td.i-ref{font-weight:600;white-space:nowrap}.inf-pag td.i-b{font-weight:700}.inf-pag td.i-bc{width:50mm}
+.inf-pag thead{display:table-header-group}.inf-pag tr{page-break-inside:avoid;break-inside:avoid}
+.inf-pag .i-obs{display:grid;grid-template-columns:1fr 1fr;gap:6mm;page-break-inside:avoid;break-inside:avoid}
+.inf-pag .i-ob2{border-left:2.4pt solid var(--g);padding:1mm 0 1mm 3.5mm;font-size:10pt;line-height:1.4;margin-bottom:3mm}.inf-pag .i-ob2 b{display:block;letter-spacing:.06em}.inf-pag .i-ob2 ul{margin:.5mm 0 0;padding-left:4mm}
+.inf-pag .i-glos{font-size:9pt;color:var(--g2);line-height:1.45}
+.inf-pag .i-nota{font-style:italic;font-size:8.8pt;color:var(--g3);margin-top:1.5mm}
+.inf-pag .i-firma{margin-top:12mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;page-break-inside:avoid;break-inside:avoid}
+.inf-pag .i-firma div{border-top:.8pt solid var(--g);padding-top:1.5mm;width:70mm;font-size:9pt;letter-spacing:.1em;text-transform:uppercase;color:var(--g2)}.inf-pag .i-firma b{display:block;color:var(--g);letter-spacing:.12em}
+.inf-pag .i-firma p{margin:0;font-size:8.8pt;color:var(--g3);font-style:italic;max-width:95mm;text-align:right}
+.inf-pag .i-salto{height:12mm;border-top:1px dashed #cfcfcf;margin:8mm -15mm 0}
+.inf-pag .inf-pie{position:absolute;left:15mm;right:15mm;bottom:5mm;display:flex;justify-content:space-between;font-size:7.5pt;font-family:Arial,sans-serif;color:var(--g3);letter-spacing:.08em}
+@media print{
+  @page{size:Letter;margin:12mm 0 14mm 0}
+  @page:first{margin-top:0}
+  html,body{background:#fff !important;height:auto !important;overflow:visible !important}
+  body.inf-imprime > *:not(#infRoot){display:none !important}
+  #infRoot{position:static !important;background:#fff !important;overflow:visible !important}
+  #infRoot .inf-bar{display:none !important}
+  #infRoot .inf-wrap{margin:0 !important;transform:none !important;width:216mm}
+  #infRoot .inf-pag{box-shadow:none !important;padding-bottom:0}
+  .inf-pag .i-salto{page-break-before:always;break-before:page;height:0;border:0;margin:0}
+  .inf-pag .inf-pie{display:none}
+}`;
+async function informeMostrar(l, o){
+  let st = $('#infCss'); if(!st){ st = document.createElement('style'); st.id = 'infCss'; st.textContent = INF_CSS; document.head.appendChild(st); }
+  const old = $('#infRoot'); if(old) old.remove();
+  const root = document.createElement('div'); root.id = 'infRoot';
+  root.innerHTML = `<div class="inf-bar"><button class="btn primary" onclick="informeImprimir()">${ICON.down} Guardar en PDF / imprimir</button><button class="btn" onclick="informeCerrar()">Cerrar</button></div>
+    <div class="inf-wrap">${informeHTML(l, o)}</div>`;
+  document.body.appendChild(root); document.body.classList.add('inf-imprime');
+  const ajusta = () => { const w = root.querySelector('.inf-wrap'); if(!w) return; const px = w.offsetWidth, s = Math.min(1, (window.innerWidth - 16) / px);
+    w.style.transform = s < 1 ? `scale(${s})` : ''; w.style.marginLeft = s < 1 ? '8px' : ''; w.style.marginBottom = s < 1 ? `${-(1 - s) * w.offsetHeight + 16}px` : ''; };
+  ajusta(); window.addEventListener('resize', ajusta); root._ajusta = ajusta;
+  history.pushState({v: 'obra', obra: S.obra, inf: 1}, '');
+}
+async function informeImprimir(){
+  try{ await document.fonts.ready; }catch(e){}
+  const img = $('#infRoot .i-band img'); if(img && !img.complete) await new Promise(r => { img.onload = img.onerror = r; });
+  const t = document.title; document.title = `Informe de avance ${S.obra} ${today()}`;
+  window.print();
+  setTimeout(() => { document.title = t; }, 1000);
+}
+function informeCerrar(sinHist){
+  const r = $('#infRoot'); if(r){ window.removeEventListener('resize', r._ajusta); r.remove(); }
+  document.body.classList.remove('inf-imprime');
+  if(!sinHist && history.state && history.state.inf) history.back();
+}
+
 function renderObraNovBtn(){
   const b = $('#novBtn'); if(!b) return;
   const n = (S.nov || []).filter(novAbierta).length;
@@ -3067,6 +3307,7 @@ async function openObra(name, fromPop, anio, pf){
 
 function onPop(ev){
   const st = ev.state || {v:'home'};
+  if(document.getElementById('infRoot')){ informeCerrar(true); return; }
   if(S.view === 'scan' && st.v !== 'scan'){ scStop(); closeSheet(); }
   if(st.v === 'scan' && puedeEscanear()){ goScan(); return; }
   if(st.v === 'artica' && veArtica()){ goArtica(); return; }
@@ -3146,7 +3387,7 @@ function renderObra(){
         <button class="back" onclick="history.back()">${ICON.back} Obras</button>
         <div class="obra-title"><div><div class="h1">${esc(S.obra)}</div>
           <div class="h1-sub">${span ? 'Obra '+span+' · ' : ''}${fmtN(S.items.length)} ítems en total · ${fmtN(pend)} pendientes · ${liveHTML()}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button><button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" id="novBtn" title="Novedades: ítems que no se pudieron instalar (con fecha, hora y fotos)" onclick="novLista()">⚠ Novedades${(() => { const n = (S.nov || []).filter(novAbierta).length; return n ? ` <b style="margin-left:4px;color:var(--danger)">${fmtN(n)}</b>` : ''; })()}</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm ghost" onclick="recargarObra()">${ICON.ref} Actualizar</button>${puedeRegistrar() ? `<button class="btn sm ghost" title="Informe de avance para enviar a la obra (PDF)" onclick="informeObra()">${ICON.down} Informe gerencial</button>` : ''}<button class="btn sm ghost" title="Remisiones de esta obra" onclick="remisionPedir()">${ICON.down} Remisiones</button><button class="btn sm ghost" id="novBtn" title="Novedades: ítems que no se pudieron instalar (con fecha, hora y fotos)" onclick="novLista()">⚠ Novedades${(() => { const n = (S.nov || []).filter(novAbierta).length; return n ? ` <b style="margin-left:4px;color:var(--danger)">${fmtN(n)}</b>` : ''; })()}</button><button class="btn sm ghost" title="Actas de entrega de lo instalado" onclick="actasHoja()">${ICON.down} Actas${(() => { const a = actaAbierta(); return a && a.n_items ? ` <b style="margin-left:4px" title="Acta en curso">${fmtN(a.n_items)}</b>` : ''; })()}</button>${isGerente() ? `<button class="btn sm ghost" title="Poner el precio unitario por OP" onclick="sheetPrecios()">$ Precios${(() => { const n = S.items.filter(i => com(i).precio == null).length; return n ? ` <b style="margin-left:4px;color:var(--danger)" title="Ítems sin precio">${fmtN(n)}</b>` : ''; })()}</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Liquidación automática: contratado (cotización) vs ejecutado (OP instaladas)" onclick="liquidacionAuto()">Liquidación</button><button class="btn sm ghost" title="Obra ejecutada (lo instalado con su precio) para la liquidación" onclick="liquidacionExcel()">${ICON.down} Obra ejecutada</button>` : ''}${isGerente() ? `<button class="btn sm ghost" title="Imprimir un código QR por cada OP de la lista" onclick="etiquetasQR()">${ICON.scan} Etiquetas QR</button>` : ''}${isGerente() ? (S.cerradas && S.cerradas.has(S.obra) ? `<button class="btn sm ghost" onclick="marcarEntregada(S.obra, false)">Reabrir obra</button>` : `<button class="btn sm ghost" title="Contrato cerrado: la obra deja de contar como pendiente" onclick="marcarEntregada(S.obra, true)">Marcar obra entregada</button>`) : ''}</div>
         </div>
         ${S.cerradas && S.cerradas.has(S.obra) ? `<div class="summary" style="margin:6px 0 10px">Obra <b>entregada</b> (contrato cerrado) el ${fmtD(String(S.cerradas.get(S.obra).cerrada_en).slice(0,10))}${S.cerradas.get(S.obra).quien ? ' por ' + esc(S.cerradas.get(S.obra).quien) : ''}. No aparece en Obras activas ni en Planta.</div>` : ''}
         <div class="chips" id="chips"></div>
