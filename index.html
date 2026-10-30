@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.90';
+const APP_VERSION = '7.91';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2159,7 +2159,7 @@ async function moDatos(obra){
   const a0 = new Date(Math.min(new Date(t0).getTime(), Date.now() - 90 * 864e5)).toISOString();
   const art = await API.all(o => API.sb.from('art_registros').select('estacion,creado,n,p:art_piezas(obra,cliente,tercero,ancho,alto)', o).gte('creado', a0).order('id')).catch(() => []);
   const artObra = await API.all(o => API.sb.from('art_registros').select('n,p:art_piezas!inner(obra,ancho,alto,tercero)', o).eq('estacion', 'corte').eq('p.obra', obra).eq('p.tercero', false).order('id')).catch(() => []);
-  return {propios, todos: [...m.values()], asis, desde, hasta, art, artObraM2: artObra.reduce((a, r) => a + (r.p ? (+r.p.ancho || 0) * (+r.p.alto || 0) / 1e6 * (+r.n || 1) : 0), 0)};
+  return {propios, todos: [...m.values()], asis, desde, hasta, art, artObraM2: artObra.reduce((a, r) => a + (r.p ? (+r.p.ancho || 0) * (+r.p.alto || 0) / 1e6 : 0), 0)};
 }
 function moCalcular(D, obra){
   const p = moPar(), hoy = today(), ahora = (() => { const n = new Date(); return n.getHours() + n.getMinutes() / 60; })();
@@ -2195,7 +2195,7 @@ function moCalcular(D, obra){
   }
   // Ártica: cada escaneo reparte el día de los operarios de esa estación por m²
   for(const g of D.art || []){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(d < D.desde || d > D.hasta) continue;
-    const m2 = Math.max(0.05, (+pz.ancho || 0) * (+pz.alto || 0) / 1e6 * (+g.n || 1));
+    const m2 = Math.max(0.05, (+pz.ancho || 0) * (+pz.alto || 0) / 1e6);   // cada registro es una pieza (n = número de la etiqueta)
     if(enAjArt(artKey(pz), d)) continue;   // ese periodo de Ártica ya está en un ajuste manual
     for(const q of p.artCrew[g.estacion] || []) claim(q, d, 'art', artKey(pz), m2); }
   for(const a of D.asis){
@@ -2233,7 +2233,7 @@ function moCalcular(D, obra){
   { const med = {c: 0, m2: 0, dias: new Set()};
     const porDia = {}; for(const g of D.art || []){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(!moHorasDia(d)) continue;
       const x = porDia[d] = porDia[d] || {gente: new Set(), m2: 0}; for(const q of p.artCrew[g.estacion] || []) x.gente.add(q);
-      if(g.estacion === 'corte') x.m2 += (+pz.ancho || 0) * (+pz.alto || 0) / 1e6 * (+g.n || 1); }
+      if(g.estacion === 'corte') x.m2 += (+pz.ancho || 0) * (+pz.alto || 0) / 1e6; }
     for(const [d, x] of Object.entries(porDia)){ if(!x.m2) continue; med.dias.add(d); med.m2 += x.m2;
       for(const q of x.gente){ const per = moPersona(q); if(['nomina', 'minimo'].includes(per.tipo)) med.c += moHorasDia(d) * moCostoHora(per, d.slice(0, 7)).hora; } }
     R.artMed = {cm2: med.m2 ? med.c / med.m2 : 0, dias: med.dias.size, m2: med.m2};
@@ -2459,11 +2459,11 @@ async function moArtCliVer(desde, hasta){
     const key = pz => pz.tercero ? 'OP ' + pz.op : pz.obra;
     // 1. Día de cada operario repartido por m² de su(s) estación(es)
     const dias = {}, med = {c: 0, m2: 0, d: new Set()};
-    for(const g of regs){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(!moHorasDia(d)) continue; const m = Math.max(0.05, m2pz(pz, g.n));
+    for(const g of regs){ const pz = g.p; if(!pz) continue; const d = moDiaEn(g.creado); if(!moHorasDia(d)) continue; const m = Math.max(0.05, m2pz(pz, 1));
       for(const q of p.artCrew[g.estacion] || []){ const x = (dias[q] = dias[q] || {})[d] = (dias[q] || {})[d] || {}; x[key(pz)] = (x[key(pz)] || 0) + m; }
       med.m2 += m; med.d.add(d); }
     const dir = {}, scanM2 = {};
-    for(const g of regs){ const pz = g.p; if(pz && pz.tercero) scanM2[pz.op] = (scanM2[pz.op] || 0) + m2pz(pz, g.n); }
+    for(const g of regs){ const pz = g.p; if(pz && pz.tercero) scanM2[pz.op] = (scanM2[pz.op] || 0) + m2pz(pz, 1); }
     for(const [q, dd] of Object.entries(dias)){ const per = moPersona(q); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
       for(const [d, x] of Object.entries(dd)){ const c = moHorasDia(d) * moCostoHora(per, d.slice(0, 7)).hora, tot = Object.values(x).reduce((a, b) => a + b, 0); med.c += c;
         for(const [k, m] of Object.entries(x)) if(k.startsWith('OP ')) dir[k] = (dir[k] || 0) + c * m / tot; } }
@@ -3069,7 +3069,20 @@ function artPiezaHTML(p){
   return `<div class="art-pzr"><div class="art-pzm"><b>${artMed(p)}</b><span> · ${esc(artCanto(p).toLowerCase())}</span> <span>${fmtN(p.cant)} pz · ${esc(p.tipo)}${p.forrado ? ' · forrado' : ''}${p.optima_pos ? ' · <b>POS ' + esc(artPosTxt(p)) + '</b>' : ''}${p.obs ? ' · ' + esc(p.obs) : ''}</span></div>
     <div class="art-ruta">${p.ruta.map(e => { const h = artHechos(p, e); return `<span class="${h >= p.cant ? 'ok' : h ? 'mid' : ''} ${c[e] ? 'now' : ''}" title="${ART_NOM[e] || e}: ${h} de ${p.cant} hechas${c[e] ? ' · ' + c[e] + ' esperando aquí' : ''}">${c[e] ? `<i class="q">${c[e]}</i>` : ''}${ART_AB[e]}<small>${h}/${p.cant}</small></span>`; }).join('')}</div>
     <div class="art-pzs">${p.rotas && paso ? `<b style="color:#fff;background:#b3261e;padding:1px 6px">⚠ REPROCESO</b> ` : ''}${p.historica && !paso ? '<b>TERMINADA</b> antes de la app' : paso ? (espera ? 'Esperando: ' + espera : 'En ' + ART_NOM[paso].toLowerCase()) : '<b>LISTA</b>' + (p.tercero ? ' para entregar al cliente' : ' · entregada a Elíptica')}${p.ultimo ? ' · ' + new Date(p.ultimo).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'}) : ''}
-      <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${artAdmin() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
+      <button class="btn sm ghost" onclick="artHistorial(${p.id})">Historial</button>${artAdmin() ? `<button class="btn sm ghost" onclick="artRutaEditar(${p.id})">Ruta</button><button class="btn sm ghost" title="Registrar piezas hechas sin escanear el QR" onclick="artSinQR(${p.id})">Sin QR</button>` : ''}${artImprime() ? `<button class="btn sm ghost" onclick="artReimprimir(${p.id})">Etiqueta</button>` : ''}</div></div>`;
+}
+// Registrar sin QR: cuántas piezas de esta medida van hechas en cada estación (vidrio cortado sin etiqueta)
+function artSinQR(id){
+  const p = A.piezas.find(x => x.id === id); if(!p) return;
+  openSheet('Registrar sin QR · ' + esc(p.op), `${artMed(p)} · ${fmtN(p.cant)} pz · ${esc(p.tipo)}`, `<div class="sc-note">Escribe cuántas piezas van <b>hechas</b> en cada estación. Se agregan los registros que falten (quedan marcados "sin QR"); si bajas el número se quitan solo los registros sin QR.</div>
+    ${p.ruta.map(e => `<div class="field"><span class="lbl">${esc(ART_NOM[e] || e)} · hoy ${fmtN(artHechos(p, e))} de ${fmtN(p.cant)}</span><input type="number" class="sqN" data-e="${e}" data-h="${artHechos(p, e)}" min="0" max="${p.cant}" value="${artHechos(p, e)}" inputmode="numeric"></div>`).join('')}
+    <div class="field"><span class="lbl">Fecha en que se hicieron</span><input type="date" id="sqF" value="${today()}" max="${today()}"></div>`, 'Guardar', async () => {
+      const f = $('#sqF').value || today(), cambios = [...document.querySelectorAll('.sqN')].map(i => ({e: i.dataset.e, h: +i.dataset.h, v: Math.max(0, Math.min(p.cant, Math.round(+i.value || 0)))})).filter(c => c.v !== c.h);
+      if(!cambios.length){ toast('Sin cambios'); return; }
+      try{ for(const c of cambios){ const {error} = await API.sb.rpc('art_registrar_manual', {p_id: id, p_estacion: c.e, p_hechas: c.v, p_fecha: f}); if(error) throw error; } }
+      catch(e){ toast(/art_registrar_manual|PGRST202/.test(errMsg(e) + (e.code || '')) ? 'Falta activar el registro sin QR en la base (SQL 101)' : errMsg(e), true); return false; }
+      toast('✓ Registrado sin QR · ' + cambios.map(c => (ART_NOM[c.e] || c.e) + ' ' + c.v + '/' + p.cant).join(' · ')); A.piezas = null; artCargar();
+    });
 }
 // Trazabilidad de una medida: qué piezas pasaron por cada estación (número de etiqueta), cuándo y quién, y sus reprocesos
 async function artHistorial(id){

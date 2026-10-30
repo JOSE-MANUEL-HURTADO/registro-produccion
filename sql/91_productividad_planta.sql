@@ -47,7 +47,7 @@ begin
           from public.items where instalado and fecha_instalacion between p_desde and p_hasta group by 1, 2) y), '[]'),
     'art', coalesce((select jsonb_agg(jsonb_build_object('d', d, 'est', estacion, 'q', q, 'pz', pz, 'm2', round(m2::numeric, 2), 'cli', cli) order by d, estacion, q) from (
         select (g.creado at time zone 'America/Bogota')::date d, g.estacion, coalesce(nullif(btrim(g.quien), ''), 'Sin nombre') q,
-               sum(coalesce(g.n, 1)) pz, sum(coalesce(g.n, 1) * p.ancho * p.alto / 1e6) m2, sum(case when p.tercero then coalesce(g.n, 1) else 0 end) cli
+               count(*) pz, sum(p.ancho * p.alto / 1e6) m2, count(*) filter (where p.tercero) cli   -- cada registro es una pieza (n = número de etiqueta)
           from public.art_registros g join public.art_piezas p on p.id = g.pieza_id
          where g.creado >= t0 and g.creado < t1 group by 1, 2, 3) y), '[]'),
     'rep', coalesce((select jsonb_agg(jsonb_build_object('d', d, 'o', origen, 'pz', pz) order by d) from (
