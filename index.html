@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.11';
+const APP_VERSION = '8.12';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2187,7 +2187,7 @@ async function moDatos(obra){
     API.all(o => API.sb.from('items').select(MO_COLS, o).not('dia_inicio', 'is', null).lte('dia_inicio', hasta).or(`dia_final.gte.${desde},dia_final.is.null`).order('id')),
     API.all(o => API.sb.from('items').select(MO_COLS, o).eq('instalado', true).gte('fecha_instalacion', desde).lte('fecha_instalacion', hasta).order('id')),
     API.all(o => API.sb.from('items').select(MO_COLS, o).or([...MO_PROC, ['prealistado']].map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
-    API.sb.from('asistencia').select('*').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || [])]);
+    API.sb.from('asistencia').select('*').gte('fecha', desde).lte('fecha', today()).then(r => r.error ? [] : r.data || [])]);
   const m = new Map(); for(const i of [...ens, ...ins, ...pro, ...propios]) m.set(i.id, i);
   // Ártica: escaneos por estación (rango de la obra y últimos 90 días para medir el costo por m²) y lo escaneado de esta obra
   const a0 = new Date(Math.min(new Date(t0).getTime(), Date.now() - 90 * 864e5)).toISOString();
@@ -2195,16 +2195,28 @@ async function moDatos(obra){
   const artObra = await API.all(o => API.sb.from('art_registros').select('n,p:art_piezas!inner(obra,ancho,alto,tercero)', o).eq('estacion', 'corte').eq('p.obra', obra).eq('p.tercero', false).order('id')).catch(() => []);
   return {propios, todos: [...m.values()], asis, desde, hasta, art, artObraM2: artObra.reduce((a, r) => a + (r.p ? (+r.p.ancho || 0) * (+r.p.alto || 0) / 1e6 : 0), 0)};
 }
+// Días en obra sin unidades instaladas (trasiego, descargue, izaje, limpieza) que no quedaron en la asistencia:
+// si un instalador instaló en la misma obra antes y después, los días hábiles de en medio (hasta G) se cuentan de esa obra
+// siempre que ese día no tenga asistencia ni otro registro. inst: persona → día → obra principal de lo instalado.
+function moRelleno(inst, ocupado, G){
+  const out = []; if(!(G > 0)) return out;
+  for(const [k, m] of Object.entries(inst)){ const ds = Object.keys(m).sort();
+    for(let j = 1; j < ds.length; j++){ const a = ds[j - 1], b = ds[j]; if(m[a] !== m[b]) continue;
+      const mid = []; for(let d = moSig(a), n = 0; d < b && n < 60; d = moSig(d), n++){ if(moHorasDia(d)) mid.push(d); if(mid.length > G) break; }
+      if(!mid.length || mid.length > G) continue;
+      for(const d of mid) if(!ocupado(k, d)) out.push([k, d, m[a]]); } }
+  return out;
+}
 function moCalcular(D, obra){
   const p = moPar(), hoy = today(), ahora = (() => { const n = new Date(); return n.getHours() + n.getMinutes() / 60; })();
   const aj = (p.ajustes || []).filter(a => a.obra === obra);
   const ajArt = aj.filter(a => a.comp === 'art'), enAjArt = (ob, d) => ob === obra && ajArt.some(a => d >= a.desde && d <= a.hasta);
-  const R = {obra, aj, comp: {ens: 0, inst: 0, ayud: 0, proc: 0, est: 0, cargue: 0, art: 0, artEst: 0, artMan: 0, ind: 0, dir: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
+  const R = {obra, aj, instxDias: {asis: 0, inf: 0}, comp: {ens: 0, inst: 0, instx: 0, ayud: 0, proc: 0, est: 0, cargue: 0, art: 0, artEst: 0, artMan: 0, ind: 0, dir: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
   const dias = {};   // persona → día → {ens:[], inst:[], proc:[], cargue:[]}
   const planta = {}; // día → obra → costo de planta (ensamble + procesos), para repartir el apoyo de planta
   const claim = (nom, d, rol, ob, w, extra) => { if(!d || !nom || !(w > 0)) return; const per = moPersona(nom); if(per.tipo === 'ignorar') return;
     if(per.tipo === 'contratista'){ if(ob === obra && extra && extra.m2 !== undefined){ const c = R.contr[per.k] = R.contr[per.k] || {u: 0, m2: 0, rol}; c.u += 1; c.m2 += +extra.m2 || 0; } return; }
-    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: [], cargue: [], art: []}; x[rol].push({ob, w, comp: extra && extra.comp}); };
+    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], instx: [], proc: [], cargue: [], art: []}; x[rol].push({ob, w, comp: extra && extra.comp}); };
   const directo = {}; // día → obra → costo directo de todo (para repartir la dirección de operaciones)
   const artKey = pz => pz.tercero ? 'Cliente Ártica · ' + (pz.cliente || '—') : pz.obra;
   const asisDia = {}; for(const a of D.asis) asisDia[a.fecha + '|' + a.tipo + '|' + normNom(a.clave)] = a;
@@ -2235,10 +2247,18 @@ function moCalcular(D, obra){
   for(const a of D.asis){
     // Asistencia "en obra": si el motivo es una obra, ese día es de la obra
     if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado === 'obra' && a.motivo && a.operario !== 'AYUDANTE'){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
-      if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
+      if(ob){ const per = moPersona(a.clave), y = per.k && dias[per.k] && dias[per.k].d[a.fecha], conU = y && y.inst.some(c => c.ob === ob);
+        claim(a.clave, a.fecha, conU ? 'inst' : 'instx', ob, 1e6); if(!conU && ob === obra && moHorasDia(a.fecha) && ['nomina', 'minimo'].includes(per.tipo)) R.instxDias.asis++; } }
     // Cargue de camión: horas fijas para la obra del camión
     if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas, {comp: a.operario === 'INSTALACION' ? 'inst' : 'cargue'});
   }
+  // Días en obra sin unidades ni asistencia, entre dos instalaciones de la misma obra
+  { const conAsis = new Set(D.asis.filter(a => a.tipo !== 'proceso').map(a => a.fecha + '|' + moPersona(String(a.clave).split('|')[0]).k)), inst = {};
+    for(const P of Object.values(dias)) for(const [d, x] of Object.entries(P.d)){ const real = x.inst.filter(c => c.w < 1e6); if(!real.length) continue;
+      const w = {}; for(const c of real) w[c.ob] = (w[c.ob] || 0) + c.w; (inst[P.per.k] = inst[P.per.k] || {})[d] = Object.entries(w).sort((a, b) => b[1] - a[1])[0][0]; }
+    const ocupado = (k, d) => { const x = dias[k] && dias[k].d[d]; return conAsis.has(d + '|' + k) || !!(x && Object.values(x).some(l => l.length)); };
+    for(const [k, d, ob] of moRelleno(inst, ocupado, p.gapInst ?? 3)){ const x = dias[k].d[d] = dias[k].d[d] || {ens: [], inst: [], instx: [], proc: [], cargue: [], art: []};
+      x.instx.push({ob, w: 1e6}); if(ob === obra) R.instxDias.inf++; } }
   // Ayudante de instalación: todo instalador trabaja con uno. Si la asistencia dice quién fue, se usa su salario; si no, el mínimo.
   const ayudDe = {}; for(const a of D.asis) if(a.operario !== 'AYUDANTE' && (a.ayudante || +a.ayudantes > 0)) ayudDe[a.fecha + '|' + normNom(String(a.clave).split('|')[0])] = {n: Math.max(+a.ayudantes || 0, String(a.ayudante || '').split(',').filter(x => x.trim()).length, 1), nom: String(a.ayudante || '').split(',').map(normNom).filter(Boolean)};
   const ayud = (inst, d, h, ym) => { if(p.ayudante === false) return; const y = ayudDe[d + '|' + inst.k] || {n: 1, nom: []};
@@ -2252,13 +2272,13 @@ function moCalcular(D, obra){
     const hc = Math.min(H, x.cargue.reduce((a, c) => a + c.w, 0));
     const dd = directo[d] = directo[d] || {};
     for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); dd[c.ob] = (dd[c.ob] || 0) + h * ch; if(c.ob === obra){ sum(P.per, c.comp || 'cargue', h * ch, h, ym); if(c.comp === 'inst') ayud(P.per, d, h, ym); } }
-    const roles = ['ens', 'inst', 'proc', 'art'].filter(r => x[r].length), Hr = H - hc;
+    const roles = ['ens', 'inst', 'instx', 'proc', 'art'].filter(r => x[r].length), Hr = H - hc;
     for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0);
       const porOb = {}; for(const c of x[r]) porOb[c.ob] = (porOb[c.ob] || 0) + c.w;
       for(const [ob, w] of Object.entries(porOb)){ const h = Hr / roles.length * w / tot;
         if(r === 'ens' || r === 'proc'){ const pd = planta[d] = planta[d] || {}; pd[ob] = (pd[ob] || 0) + h * ch; }
         dd[ob] = (dd[ob] || 0) + h * ch;
-        if(ob === obra){ sum(P.per, r, h * ch, h, ym); if(r === 'inst') ayud(P.per, d, h, ym); } } }
+        if(ob === obra){ sum(P.per, r, h * ch, h, ym); if(r === 'inst' || r === 'instx') ayud(P.per, d, h, ym); } } }
   }
   // Apoyo de planta (asistente que escanea): su día se reparte según el costo de planta de cada obra ese día
   for(const nom of (p.indirectos || [])){ const per = moPersona(nom); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
@@ -2298,13 +2318,14 @@ function moCalcular(D, obra){
   return R;
 }
 const moCOP = v => '$ ' + fmtN(Math.round(v || 0));
-const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', ayud: 'Ayudante de instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', art: 'Vidrio Ártica', ind: 'Apoyo de planta', dir: 'Dirección de operaciones'};
+const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', instx: 'En obra sin instalar', ayud: 'Ayudante de instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', art: 'Vidrio Ártica', ind: 'Apoyo de planta', dir: 'Dirección de operaciones'};
 function moHTML(R){
   const p = moPar(), carga = moCarga(p), hoy = today();
   const pers = Object.values(R.per).sort((a, b) => b.c - a.c);
   const comp = [['ens', 'Ensamble', 'Horas de cada ensamblador repartidas según el tiempo que cada unidad estuvo en su mesa (hora de inicio a hora de fin, dentro de la jornada). Incluye el prealistado.'],
-    ['inst', 'Instalación (nómina)', 'Días de cada instalador repartidos entre lo que instaló ese día (por m²) y días "en obra" de la asistencia.'],
-    ['ayud', 'Ayudantes de instalación', 'Cada instalador trabaja con un ayudante (o los que se registren en la asistencia): las mismas horas de instalación, al salario del ayudante registrado o, si no se sabe quién, al salario mínimo.'],
+    ['inst', 'Instalación (nómina)', 'Días en que el instalador instaló unidades: su día se reparte entre lo que instaló (por m²); si la asistencia lo pone en esta obra ese día, el día completo es de la obra.'],
+    ['instx', 'En obra sin instalar (trasiego, descargue, izaje)', `Días del oficial en la obra sin unidades instaladas: ${fmtN(R.instxDias.asis)} según la asistencia${R.instxDias.inf ? ` y ${fmtN(R.instxDias.inf)} sin asistencia entre dos días de instalación en la obra (hasta ${fmtN(p.gapInst ?? 3)} días hábiles)` : ''}.`],
+    ['ayud', 'Ayudantes de instalación', 'Cada instalador trabaja con un ayudante (o los que se registren en la asistencia): las mismas horas de instalación y de obra sin instalar, al salario del ayudante registrado o, si no se sabe quién, al salario mínimo.'],
     ['proc', 'Procesos con escáner', 'Días del operario de cada proceso repartidos por los m² procesados ese día.'],
     ['est', 'Procesos antes del escáner', `Tiempo estimado${p.estItem ? ' (' + fmtN(p.estItem) + ' min por ítem entre corte, troquelado y mecanizado)' : ''} × costo hora del operario habitual de cada proceso.`],
     ['cargue', 'Cargue de camión', 'Horas de cargue registradas en la asistencia para esta obra.'],
@@ -2392,6 +2413,7 @@ function renderMO(){
       <div class="field"><span class="lbl">Promedio por ítem (corte + troquelado + mecanizado, se reparte en partes iguales)</span><input type="number" step="1" min="0" id="moEstItem" value="${p.estItem ?? ''}" placeholder="Ej. 20"></div>
       <div class="cot-d">Si escribe un tiempo propio para un proceso, ese reemplaza el promedio en ese proceso.</div>
       <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
+      <div class="field" style="margin-top:8px"><span class="lbl">Días en obra sin instalar y sin asistencia</span><input id="moGap" type="number" min="0" max="10" value="${p.gapInst ?? 3}"><small class="cot-d">Si un oficial instaló en la misma obra antes y después, hasta este número de días hábiles de en medio sin asistencia ni otro registro se cuentan de esa obra (trasiego, descargue, izaje). 0 = solo lo que diga la asistencia.</small></div>
       <div class="field" style="margin-top:8px"><span class="lbl">Ayudante de instalación</span><select id="moAy"><option value="1" ${p.ayudante !== false ? 'selected' : ''}>Cada instalador lleva un ayudante (mínimo si no se registra quién)</option><option value="0" ${p.ayudante === false ? 'selected' : ''}>No sumar ayudantes</option></select></div>
       <div class="field" style="margin-top:8px"><span class="lbl">Dirección de operaciones (separados por coma) · su costo se reparte entre todas las obras según el costo directo del día</span><input id="moDir" value="${esc((p.direccion || []).join(', '))}"></div>
       <div class="cot-h" style="margin-top:12px">Ártica · clientes</div>
@@ -2417,7 +2439,7 @@ function renderMO(){
 async function moGuardarPar(){
   const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
   const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, estItem: $('#moEstItem').value === '' ? null : +$('#moEstItem').value, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean), direccion: $('#moDir').value.split(',').map(normNom).filter(Boolean),
-    ayudante: $('#moAy').value === '1', comercial: $('#moCom').value.split(',').map(normNom).filter(Boolean), comercialDed: +$('#moComD').value || 0, dirArtCli: +$('#moDirA').value || 0,
+    ayudante: $('#moAy').value === '1', gapInst: Math.max(0, Math.min(10, +$('#moGap').value || 0)), comercial: $('#moCom').value.split(',').map(normNom).filter(Boolean), comercialDed: +$('#moComD').value || 0, dirArtCli: +$('#moDirA').value || 0,
     artCrew: Object.fromEntries([...document.querySelectorAll('.moCrew')].map(i => [i.dataset.k, i.value.split(',').map(normNom).filter(Boolean)]))};
   const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
   MO.par = par; toast('✓ Parámetros guardados'); renderMO();
@@ -2566,7 +2588,7 @@ async function moMuertoVer(desde, hasta){
     const t0 = new Date(desde + 'T00:00:00-05:00').toISOString(), t1 = new Date(moSig(hasta) + 'T00:00:00-05:00').toISOString();
     const [ens, ins, pro, asis, art] = await Promise.all([
       API.all(o => API.sb.from('items').select(MO_COLS, o).not('dia_inicio', 'is', null).lte('dia_inicio', hasta).or(`dia_final.gte.${desde},dia_final.is.null`).gte('dia_inicio', String(+desde.slice(0, 4) - 1) + desde.slice(4)).order('id')),
-      API.all(o => API.sb.from('items').select('instalador,fecha_instalacion', o).eq('instalado', true).gte('fecha_instalacion', desde).lte('fecha_instalacion', hasta).order('id')),
+      API.all(o => API.sb.from('items').select('instalador,fecha_instalacion,obra,m2', o).eq('instalado', true).gte('fecha_instalacion', desde).lte('fecha_instalacion', hasta).order('id')),
       API.all(o => API.sb.from('items').select('ensamblador,ens_asignado,' + [...MO_PROC, ['prealistado']].map(([k]) => k + '_en').join(','), o).or([...MO_PROC, ['prealistado']].map(([k]) => `and(${k}_en.gte.${t0},${k}_en.lt.${t1})`).join(',')).order('id')),
       API.sb.from('asistencia').select('*').gte('fecha', desde).lte('fecha', hasta).then(r => r.error ? [] : r.data || []),
       API.all(o => API.sb.from('art_registros').select('estacion,creado', o).gte('creado', t0).lt('creado', t1).order('id')).catch(() => [])]);
@@ -2594,6 +2616,12 @@ async function moMuertoVer(desde, hasta){
     for(const a of asis){ if(a.tipo === 'cargue'){ const x = dia(String(a.clave).split('|')[0], a.fecha); if(x) x.extra += +a.horas || 0; }
       if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado !== 'planta'){ const x = dia(a.clave, a.fecha); if(x){ if(a.estado === 'obra') x.todo = true; else { x.aus = true; x.motivo = a.motivo; } } }
       if(a.tipo === 'proceso' && a.estado === 'sin_operario' && !['Operario ensamblando', 'Operario en obra'].includes(a.motivo)){ const op = a.operario || AS_OPER[a.clave]; const x = op && dia(op, a.fecha); if(x){ x.aus = true; x.motivo = a.motivo; } } }
+    // Días en obra sin instalar ni asistencia entre dos instalaciones de la misma obra: también son productivos
+    { const inst = {}, w = {}; for(const i of ins){ const per = moPersona(i.instalador); if(!P[per.k]) continue; const k = per.k + '|' + i.fecha_instalacion; (w[k] = w[k] || {})[i.obra] = (w[k][i.obra] || 0) + Math.max(0.5, +i.m2 || 0); }
+      for(const [k, o] of Object.entries(w)){ const [pk, d] = k.split('|'); (inst[pk] = inst[pk] || {})[d] = Object.entries(o).sort((a, b) => b[1] - a[1])[0][0]; }
+      const conAsis = new Set(asis.filter(a => a.tipo !== 'proceso').map(a => a.fecha + '|' + moPersona(String(a.clave).split('|')[0]).k));
+      const ocupado = (k, d) => { const y = P[k] && P[k].d[d]; return conAsis.has(d + '|' + k) || !!(y && (y.todo || y.iv.length || y.extra || y.aus)); };
+      for(const [k, d] of moRelleno(inst, ocupado, p.gapInst ?? 3)){ const y = P[k].d[d] = P[k].d[d] || {iv: [], extra: 0, todo: false}; y.todo = true; } }
     // Por persona: días laborables del periodo
     const filas = [], porDia = {};
     for(const x of Object.values(P)){
