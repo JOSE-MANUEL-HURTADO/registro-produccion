@@ -342,6 +342,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .resp.warn{border:1px solid var(--cola);background:rgba(200,168,75,.08);padding:12px 14px;color:var(--text2);}
 .resp.warn b{color:var(--cola);font-weight:500;}
 .u-list{display:flex;flex-direction:column;gap:8px;max-width:980px;}
+.cp-tbl{width:100%;border-collapse:collapse;font-size:13px}.cp-tbl th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:6px 8px;border-bottom:1px solid var(--border)}.cp-tbl td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}.cp-tbl small{color:var(--text3)}
 .u-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) auto auto;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);padding:10px 12px;}
 .u-mail{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;}
 .u-mail span{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
@@ -577,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.01';
+const APP_VERSION = '8.02';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1174,6 +1175,7 @@ function shell(inner){
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(rolTxt(S.perfil.rol))}</span></div>
       ${S.view === 'artica' ? '' : puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       ${isGerente() ? `<button class="btn sm ${S.view === 'prod' ? 'primary' : ''}" title="Productividad de planta: procesos, ensambles y Ártica por día" onclick="goProd()">${ICON.chart}<span class="hide-sm">Productividad</span></button>` : ''}
+      ${isGerente() ? `<button class="btn sm ${S.view === 'compras' ? 'primary' : ''}" title="Órdenes de compra, proveedores y precios" onclick="goCompras()">🛒<span class="hide-sm">Compras</span></button>` : ''}
       ${veDash() && S.view !== 'artica' ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
       ${isGerente() && S.view !== 'artica' ? `
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
@@ -2640,6 +2642,162 @@ function moMuertoHTML(R){
       <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Calculado con los registros de la app al ${infF(today())}. Documento confidencial.</p></div>
     </div>
     <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>Tiempo muerto · ${infF(R.desde)} – ${infF(R.hasta)}</span></div></div>`;
+}
+// ════════════════════════════════════════════════════════════════
+//  COMPRAS (SQL 108 · solo el director por ahora): órdenes de compra, proveedores y catálogo con último precio
+//  El historial se importa de los Excel de compras (ALUMINIO / VIDRIO / ACCESORIOS 2026: una hoja por OC).
+// ════════════════════════════════════════════════════════════════
+const CP = {tab: 'oc', oc: null, prov: null, err: null, cat: '', q: '', abierta: null};
+const CP_CAT = {aluminio: 'Aluminio', vidrio: 'Vidrio', accesorios: 'Accesorios'};
+function goCompras(){ if(!isGerente()) return; if(S.view !== 'compras') history.pushState({v: 'compras'}, ''); S.view = 'compras'; aplicarEmpresa(); window.scrollTo(0, 0); cpCargar(); }
+async function cpCargar(){
+  CP.err = null; renderCompras();
+  try{ const [o, p] = await Promise.all([API.all(x => API.sb.from('compras_oc').select('*', x).order('fecha', {ascending: false, nullsFirst: false}).order('num', {ascending: false})), API.sb.from('compras_proveedores').select('*').order('nombre').then(r => { if(r.error) throw r.error; return r.data || []; })]);
+    CP.oc = o; CP.prov = p; }
+  catch(e){ CP.err = /compras_|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar compras en la base (SQL 108)' : errMsg(e); CP.oc = []; CP.prov = []; }
+  if(S.view === 'compras') renderCompras();
+}
+const cpCOP = v => v == null ? '—' : '$ ' + fmtN(Math.round(v));
+const cpRefK = l => String(l.ref || l.desc || '').toUpperCase().replace(/\s+/g, ' ').trim();
+// Catálogo: cada referencia (o tipo de vidrio) con su último precio, proveedor y veces que se ha pedido
+function cpCatalogo(){
+  const m = new Map();
+  for(const o of [...(CP.oc || [])].filter(o => o.estado !== 'anulada').sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')))){
+    for(const l of o.lineas || []){ const k = o.categoria + '|' + cpRefK(l); if(!cpRefK(l)) continue;
+      const x = m.get(k) || {cat: o.categoria, ref: l.ref || '', desc: l.desc || '', n: 0, cant: 0, provs: new Set()};
+      x.n++; x.cant += +l.cant || 0; x.provs.add(o.proveedor);
+      if(l.unit > 0){ x.unit = l.unit; x.prov = o.proveedor; x.fecha = o.fecha; x.num = o.num; x.acab = l.acab || x.acab; if(o.categoria === 'vidrio') x.lam = l.ancho && l.alto ? `${l.ancho} × ${l.alto}` : x.lam; }
+      if(l.desc && !x.desc) x.desc = l.desc;
+      m.set(k, x); } }
+  return [...m.values()];
+}
+function renderCompras(){
+  const tabs = [['oc', 'Órdenes de compra'], ['cat', 'Catálogo y precios'], ['prov', 'Proveedores'], ['imp', 'Importar Excel']];
+  let body;
+  if(CP.err) body = `<div class="warn">${esc(CP.err)}</div>`;
+  else if(!CP.oc) body = '<div class="loading"><div class="spin"></div>Cargando compras</div>';
+  else body = CP.tab === 'cat' ? cpCatHTML() : CP.tab === 'prov' ? cpProvHTML() : CP.tab === 'imp' ? cpImpHTML() : cpOcHTML();
+  const q = `<div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><div class="search">${ICON.search}<input id="cpQ" placeholder="Buscar referencia, proveedor, obra, número…" value="${esc(CP.q)}"></div>
+    <select onchange="CP.cat=this.value;renderCompras()"><option value="">Todo</option>${Object.entries(CP_CAT).map(([k, n]) => `<option value="${k}" ${CP.cat === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>`;
+  $('#app').innerHTML = shell(`<div class="tabs">${tabs.map(([k, n]) => `<button class="tab ${CP.tab === k ? 'on' : ''}" onclick="CP.tab='${k}';renderCompras()">${n}</button>`).join('')}</div>
+    <div class="art-head"><div><div class="h1">Compras</div><div class="h1-sub">Aluminio, vidrio y accesorios · solo usted ve precios y proveedores</div></div></div>
+    ${CP.tab !== 'imp' ? q : ''}${body}`);
+  const i = $('#cpQ'); if(i) i.oninput = () => { CP.q = i.value; const p = i.selectionStart; renderCompras(); const j = $('#cpQ'); if(j){ j.focus(); j.setSelectionRange(p, p); } };
+}
+const cpMatch = (...v) => { const q = normH(CP.q || '').replace(/\s/g, ''); return !q || v.some(x => x && normH(String(x)).replace(/\s/g, '').includes(q)); };
+function cpOcHTML(){
+  const l = CP.oc.filter(o => (!CP.cat || o.categoria === CP.cat) && cpMatch(o.num, o.proveedor, o.obra, ...(o.lineas || []).map(x => (x.ref || '') + ' ' + (x.desc || ''))));
+  const tot = l.reduce((a, o) => a + (+o.total || 0), 0);
+  return `<div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} órdenes · ${cpCOP(tot)} con IVA</div>
+    <div class="art-ops">${l.slice(0, 300).map(o => { const ab = CP.abierta === o.num;
+      return `<div class="art-op"><button class="art-lote" style="width:100%;text-align:left;cursor:pointer" onclick="CP.abierta=${ab ? 'null' : `'${o.num}'`};renderCompras()">
+        <div><b>${esc(o.num)} · ${esc(o.proveedor || '')}</b><span>${o.fecha ? fmtD(o.fecha) : 'sin fecha'} · ${CP_CAT[o.categoria]} · ${fmtN((o.lineas || []).length)} línea${(o.lineas || []).length === 1 ? '' : 's'}${o.obra ? ' · ' + esc(o.obra) : ''}</span></div><b>${cpCOP(o.total)}</b></button>
+        ${ab ? `<div style="padding:6px 12px 10px;font-size:13px">${(o.lineas || []).map(x => `<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:4px 0"><span>${esc([x.ref, x.desc].filter(Boolean).join(' · '))}${x.acab ? ' · ' + esc(x.acab) : ''}${x.ancho ? ` · lámina ${x.ancho} × ${x.alto}` : ''}${x.obra ? ' · ' + esc(x.obra) : ''}</span><span style="white-space:nowrap">${fmtN(x.cant || 0)}${x.m2 ? ' (' + fmtN(x.m2, 1) + ' m²)' : ''} × ${cpCOP(x.unit)}${o.categoria === 'vidrio' ? '/m²' : ''} = <b>${cpCOP(x.total)}</b></span></div>`).join('') || '<div class="empty">Sin líneas</div>'}</div>` : ''}</div>`; }).join('') || '<div class="empty">No hay órdenes de compra. Impórtelas desde los Excel en la pestaña "Importar Excel".</div>'}</div>`;
+}
+function cpCatHTML(){
+  const l = cpCatalogo().filter(x => (!CP.cat || x.cat === CP.cat) && cpMatch(x.ref, x.desc, x.prov)).sort((a, b) => a.cat.localeCompare(b.cat) || b.n - a.n);
+  return `<div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} referencias. Último precio pagado (sin IVA), a quién y cuándo. Base para sugerir proveedor y precio en las requisiciones.</div>
+    <table class="cp-tbl"><thead><tr><th style="text-align:left">Referencia</th><th style="text-align:left">Descripción</th><th style="text-align:left">Último proveedor</th><th>Último precio</th><th>Fecha</th><th>Veces</th></tr></thead><tbody>
+    ${l.slice(0, 600).map(x => `<tr><td><b>${esc(x.ref || '—')}</b><br><small>${CP_CAT[x.cat]}</small></td><td>${esc(x.desc || '')}${x.acab ? `<br><small>${esc(x.acab)}</small>` : ''}${x.lam ? `<br><small>lámina ${esc(x.lam)}</small>` : ''}</td><td>${esc(x.prov || '—')}${x.provs.size > 1 ? `<br><small>+${x.provs.size - 1} proveedor${x.provs.size > 2 ? 'es' : ''} más</small>` : ''}</td><td style="text-align:right"><b>${cpCOP(x.unit)}</b>${x.cat === 'vidrio' ? '/m²' : ''}</td><td style="text-align:center">${x.fecha ? fmtD(x.fecha) : '—'}<br><small>${esc(x.num || '')}</small></td><td style="text-align:center">${fmtN(x.n)}</td></tr>`).join('')}</tbody></table>`;
+}
+function cpProvHTML(){
+  const n = {}; for(const o of CP.oc) n[o.proveedor] = (n[o.proveedor] || 0) + 1;
+  const l = CP.prov.filter(p => (!CP.cat || (p.categorias || []).includes(CP.cat)) && cpMatch(p.nombre, p.nit, p.ciudad, p.email)).sort((a, b) => (n[b.nombre] || 0) - (n[a.nombre] || 0) || nat(a.nombre, b.nombre));
+  return `<div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} proveedores</div><div class="art-ops">${l.map(p => `<div class="art-lote"><div><b>${esc(p.nombre)}</b><span>${(p.categorias || []).map(c => CP_CAT[c] || c).join(' · ')}${p.nit ? ' · NIT ' + esc(p.nit) : ''}${n[p.nombre] ? ' · ' + fmtN(n[p.nombre]) + ' OC en 2026' : ''}</span>
+    <span>${[p.ciudad, p.direccion, p.telefono, p.email, p.contacto].filter(Boolean).map(esc).join(' · ')}</span></div></div>`).join('')}</div>`;
+}
+function cpImpHTML(){
+  return `<div class="cot-box"><div class="cot-h">Importar órdenes de compra desde Excel</div>
+    <div class="cot-d">Suba los libros de compras (ALUMINIO 2026, VIDRIO 2026, ACCESORIOS 2026): cada hoja con número tipo 26-058 es una orden de compra; también se leen las hojas de base de datos de proveedores. Se puede repetir: actualiza lo que ya existe y no toca las órdenes hechas en la app.</div>
+    <label class="btn primary" style="margin-top:8px">Elegir archivos Excel<input type="file" accept=".xlsx,.xls" multiple style="display:none" onchange="cpImportar(this.files)"></label>
+    <div id="cpImpLog" class="sc-note" style="margin-top:10px"></div></div>`;
+}
+// ── Lectura de los libros de compras ──
+const CP_MES = {ENERO: 1, FEBRERO: 2, MARZO: 3, ABRIL: 4, MAYO: 5, JUNIO: 6, JULIO: 7, AGOSTO: 8, SEPTIEMBRE: 9, SETIEMBRE: 9, OCTUBRE: 10, NOVIEMBRE: 11, DICIEMBRE: 12};
+function cpFecha(v){
+  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  const s = String(v || '').trim().toUpperCase(); let m = s.match(/^(\d{4})-(\d\d)-(\d\d)/); if(m) return m[0];
+  m = s.match(/0*(\d{1,2})\s*[\/\-\. ]\s*([A-Z]+|\d{1,2})\s*[\/\-\. ]\s*(\d{2,4})/); if(!m) return null;
+  const mo = /^\d+$/.test(m[2]) ? +m[2] : CP_MES[m[2]]; let y = +m[3]; if(y < 100) y += 2000;
+  return mo >= 1 && mo <= 12 && +m[1] >= 1 && +m[1] <= 31 ? `${y}-${String(mo).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}` : null;
+}
+const cpNum = v => { if(typeof v === 'number') return v; const x = parseFloat(String(v || '').replace(/[$\s,]/g, '')); return isNaN(x) ? null : x; };
+const cpTxt = v => v == null || v === '' ? null : String(v).replace(/\s+/g, ' ').trim() || null;
+function cpLeerLibro(wb){
+  const ocs = [], prov = [];
+  for(const sn of wb.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
+    const head = rows.slice(0, 18).flat().filter(x => typeof x === 'string');
+    const busca = re => { for(const t of head){ const m = t.match(re); if(m) return m[1].trim(); } return null; };
+    if(/BASE DE DATOS PROVEEDORES/i.test(sn)){
+      const h = (rows[0] || []).map(x => String(x || '').toUpperCase());
+      const c = n => h.findIndex(x => x.includes(n));
+      const cN = h.findIndex(x => x.startsWith('PROVEEDOR')), cNit = c('NIT'), cD = c('DIRECCI'), cT = c('TEL'), cC = c('CIUDAD'), cE = c('MAIL'), cK = c('CONTACTO');
+      const cat = /VIDRIO/.test(h.join(' ')) || rows.length < 10 ? null : null;
+      for(const r of rows.slice(1)){ if(!r || cN < 0 || !cpTxt(r[cN])) continue;
+        prov.push({nombre: cpTxt(r[cN]), nit: cpTxt(r[cNit]), direccion: cpTxt(r[cD]), telefono: cpTxt(r[cT]), ciudad: cpTxt(r[cC]), email: cpTxt(r[cE]), contacto: cK >= 0 ? cpTxt(r[cK]) : null, cat}); }
+      continue;
+    }
+    if(!/^\d\d-\d+/.test(sn)) continue;
+    const titulo = head.join(' ').toUpperCase();
+    const categoria = /COMPRA ALUMINIO/.test(titulo) ? 'aluminio' : /COMPRA VIDRIO/.test(titulo) ? 'vidrio' : /COMPRA ACCESORIOS/.test(titulo) ? 'accesorios' : null;
+    if(!categoria) continue;
+    const num = (busca(/(?:N[°º]|Número|No\.)\s*:?\s*([A-Z]{1,2}-\s*\d+-\s*\d+)/i) || '').replace(/\s/g, '').toUpperCase(); if(!num) continue;
+    let fecha = cpFecha(busca(/Fecha:\s*(.+)/i)); if(!fecha){ const d = rows.slice(0, 18).flat().find(x => x instanceof Date); if(d) fecha = cpFecha(d); }
+    const o = {num, categoria, fecha, proveedor: cpTxt(busca(/Proveedor:\s*(.+)/i)), obra: cpTxt(busca(/OBRA:\s*(.+)/i) || (rows.flat().find(x => typeof x === 'string' && /OBRA:/i.test(x)) || '').replace(/.*OBRA:\s*/i, '')), lineas: [],
+      p: {nit: cpTxt(busca(/NIT ó C\.C:\s*(.+)/i)), direccion: cpTxt(busca(/^\s*Direcci[oó]n:\s*(.+)/i)), email: cpTxt(busca(/(?:E-Mail|Correo):\s*(\S+@\S+)/i)), ciudad: cpTxt(busca(/ciudad:\s*(.+)/i))}};
+    let hi = -1, h = [];
+    for(let i = 0; i < rows.length; i++){ const v = (rows[i] || []).map(x => String(x == null ? '' : x).trim().toUpperCase());
+      if(categoria === 'vidrio' ? v.includes('ANCHO') && v.includes('ALTO') : v.some(x => x.startsWith('REF')) && (categoria === 'aluminio' || v.includes('DESCRIPCION'))){ hi = i; h = v; break; } }
+    if(hi < 0){ ocs.push(o); continue; }
+    const col = (...n) => h.findIndex(x => n.some(k => x.startsWith(k)));
+    for(const r0 of rows.slice(hi + 1)){
+      const r = r0 || []; const txt = r.filter(x => x != null).join(' ').toUpperCase();
+      if(/SUBTOTAL|TOTAL VIDRIOS/.test(txt)) break;
+      const g = i => i >= 0 ? r[i] : null;
+      if(categoria === 'vidrio'){
+        const a = g(col('ANCHO')); if(typeof a !== 'number') continue;
+        const vid = g(col('VIDRIO')) || r.find(x => typeof x === 'string' && /MM|VIDRIO|ESPEJO|LAM/i.test(x));
+        o.lineas.push({desc: cpTxt(vid), ancho: a, alto: cpNum(g(col('ALTO'))), cant: cpNum(g(col('CANT'))), m2: cpNum(g(col('AREA'))), unit: cpNum(g(col('VR /M2', 'VALOR M2', 'VR/M2'))), total: cpNum(g(col('VR/ TOTAL', 'VR/TOTAL')))});
+      } else if(categoria === 'aluminio'){
+        const ref = cpTxt(g(col('REF', 'REFERENCIA'))); if(!ref) continue;
+        o.lineas.push({ref, acab: cpTxt(g(col('ACABADO'))), long: cpNum(g(col('LONG'))), cant: cpNum(g(col('CANTIDAD', 'UNIDAD'))), unit: cpNum(g(col('VALOR UNIT'))), total: cpNum(g(col('VALOR TOTAL'))), obra: cpTxt(g(col('OBRA')))});
+      } else {
+        const ref = cpTxt(g(col('REF'))), desc = cpTxt(g(col('DESCRIPCION'))), unit = cpNum(g(col('V/UNIT')));
+        if(!ref && !(desc && unit != null)) continue;
+        o.lineas.push({ref, desc, acab: cpTxt(g(col('ACABADO'))), cant: cpNum(g(col('CANTIDAD'))), unit, total: cpNum(g(col('V/TOTAL')))});
+      }
+    }
+    ocs.push(o);
+  }
+  return {ocs, prov};
+}
+async function cpImportar(files){
+  const log = $('#cpImpLog'), say = t => { if(log) log.innerHTML += esc(t) + '<br>'; };
+  if(!files || !files.length) return;
+  try{ if(!window.XLSX) await loadScript(XLSX_URL);
+    let ocs = [], prov = [];
+    for(const f of files){ say('Leyendo ' + f.name + '…'); const wb = XLSX.read(await f.arrayBuffer(), {type: 'array', cellDates: true}); const r = cpLeerLibro(wb); ocs = ocs.concat(r.ocs); prov = prov.concat(r.prov); say(`  ${r.ocs.length} órdenes · ${r.ocs.reduce((a, o) => a + o.lineas.length, 0)} líneas`); }
+    const vistos = new Set(); ocs = ocs.filter(o => !vistos.has(o.num) && vistos.add(o.num));
+    // proveedores: base + encabezados de cada OC
+    const P = new Map(), k = s => normH(String(s || '')).replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
+    const add = (x, cat) => { if(!x.nombre || k(x.nombre).length < 3) return; const p = P.get(k(x.nombre)) || {nombre: x.nombre, categorias: new Set()}; if(cat) p.categorias.add(cat);
+      for(const c of ['nit', 'direccion', 'telefono', 'ciudad', 'email', 'contacto']) if(x[c] && !p[c]) p[c] = x[c]; P.set(k(x.nombre), p); };
+    for(const o of ocs) add({nombre: o.proveedor, ...o.p}, o.categoria);
+    for(const x of prov) add(x, null);
+    const ex = new Map((CP.prov || []).map(p => [k(p.nombre), p]));
+    const filasP = [...P.values()].map(p => { const e = ex.get(k(p.nombre)); return {nombre: e ? e.nombre : p.nombre, nit: (e && e.nit) || p.nit || null, direccion: (e && e.direccion) || p.direccion || null, telefono: (e && e.telefono) || p.telefono || null, ciudad: (e && e.ciudad) || p.ciudad || null, email: (e && e.email) || p.email || null, contacto: (e && e.contacto) || p.contacto || null, categorias: [...new Set([...((e && e.categorias) || []), ...p.categorias])]}; });
+    say(`Guardando ${filasP.length} proveedores…`);
+    for(let i = 0; i < filasP.length; i += 200){ const {error} = await API.sb.from('compras_proveedores').upsert(filasP.slice(i, i + 200), {onConflict: 'nombre'}); if(error) throw error; }
+    const {data: pv, error: e1} = await API.sb.from('compras_proveedores').select('id,nombre'); if(e1) throw e1;
+    const pid = new Map(pv.map(p => [k(p.nombre), p.id]));
+    const app = new Set((CP.oc || []).filter(o => o.origen === 'app').map(o => o.num));
+    const filas = ocs.filter(o => !app.has(o.num)).map(o => { const sub = o.lineas.reduce((a, l) => a + (+l.total || 0), 0);
+      return {num: o.num, categoria: o.categoria, fecha: o.fecha, proveedor: o.proveedor, proveedor_id: pid.get(k(o.proveedor)) || null, obra: o.obra || null, lineas: o.lineas, subtotal: sub || null, iva: sub ? Math.round(sub * 0.19) : null, total: sub ? Math.round(sub * 1.19) : null, estado: 'historica', origen: 'excel'}; });
+    say(`Guardando ${filas.length} órdenes de compra…`);
+    for(let i = 0; i < filas.length; i += 100){ const {error} = await API.sb.from('compras_oc').upsert(filas.slice(i, i + 100), {onConflict: 'num'}); if(error) throw error; }
+    say('✓ Listo'); toast(`✓ ${filas.length} órdenes de compra importadas`); setTimeout(() => { CP.tab = 'oc'; cpCargar(); }, 600);
+  }catch(e){ say('Error: ' + errMsg(e)); toast(/compras_|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar compras en la base (SQL 108)' : errMsg(e), true); }
 }
 // ── Informe de productividad de planta (para junta directiva) ──
 function prodDocHTML(){
@@ -4876,6 +5034,7 @@ function onPop(ev){
   if(S.view === 'obra' && S.draft && S.draft._dirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')){ history.pushState({v:'obra', obra:S.obra}, ''); return; }
   if(st.v === 'carga'){ S.view='carga'; renderCarga(); return; }
   if(st.v === 'prod' && isGerente()){ S.view = 'prod'; aplicarEmpresa(); prodCargar(); return; }
+  if(st.v === 'compras' && isGerente()){ S.view = 'compras'; aplicarEmpresa(); renderCompras(); return; }
   if(st.v === 'mo' && isGerente()){ S.view = 'mo'; aplicarEmpresa(); moCfgCargar(); return; }
   if(st.v === 'asis' && puedeRegistrar()){ S.view = 'asis'; aplicarEmpresa(); asCargar(); return; }
   if(st.v === 'obra') openObra(st.obra, true, st.anio, st.pf || undefined);
