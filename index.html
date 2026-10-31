@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.13';
+const APP_VERSION = '8.14';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2980,7 +2980,17 @@ async function rqMarcar(op, estado){
   renderCompras();
 }
 function rqPendHTML(){
-  const l = rqPendientes(), pend = l.filter(x => !x.ocs.length && !x.marca), listas = l.filter(x => x.ocs.length || x.marca);
+  const l = rqPendientes(), pend = l.filter(x => !x.ocs.length && !x.marca);
+  // Requisiciones en curso: toda OP con OC de la app (no anuladas, no históricas) que no esté recibida completa
+  const porOP = rqOcsPorOP(), act = new Map(l.map(x => [x.op, x]));
+  const curso = [...porOP.entries()].map(([op, os]) => ({op, os: os.filter(o => !['anulada', 'historica'].includes(o.estado))})).filter(x => x.os.length)
+    .map(x => ({...x, obra: (act.get(x.op) || {}).obra || String(x.os[0].obra || '').replace(/\s*[·-]?\s*OP\s*\d{4}.*$/i, '') || 'Sin obra', completa: x.os.every(o => o.estado === 'recibida')}));
+  const enCurso = curso.filter(x => !x.completa).sort((a, b) => nat(b.op, a.op)), completas = curso.filter(x => x.completa);
+  const listas = [...l.filter(x => x.marca), ...l.filter(x => !x.marca && x.ocs.length && !curso.some(c => c.op === x.op))];
+  const filaC = x => { const n = k => x.os.filter(o => rqEstOC(o).t.startsWith(k)).length;
+    return `<div class="as-row"><div class="as-n"><b>OP ${esc(x.op)}</b><span class="cot-d" style="margin:0">${fmtN(x.os.length)} OC · ${x.os.map(o => `${esc(o.num)} <b style="color:${rqEstOC(o).c}">${esc(rqEstOC(o).t)}</b>`).join(' · ')}</span></div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm primary" onclick="RQ.num='${x.op}';rqCargar()">Ver avance</button></span></div>`; };
+  const porObraC = l => [...grp(l, x => x.obra).entries()].sort((a, b) => nat(a[0], b[0])).map(([o, ops]) => `<div style="margin-top:10px"><div style="font-weight:700;font-size:14px;padding:4px 0;border-bottom:2px solid var(--border)">${esc(o)}</div>${ops.map(filaC).join('')}</div>`).join('');
   const cats = x => [...new Set(x.ocs.map(o => CP_CAT[o.categoria] || o.categoria))].join(' y ');
   const porObra = l => [...grp(l, x => x.obra || 'Sin obra').entries()].sort((a, b) => nat(a[0], b[0])).map(([o, ops]) =>
     `<div style="margin-top:10px"><div style="font-weight:700;font-size:14px;padding:4px 0;border-bottom:2px solid var(--border)">${esc(o)} <span class="cot-d" style="display:inline;font-weight:400">· ${fmtN(ops.length)} OP · ${fmtN(ops.reduce((a, x) => a + x.sin, 0))} unidades sin ensamblar</span></div>${ops.map(fila).join('')}</div>`).join('');
@@ -2989,8 +2999,11 @@ function rqPendHTML(){
     <span style="display:flex;gap:6px;flex-wrap:wrap">${x.pdf ? `<button class="btn sm ${x.ocs.length || x.marca ? '' : 'primary'}" onclick="RQ.num='${x.op}';rqCargar()">Armar</button>` : ''}
       ${x.marca ? `<button class="btn sm ghost" onclick="rqMarcar('${x.op}', null)">Quitar marca</button>` : x.ocs.length ? '' : `<button class="btn sm ghost" onclick="rqMarcar('${x.op}', 'hecha')">Ya se pidió</button><button class="btn sm ghost" onclick="rqMarcar('${x.op}', 'no_requiere')">No requiere</button>`}</span></div>`;
   return `<div class="cot-box"><div class="cot-h">OP sin requisición (${fmtN(pend.length)})</div><div class="cot-d">OP con unidades sin ensamblar que aún no tienen orden de compra que las nombre. Al crear la OC desde la requisición, la OP sale de esta lista.</div>
-    ${porObra(pend) || '<div class="cot-d">Todas las OP en producción ya tienen requisición. ✓</div>'}
-    ${listas.length ? `<details style="margin-top:8px"><summary class="cot-d" style="cursor:pointer">Ya pedidas o marcadas (${fmtN(listas.length)})</summary>${porObra(listas)}</details>` : ''}</div>`;
+    ${porObra(pend) || '<div class="cot-d">Todas las OP en producción ya tienen requisición. ✓</div>'}</div>
+    <div class="cot-box"><div class="cot-h">Requisiciones en curso (${fmtN(enCurso.length)})</div><div class="cot-d">OP con órdenes de compra que todavía no han llegado completas. "Ver avance" abre la requisición con el estado de cada proveedor; desde ahí también sale el PDF.</div>
+    ${porObraC(enCurso) || '<div class="cot-d">No hay requisiciones con compras pendientes.</div>'}
+    ${completas.length ? `<details style="margin-top:8px"><summary class="cot-d" style="cursor:pointer">Recibidas completas (${fmtN(completas.length)})</summary>${porObraC(completas)}</details>` : ''}
+    ${listas.length ? `<details style="margin-top:8px"><summary class="cot-d" style="cursor:pointer">Marcadas o pedidas por fuera (${fmtN(listas.length)})</summary>${porObra(listas)}</details>` : ''}</div>`;
 }
 function cpReqHTML(){
   const d = RQ.data;
@@ -3004,9 +3017,12 @@ function cpReqHTML(){
   const prov = new Map(); for(const x of [...d.acc, ...d.vid]){ const k = x.prov || 'Sin proveedor sugerido'; const p = prov.get(k) || {n: 0, c: 0}; p.n++; p.c += x.costo || 0; prov.set(k, p); }
   const tot = [...prov.values()].reduce((a, p) => a + p.c, 0), sinP = [...d.acc, ...d.vid].filter(x => !x.prov).length;
   h += `<div class="summary" style="margin:6px 0 10px"><b>OP ${esc(d.num)}</b> · ${esc(d.obra)} · ${fmtN(d.ops.length)} sub-OP · ${fmtN(d.acc.length)} accesorios · ${fmtN(d.vid.length)} tipo${d.vid.length === 1 ? '' : 's'} de vidrio · estimado <b>${cpCOP(tot)}</b> + IVA${sinP ? ` · <b>${fmtN(sinP)} sin compra anterior</b>` : ''}</div>
-    <div class="cot-box"><div class="cot-h">Por proveedor sugerido</div>${[...prov.entries()].sort((a, b) => b[1].c - a[1].c).map(([k, p]) => { const pv = k === 'Sin proveedor sugerido' ? '' : k, nv = d.vid.filter(v => (v.prov || '') === pv).length, na = d.acc.filter(a => (a.prov || '') === pv).length;
+    <div class="cot-box"><div class="cot-h">Por proveedor · estado de compra</div>${[...prov.entries()].sort((a, b) => b[1].c - a[1].c).map(([k, p]) => { const pv = k === 'Sin proveedor sugerido' ? '' : k, nv = d.vid.filter(v => (v.prov || '') === pv).length, na = d.acc.filter(a => (a.prov || '') === pv).length;
+      const ocsOP = (rqOcsPorOP().get(String(d.num)) || []).filter(o => o.estado !== 'anulada');
+      const bt = (cat, n, lbl) => { if(!n) return ''; const e = rqEstProv(ocsOP, pv, cat), col = {no: 'var(--muted)', ped: 'var(--text)', conf: 'var(--ok)', par: 'var(--ok)', rec: 'var(--ok)'}[e.k];
+        return `<span style="display:inline-flex;gap:6px;align-items:center"><b style="font-size:12px;letter-spacing:.06em;color:${col}">${esc(e.t)}</b>${e.ocs.length ? e.ocs.map(o => `<button class="btn sm ghost" onclick="CP.tab='oc';CP.vista='todas';CP.abierta='${o.num}';CP.q='${o.num}';renderCompras()">${esc(o.num)}</button>`).join('') : `<button class="btn sm" onclick="rqCrearOC(decodeURIComponent('${encodeURIComponent(pv)}'), '${cat}')">Crear OC${lbl}</button>`}</span>`; };
       return `<div class="as-row"><div class="as-n"><b>${esc(k)}</b><span class="cot-d" style="margin:0">${fmtN(p.n)} referencia${p.n === 1 ? '' : 's'} · ${cpCOP(p.c)}</span></div>
-        <span style="display:flex;gap:6px;flex-wrap:wrap">${na ? `<button class="btn sm" onclick="rqCrearOC(decodeURIComponent('${encodeURIComponent(pv)}'), 'accesorios')">Crear OC${nv ? ' accesorios' : ''}</button>` : ''}${nv ? `<button class="btn sm" onclick="rqCrearOC(decodeURIComponent('${encodeURIComponent(pv)}'), 'vidrio')">Crear OC${na ? ' vidrio' : ''}</button>` : ''}</span></div>`; }).join('')}</div>
+        <span style="display:flex;gap:10px;flex-wrap:wrap">${bt('accesorios', na, nv ? ' accesorios' : '')}${bt('vidrio', nv, na ? ' vidrio' : '')}</span></div>`; }).join('')}</div>
     ${d.vid.length ? `<div class="cot-box"><div class="cot-h">Vidrio</div><table class="cp-tbl"><thead><tr><th style="text-align:left">Tipo en la OP</th><th>Piezas</th><th>m² OP</th><th>Láminas</th><th style="text-align:left">Compra sugerida</th><th>Costo</th></tr></thead><tbody>
       ${d.vid.map(v => `<tr><td><b>${esc(v.tipo)}</b><br><small>${esc(v.ops.length > 4 ? v.ops.length + ' sub-OP' : v.ops.join(', '))}</small></td><td style="text-align:center">${fmtN(v.piezas)}</td><td style="text-align:center">${fmtN(v.m2, 1)}</td><td style="text-align:center"><b>${fmtN(v.laminas)}</b><br><small>${esc(v.lamina)} m</small></td>
         <td>${v.prov ? `${esc(v.cdesc)}<br><small>${esc(v.prov)} · ${cpCOP(v.unit)}/m² (${esc(v.num)})</small>` : '<small>Sin compra anterior de este vidrio</small>'}</td><td style="text-align:right">${cpCOP(v.costo)}</td></tr>`).join('')}</tbody></table>
@@ -3016,6 +3032,25 @@ function cpReqHTML(){
         <td style="text-align:center"><b>${fmtN(a.q)}</b> ${a.unidad}${a.unidad === 'm' ? `<br><small>${fmtN(a.cant)} piezas</small>` : ''}</td><td>${a.prov ? esc(a.prov) + `<br><small>${esc(a.num || 'asignado')}</small>` : ''}<button class="btn sm ${a.prov ? 'ghost' : ''}" style="margin-top:2px" onclick="cpArtEditar('accesorios', ${byRefHas(a.ref) ? `decodeURIComponent('${encodeURIComponent(cpRefNorm(a.ref))}')` : 'null'}, {ref: decodeURIComponent('${encodeURIComponent(a.ref)}'), desc: decodeURIComponent('${encodeURIComponent(a.desc || '')}')})">${a.prov ? 'Cambiar' : 'Asignar'}</button></td><td style="text-align:right">${cpCOP(a.unit)}</td><td style="text-align:right">${cpCOP(a.costo)}</td></tr>`).join('') || '<tr><td colspan="5">La OP no trae accesorios HSA.</td></tr>'}</tbody></table></div>`;
   return h;
 }
+// Estado de compra de un proveedor dentro de una OP, según sus OC (no anuladas)
+function rqEstProv(ocs, prov, cat){
+  const l = ocs.filter(o => o.proveedor === prov && (!cat || o.categoria === cat)); if(!prov) return {t: 'SIN PROVEEDOR', k: 'no', ocs: []};
+  if(!l.length) return {t: 'SIN PEDIR', k: 'no', ocs: l};
+  const o = l[0];
+  if(l.every(x => x.estado === 'recibida')) return {t: 'RECIBIDO', k: 'rec', ocs: l};
+  if(l.some(x => ['recibida', 'parcial'].includes(x.estado))) return {t: 'RECIBIDO PARCIAL', k: 'par', ocs: l};
+  if(l.every(x => x.estado === 'borrador')) return {t: 'BORRADOR', k: 'no', ocs: l};
+  const fd = l.map(x => x.fecha_despacho).filter(Boolean).sort()[0];
+  return fd ? {t: 'CONFIRMADO · LLEGA ' + fmtD(fd).slice(0, 5), k: 'conf', ocs: l} : {t: 'PEDIDO' + (o.enviada_en ? ' · ENVIADO ' + fmtD(String(o.enviada_en).slice(0, 10)).slice(0, 5) : ''), k: 'ped', ocs: l};
+}
+// Estado de una OC suelta, para la lista de requisiciones en curso
+function rqEstOC(o){
+  if(o.estado === 'recibida') return {t: 'Recibida', c: 'var(--ok)'};
+  if(o.estado === 'parcial') return {t: 'Recibida en parte', c: 'var(--ok)'};
+  if(o.estado === 'borrador') return {t: 'Borrador', c: 'var(--muted)'};
+  if(o.fecha_despacho) return o.fecha_despacho < today() ? {t: 'Vencida ' + fmtD(o.fecha_despacho).slice(0, 5), c: 'var(--danger)'} : {t: 'Llega ' + fmtD(o.fecha_despacho).slice(0, 5), c: 'var(--text)'};
+  return {t: o.enviada_en ? 'Sin fecha' : 'Sin enviar', c: '#b7791f'};
+}
 // PDF de la requisición (formato Elíptica): resumen de la OP, avance de compra y detalle por proveedor, sin precios
 function rqPDF(){
   const d = RQ.data; if(!d) return;
@@ -3023,15 +3058,7 @@ function rqPDF(){
   const und = (S.activos || []).filter(i => opNum(i.op) === String(d.num)).length;
   const lineas = [...d.vid.map(v => ({prov: v.prov, cat: 'vidrio', ref: v.tipo, desc: (v.cdesc ? v.cdesc + ' · ' : '') + 'lámina ' + v.lamina + ' m · ' + fmtN(v.m2, 1) + ' m² en la OP', und: 'lám.', q: v.laminas})),
     ...d.acc.map(a => ({prov: a.prov, cat: 'accesorios', ref: a.ref, desc: a.desc || a.cdesc || '', und: a.unidad, q: a.q, pzs: a.unidad === 'm' ? a.cant : null}))];
-  const est = (prov, cat) => { const l = ocs.filter(o => o.proveedor === prov && (!cat || o.categoria === cat)); if(!prov) return {t: 'SIN PROVEEDOR', k: 'no', ocs: []};
-    if(!l.length) return {t: 'SIN PEDIR', k: 'no', ocs: l};
-    const o = l[0];
-    if(l.every(x => x.estado === 'recibida')) return {t: 'RECIBIDO', k: 'rec', ocs: l};
-    if(l.some(x => ['recibida', 'parcial'].includes(x.estado))) return {t: 'RECIBIDO PARCIAL', k: 'par', ocs: l};
-    if(l.every(x => x.estado === 'borrador')) return {t: 'BORRADOR', k: 'no', ocs: l};
-    const fd = l.map(x => x.fecha_despacho).filter(Boolean).sort()[0];
-    return fd ? {t: 'CONFIRMADO · LLEGA ' + fmtD(fd).slice(0, 5), k: 'conf', ocs: l} : {t: 'PEDIDO' + (o.enviada_en ? ' · ENVIADO ' + fmtD(String(o.enviada_en).slice(0, 10)).slice(0, 5) : ''), k: 'ped', ocs: l};
-  };
+  const est = (prov, cat) => rqEstProv(ocs, prov, cat);
   const grupos = [...grp(lineas, x => (x.prov || '') + '|' + x.cat).entries()].map(([k, l]) => ({prov: l[0].prov, cat: l[0].cat, l, e: est(l[0].prov, l[0].cat)}))
     .sort((a, b) => !a.prov - !b.prov || b.l.length - a.l.length || nat(a.prov, b.prov));
   const nL = lineas.length, pct = f => nL ? Math.round(grupos.filter(f).reduce((a, g) => a + g.l.length, 0) / nL * 100) : 0;
