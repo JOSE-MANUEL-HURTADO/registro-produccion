@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.91';
+const APP_VERSION = '7.92';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2200,7 +2200,7 @@ function moCalcular(D, obra){
     for(const q of p.artCrew[g.estacion] || []) claim(q, d, 'art', artKey(pz), m2); }
   for(const a of D.asis){
     // Asistencia "en obra": si el motivo es una obra, ese día es de la obra
-    if(a.tipo === 'ensamble' && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
+    if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
       if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
     // Cargue de camión: horas fijas para la obra del camión
     if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas);
@@ -2536,6 +2536,7 @@ async function moMuertoVer(desde, hasta){
     if(!S.personas) await cargarPersonas();
     const sumar = (n, r) => { if(dia(n, desde)) P[moPersona(n).k].roles.add(r); };
     personas('ens').filter(n => !MO_NOPERS.test(n)).forEach(n => sumar(n, 'Ensamble'));
+    personas('inst').filter(n => !MO_NOPERS.test(n) && !/[\/-]| Y /.test(n)).forEach(n => sumar(n, 'Instalación'));
     Object.entries(AS_OPER).forEach(([k, n]) => sumar(n, (MO_PROC.find(x => x[0] === k) || [, k])[1]));
     Object.entries(p.artCrew).forEach(([k, l]) => l.forEach(n => sumar(n, 'Ártica')));
     for(const k of Object.keys(P)) P[k].d = {};
@@ -2550,7 +2551,7 @@ async function moMuertoVer(desde, hasta){
       const d = moDiaEn(i.prealistado_en), e = i.ensamblador || i.ens_asignado; if(d && e){ const x = dia(e, d); if(x) x.extra += 0.5; } }
     for(const g of art){ const d = moDiaEn(g.creado); for(const q of p.artCrew[g.estacion] || []){ const x = dia(q, d); if(x) x.todo = true; } }
     for(const a of asis){ if(a.tipo === 'cargue'){ const x = dia(String(a.clave).split('|')[0], a.fecha); if(x) x.extra += +a.horas || 0; }
-      if(a.tipo === 'ensamble' && a.estado !== 'planta'){ const x = dia(a.clave, a.fecha); if(x){ if(a.estado === 'obra') x.todo = true; else { x.aus = true; x.motivo = a.motivo; } } }
+      if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado !== 'planta'){ const x = dia(a.clave, a.fecha); if(x){ if(a.estado === 'obra') x.todo = true; else { x.aus = true; x.motivo = a.motivo; } } }
       if(a.tipo === 'proceso' && a.estado === 'sin_operario'){ const op = a.operario || AS_OPER[a.clave]; const x = op && dia(op, a.fecha); if(x){ x.aus = true; x.motivo = a.motivo; } } }
     // Por persona: días laborables del periodo
     const filas = [], porDia = {};
@@ -2753,6 +2754,11 @@ async function asCargar(){
     AS.filas = Object.fromEntries(filas.map(f => [asKey(f.tipo, f.clave), {...f}]));
     const nombres = new Set(ens.filter(n => !/^[AÁ]RTICA$/i.test(n)).map(n => n.toUpperCase()));
     AS.ens = [...nombres].sort(nat);
+    // Instaladores: quienes han instalado desde julio y no son ensambladores (los ensambladores usan "En obra" arriba), más los registrados ese día
+    const NOP = /^(ELIPTICA|ELÍPTICA|OBRA|TODOS|NO IDENTIFICADO|ARTICA|ÁRTICA|SIN NOMBRE)$|[\/-]| Y /;
+    const inst = new Set(personas('inst').filter(n => !NOP.test(n) && !nombres.has(n)));
+    for(const f of filas) if(f.tipo === 'instalacion') inst.add(f.clave);
+    AS.inst = [...inst].sort(nat);
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
     AS.mesaHoy = !!mesa;
     AS.obras = await asObras();
@@ -2760,16 +2766,19 @@ async function asCargar(){
   AS.cargando = false; AS.sucio = false; if(S.view === 'asis') renderAsis();
 }
 function asSet(tipo, clave, campo, v){
-  const k = asKey(tipo, clave); const f = AS.filas[k] = AS.filas[k] || {fecha: AS.fecha, tipo, clave, estado: tipo === 'ensamble' ? 'planta' : 'activo'};
+  const k = asKey(tipo, clave); const f = AS.filas[k] = AS.filas[k] || {fecha: AS.fecha, tipo, clave, estado: tipo === 'ensamble' ? 'planta' : tipo === 'instalacion' ? 'obra' : 'activo'};
   f[campo] = v; f._cambio = true; AS.sucio = true;
   if(campo === 'estado') renderAsis();
 }
+function asInsAgregar(){ const n = normNom($('#asInsN').value); if(!n) return; if(AS.ens.includes(n)) return toast(n + ' es ensamblador: márcalo "En obra" en Ensambladores', true);
+  if(!AS.inst.includes(n)) AS.inst.push(n); asSet('instalacion', n, 'estado', 'obra'); }
 function asTodosPlanta(){ for(const n of AS.ens){ const k = asKey('ensamble', n); if(!AS.filas[k]) asSet('ensamble', n, 'estado', 'planta'); }
   for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]) asSet('proceso', p, 'estado', 'activo'); } renderAsis(); }
 async function asGuardar(){
   const rows = Object.values(AS.filas).filter(f => f._cambio).map(f => ({fecha: AS.fecha, tipo: f.tipo, clave: f.clave, estado: f.estado,
     motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : null}));
   const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
+  const sinOb = rows.find(r => r.estado === 'obra' && !r.motivo); if(sinOb) return toast('Elige la obra de ' + sinOb.clave, true);
   if(!rows.length) return toast('No hay cambios');
   try{ const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'}); if(error) throw error;
     AS._hoy = null; toast(`✓ Asistencia del ${fmtD(AS.fecha)} guardada`); if(AS.fecha === today()) AS.hoyOk = rows.some(r => r.tipo === 'ensamble') || AS.hoyOk; asCargar(); }
@@ -2789,12 +2798,19 @@ function renderAsis(){
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
+    const instF = (AS.inst || []).map(n => { const f = AS.filas[asKey('instalacion', n)] || {}, enc = encodeURIComponent(n);
+      return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${enc}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('instalacion', n, [['obra', 'En obra'], ['planta', 'En planta'], ['ausente', 'Ausente']], f.estado)}
+        ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)`)
+          : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)">`
+          : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
     const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {};
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b></div>${seg('proceso', k, [['activo', 'Con operario'], ['sin_operario', 'Sin operario']], f.estado)}
         <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" oninput="asSet('proceso', '${k}', 'operario', this.value)" style="max-width:180px">
         ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : (() => { const o = f.operario != null && f.operario !== '' ? f.operario : AS_OPER[k]; return o ? asCargueHTML(o) : ''; })()}</div>`; }).join('');
     body = `${AS.mesaHoy && sinMesa.length ? `<div class="warn" style="margin-bottom:12px"><b>${sinMesa.length === 1 ? sinMesa[0] + ' está' : sinMesa.join(', ') + ' están'} en planta sin una OP en mesa.</b> Asígnales trabajo o registra su inicio de ensamble.</div>` : ''}
       <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
+      <div class="cot-box"><div class="cot-h">Instaladores</div><div class="cot-d">En qué obra está cada uno hoy (Bogotá o Ibagué). Ese día se carga al costo de mano de obra de esa obra, aunque no se registren unidades instaladas.</div>${instF || '<div class="empty">No hay instaladores en la lista.</div>'}
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="asInsN" class="as-mot" placeholder="Agregar a alguien que hoy instala (nombre y apellido)" style="max-width:320px"><button class="btn sm" onclick="asInsAgregar()">Agregar</button></div></div>
       <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Si un proceso no tiene operario hoy, márcalo con su motivo: queda como novedad que justifica que ese día no se produjo.</div>${procF}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="asGuardar()">Guardar asistencia</button><button class="btn ghost" onclick="asTodosPlanta()">Marcar los que faltan como en planta / con operario</button></div>`;
   }
