@@ -56,12 +56,14 @@ async function whatsapp(tel: string, o: OC, tipo: string) {
   return { ok: r.ok, motivo: r.ok ? null : (j?.error?.message || String(r.status)) };
 }
 
+// Copia oculta adicional de todos los correos de OC (tabla compras_ajustes, la cambia el director sin volver a publicar la función)
+let copia: string[] = [];
 async function avisar(o: OC, tipo: string, smtp: any, de: string) {
   const { data: p } = await db.from("compras_proveedores").select("email,whatsapp,telefono").eq("nombre", o.proveedor).maybeSingle();
   const para = correos(p?.email), tel = celular(p?.whatsapp || p?.telefono);
   const reg: any = { t: new Date().toISOString(), tipo, correo: null, whatsapp: null };
   const asunto = tipo === "enviar" ? `Orden de compra ${o.num} · Elíptica` : tipo === "fecha" ? `Confirme fecha de despacho · OC ${o.num} · Elíptica` : `OC ${o.num} sin recibir · Elíptica`;
-  if (para.length) { try { await smtp.sendMail({ from: `"Compras Elíptica" <${de}>`, to: para.join(", "), bcc: de, subject: asunto, html: html(o, tipo) }); reg.correo = para.join(", "); } catch (e) { reg.correo_error = String(e?.message || e); } }
+  if (para.length) { try { await smtp.sendMail({ from: `"Compras Elíptica" <${de}>`, to: para.join(", "), bcc: [de, ...copia].join(", "), subject: asunto, html: html(o, tipo) }); reg.correo = para.join(", "); } catch (e) { reg.correo_error = String(e?.message || e); } }
   else reg.correo_error = "El proveedor no tiene correo";
   if (tel) { const w = await whatsapp(tel, o, tipo); reg.whatsapp = w.ok ? tel : null; if (!w.ok) reg.whatsapp_error = w.motivo; } else reg.whatsapp_error = "El proveedor no tiene celular";
   const patch: any = { avisos: [...(o.avisos || []), reg], ultimo_aviso: reg.t };
@@ -77,6 +79,8 @@ Deno.serve(async (req) => {
     const de = Deno.env.get("COMPRAS_GMAIL_USER"), clave = Deno.env.get("COMPRAS_GMAIL_APP_PASSWORD");
     if (!de || !clave) return new Response("Faltan los secretos COMPRAS_GMAIL_USER y COMPRAS_GMAIL_APP_PASSWORD", { status: 500 });
     const smtp = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: de, pass: clave } });
+    const { data: aj } = await db.from("compras_ajustes").select("copia").eq("id", 1).maybeSingle();
+    copia = correos(aj?.copia ?? null);
     const body = await req.json().catch(() => ({}));
     if (body?.modo === "enviar") {
       const { data: o } = await db.from("compras_oc").select("*").eq("id", body.id).single();
