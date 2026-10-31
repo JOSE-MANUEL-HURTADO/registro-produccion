@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.09';
+const APP_VERSION = '8.10';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2941,13 +2941,15 @@ async function rqMarcar(op, estado){
 function rqPendHTML(){
   const l = rqPendientes(), pend = l.filter(x => !x.ocs.length && !x.marca), listas = l.filter(x => x.ocs.length || x.marca);
   const cats = x => [...new Set(x.ocs.map(o => CP_CAT[o.categoria] || o.categoria))].join(' y ');
-  const fila = x => `<div class="as-row"><div class="as-n"><b>OP ${esc(x.op)}</b> · ${esc(x.obra)}<span class="cot-d" style="margin:0">${fmtN(x.sin)} de ${fmtN(x.u)} unidades sin ensamblar${x.f ? ' · OP del ' + fmtD(x.f) : ''}${!x.pdf ? ' · <b style="color:var(--danger)">falta cargar el PDF</b>' : ''}
+  const porObra = l => [...grp(l, x => x.obra || 'Sin obra').entries()].sort((a, b) => nat(a[0], b[0])).map(([o, ops]) =>
+    `<div style="margin-top:10px"><div style="font-weight:700;font-size:14px;padding:4px 0;border-bottom:2px solid var(--border)">${esc(o)} <span class="cot-d" style="display:inline;font-weight:400">· ${fmtN(ops.length)} OP · ${fmtN(ops.reduce((a, x) => a + x.sin, 0))} unidades sin ensamblar</span></div>${ops.map(fila).join('')}</div>`).join('');
+  const fila = x => `<div class="as-row"><div class="as-n"><b>OP ${esc(x.op)}</b><span class="cot-d" style="margin:0">${fmtN(x.sin)} de ${fmtN(x.u)} unidades sin ensamblar${x.f ? ' · OP del ' + fmtD(x.f) : ''}${!x.pdf ? ' · <b style="color:var(--danger)">falta cargar el PDF</b>' : ''}
       ${x.ocs.length ? `<br>Con OC de ${esc(cats(x))}: ${x.ocs.map(o => esc(o.num)).join(', ')}` : ''}${x.marca ? `<br>Marcada: ${x.marca.estado === 'hecha' ? 'pedida por fuera' : 'no requiere'}` : ''}</span></div>
     <span style="display:flex;gap:6px;flex-wrap:wrap">${x.pdf ? `<button class="btn sm ${x.ocs.length || x.marca ? '' : 'primary'}" onclick="RQ.num='${x.op}';rqCargar()">Armar</button>` : ''}
       ${x.marca ? `<button class="btn sm ghost" onclick="rqMarcar('${x.op}', null)">Quitar marca</button>` : x.ocs.length ? '' : `<button class="btn sm ghost" onclick="rqMarcar('${x.op}', 'hecha')">Ya se pidió</button><button class="btn sm ghost" onclick="rqMarcar('${x.op}', 'no_requiere')">No requiere</button>`}</span></div>`;
   return `<div class="cot-box"><div class="cot-h">OP sin requisición (${fmtN(pend.length)})</div><div class="cot-d">OP con unidades sin ensamblar que aún no tienen orden de compra que las nombre. Al crear la OC desde la requisición, la OP sale de esta lista.</div>
-    ${pend.map(fila).join('') || '<div class="cot-d">Todas las OP en producción ya tienen requisición. ✓</div>'}
-    ${listas.length ? `<details style="margin-top:8px"><summary class="cot-d" style="cursor:pointer">Ya pedidas o marcadas (${fmtN(listas.length)})</summary>${listas.map(fila).join('')}</details>` : ''}</div>`;
+    ${porObra(pend) || '<div class="cot-d">Todas las OP en producción ya tienen requisición. ✓</div>'}
+    ${listas.length ? `<details style="margin-top:8px"><summary class="cot-d" style="cursor:pointer">Ya pedidas o marcadas (${fmtN(listas.length)})</summary>${porObra(listas)}</details>` : ''}</div>`;
 }
 function cpReqHTML(){
   const d = RQ.data;
