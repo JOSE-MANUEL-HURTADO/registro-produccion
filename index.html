@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.07';
+const APP_VERSION = '8.08';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2654,7 +2654,9 @@ async function cpCargar(){
   CP.err = null; renderCompras();
   try{ const [o, p, c] = await Promise.all([API.all(x => API.sb.from('compras_oc').select('*', x).order('fecha', {ascending: false, nullsFirst: false}).order('num', {ascending: false})), API.sb.from('compras_proveedores').select('*').order('nombre').then(r => { if(r.error) throw r.error; return r.data || []; }),
       API.all(x => API.sb.from('compras_catalogo').select('*', x).order('id')).catch(() => [])]);
-    CP.oc = o; CP.prov = p; CP.man = c; }
+    CP.oc = o; CP.prov = p; CP.man = c;
+    const r = await API.sb.from('compras_req').select('*'); CP.req = new Map((r.data || []).map(x => [x.op, x]));
+    if(!(S.activos || []).length) await loadActivos().catch(() => {}); if(!S.ordenes) await loadOrdenes(); }
   catch(e){ CP.err = /compras_|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar compras en la base (SQL 108)' : errMsg(e); CP.oc = []; CP.prov = []; }
   if(S.view === 'compras') renderCompras();
 }
@@ -2915,15 +2917,47 @@ async function rqCargar(){
   }catch(e){ RQ.err = /not found|Object not found|404/i.test(errMsg(e)) ? 'No encontré el PDF de la OP ' + num + ' (cárgalo en Cargar datos → Órdenes PDF)' : errMsg(e); }
   RQ.cargando = false; renderCompras();
 }
+// OP a las que falta armar requisición: OP con unidades aún sin ensamblar, sin OC que las nombre ("OP 6298") ni marca manual
+function rqOcsPorOP(){
+  const m = new Map();
+  for(const o of CP.oc || []){ if(o.estado === 'anulada') continue;
+    const t = String(o.obra || '') + ' ' + JSON.stringify(o.lineas || []);
+    for(const x of t.matchAll(/\bO\.?\s?P\.?\s*[#:N°º.]*\s*(\d{4})(?!\d)/gi)){ const a = m.get(x[1]) || []; if(!a.includes(o)) a.push(o); m.set(x[1], a); } }
+  return m;
+}
+function rqPendientes(){
+  const g = new Map();
+  for(const i of S.activos || []){ const n = opNum(i.op); if(!n || i.despachado) continue; const x = g.get(n) || {op: n, obras: new Set(), u: 0, sin: 0, f: null}; x.u++;
+    if(!i.dia_final) x.sin++; if(i.obra) x.obras.add(i.obra); if(i.fecha_op && (!x.f || i.fecha_op < x.f)) x.f = i.fecha_op; g.set(n, x); }
+  const ocs = rqOcsPorOP(), req = CP.req || new Map();
+  return [...g.values()].filter(x => x.sin > 0).map(x => ({...x, obra: [...x.obras].join(', '), ocs: ocs.get(x.op) || [], marca: req.get(x.op) || null, pdf: !S.ordenes || S.ordenes.has(x.op)}))
+    .sort((a, b) => nat(b.op, a.op));
+}
+async function rqMarcar(op, estado){
+  if(estado){ const {error} = await API.sb.from('compras_req').upsert({op, estado}); if(error) return toast(/compras_req|PGRST205|42P01/.test(errMsg(error) + (error.code || '')) ? 'Falta activar en la base (SQL 112)' : errMsg(error), true); CP.req.set(op, {op, estado}); }
+  else { const {error} = await API.sb.from('compras_req').delete().eq('op', op); if(error) return toast(errMsg(error), true); CP.req.delete(op); }
+  renderCompras();
+}
+function rqPendHTML(){
+  const l = rqPendientes(), pend = l.filter(x => !x.ocs.length && !x.marca), listas = l.filter(x => x.ocs.length || x.marca);
+  const cats = x => [...new Set(x.ocs.map(o => CP_CAT[o.categoria] || o.categoria))].join(' y ');
+  const fila = x => `<div class="as-row"><div class="as-n"><b>OP ${esc(x.op)}</b> · ${esc(x.obra)}<span class="cot-d" style="margin:0">${fmtN(x.sin)} de ${fmtN(x.u)} unidades sin ensamblar${x.f ? ' · OP del ' + fmtD(x.f) : ''}${!x.pdf ? ' · <b style="color:var(--danger)">falta cargar el PDF</b>' : ''}
+      ${x.ocs.length ? `<br>Con OC de ${esc(cats(x))}: ${x.ocs.map(o => esc(o.num)).join(', ')}` : ''}${x.marca ? `<br>Marcada: ${x.marca.estado === 'hecha' ? 'pedida por fuera' : 'no requiere'}` : ''}</span></div>
+    <span style="display:flex;gap:6px;flex-wrap:wrap">${x.pdf ? `<button class="btn sm ${x.ocs.length || x.marca ? '' : 'primary'}" onclick="RQ.num='${x.op}';rqCargar()">Armar</button>` : ''}
+      ${x.marca ? `<button class="btn sm ghost" onclick="rqMarcar('${x.op}', null)">Quitar marca</button>` : x.ocs.length ? '' : `<button class="btn sm ghost" onclick="rqMarcar('${x.op}', 'hecha')">Ya se pidió</button><button class="btn sm ghost" onclick="rqMarcar('${x.op}', 'no_requiere')">No requiere</button>`}</span></div>`;
+  return `<div class="cot-box"><div class="cot-h">OP sin requisición (${fmtN(pend.length)})</div><div class="cot-d">OP con unidades sin ensamblar que aún no tienen orden de compra que las nombre. Al crear la OC desde la requisición, la OP sale de esta lista.</div>
+    ${pend.map(fila).join('') || '<div class="cot-d">Todas las OP en producción ya tienen requisición. ✓</div>'}
+    ${listas.length ? `<details style="margin-top:8px"><summary class="cot-d" style="cursor:pointer">Ya pedidas o marcadas (${fmtN(listas.length)})</summary>${listas.map(fila).join('')}</details>` : ''}</div>`;
+}
 function cpReqHTML(){
   const d = RQ.data;
   let h = `<div class="cot-box"><div class="cot-h">Requisición de materiales por OP</div><div class="cot-d">Lee el PDF de la OP (todas sus sub-OP) y arma lo que hay que pedir: accesorios y vidrio en láminas. El aluminio no entra: se pide con la cotización. Proveedor y precio sugeridos = la última compra de esa referencia.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px"><div class="field" style="margin:0"><span class="lbl">OP</span><input id="rqN" value="${esc(RQ.num)}" placeholder="Ej. 6291" inputmode="numeric" style="max-width:140px" onkeydown="if(event.key==='Enter')rqCargar()"></div>
       <div class="field" style="margin:0"><span class="lbl">Desperdicio vidrio %</span><input type="number" value="${RQ.desp}" min="0" max="50" style="max-width:100px" onchange="RQ.desp=+this.value||0;if(RQ.data)rqCargar()"></div>
-      <button class="btn primary" onclick="rqCargar()">Armar requisición</button>${d ? `<button class="btn" onclick="rqPDF()">${ICON.down} PDF</button>` : ''}</div></div>`;
+      <button class="btn primary" onclick="rqCargar()">Armar requisición</button>${d ? `<button class="btn" onclick="rqPDF()">${ICON.down} PDF</button><button class="btn ghost" onclick="RQ.data=null;RQ.num='';renderCompras()">Ver OP pendientes</button>` : ''}</div></div>`;
   if(RQ.cargando) return h + '<div class="loading"><div class="spin"></div>Leyendo la OP…</div>';
-  if(RQ.err) return h + `<div class="warn">${esc(RQ.err)}</div>`;
-  if(!d) return h;
+  if(RQ.err) return h + `<div class="warn">${esc(RQ.err)}</div>` + rqPendHTML();
+  if(!d) return h + rqPendHTML();
   const prov = new Map(); for(const x of [...d.acc, ...d.vid]){ const k = x.prov || 'Sin proveedor sugerido'; const p = prov.get(k) || {n: 0, c: 0}; p.n++; p.c += x.costo || 0; prov.set(k, p); }
   const tot = [...prov.values()].reduce((a, p) => a + p.c, 0), sinP = [...d.acc, ...d.vid].filter(x => !x.prov).length;
   h += `<div class="summary" style="margin:6px 0 10px"><b>OP ${esc(d.num)}</b> · ${esc(d.obra)} · ${fmtN(d.ops.length)} sub-OP · ${fmtN(d.acc.length)} accesorios · ${fmtN(d.vid.length)} tipo${d.vid.length === 1 ? '' : 's'} de vidrio · estimado <b>${cpCOP(tot)}</b> + IVA${sinP ? ` · <b>${fmtN(sinP)} sin compra anterior</b>` : ''}</div>
