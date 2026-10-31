@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.16';
+const APP_VERSION = '8.17';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1176,7 +1176,7 @@ function shell(inner){
       ${S.view === 'artica' ? '' : puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       ${isGerente() ? `<button class="btn sm ${S.view === 'prod' ? 'primary' : ''}" title="Productividad de planta: procesos, ensambles y Ártica por día" onclick="goProd()">${ICON.chart}<span class="hide-sm">Productividad</span></button>` : ''}
       ${isGerente() ? `<button class="btn sm ${S.view === 'compras' ? 'primary' : ''}" title="Órdenes de compra, proveedores y precios" onclick="goCompras()">🛒<span class="hide-sm">Compras</span></button>` : ''}
-      ${isGerente() || rolEs('cotizaciones') ? `<button class="btn sm ${S.view === 'cot' ? 'primary' : ''}" title="Cotizador: diseños, despiece y precio" onclick="cotAbrir()">📐<span class="hide-sm">Cotizador</span></button>` : ''}
+      ${isGerente() || rolEs('cotizaciones') ? `<button class="btn sm ${S.view === 'cot' ? 'primary' : ''}" title="Cotizador: diseños, despiece y precio" onclick="eliCotAbrir()">📐<span class="hide-sm">Cotizador</span></button>` : ''}
       ${veDash() && S.view !== 'artica' ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
       ${isGerente() && S.view !== 'artica' ? `
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
@@ -2679,7 +2679,7 @@ function moMuertoHTML(R){
 const CP = {tab: 'req', oc: null, prov: null, err: null, cat: '', q: '', abierta: null};
 const CP_CAT = {aluminio: 'Aluminio', vidrio: 'Vidrio', accesorios: 'Accesorios'};
 // Cotizador: módulo aparte (cotizador.js) que se carga la primera vez que se abre
-async function cotAbrir(volver){
+async function eliCotAbrir(volver){
   if(!(isGerente() || rolEs('cotizaciones'))) return;
   if(!window.goCot){ try{ await loadScript('cotizador.js?v=' + APP_VERSION); }catch(e){ return toast(errMsg(e), true); } }
   if(volver){ S.view = 'cot'; aplicarEmpresa(); if(window.CT && CT.cargado) renderCot(); else goCot(); return; }
@@ -5488,7 +5488,7 @@ function onPop(ev){
   if(st.v === 'carga'){ S.view='carga'; renderCarga(); return; }
   if(st.v === 'prod' && isGerente()){ S.view = 'prod'; aplicarEmpresa(); prodCargar(); return; }
   if(st.v === 'compras' && isGerente()){ S.view = 'compras'; aplicarEmpresa(); renderCompras(); return; }
-  if(st.v === 'cot' && (isGerente() || rolEs('cotizaciones'))){ cotAbrir(true); return; }
+  if(st.v === 'cot' && (isGerente() || rolEs('cotizaciones'))){ eliCotAbrir(true); return; }
   if(st.v === 'mo' && isGerente()){ S.view = 'mo'; aplicarEmpresa(); moCfgCargar(); return; }
   if(st.v === 'asis' && puedeRegistrar()){ S.view = 'asis'; aplicarEmpresa(); asCargar(); return; }
   if(st.v === 'obra') openObra(st.obra, true, st.anio, st.pf || undefined);
