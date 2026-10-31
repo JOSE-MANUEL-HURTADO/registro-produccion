@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.10';
+const APP_VERSION = '8.11';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2734,7 +2734,7 @@ function cpProvEditar(id, desdeArt){
     });
 }
 function renderCompras(){
-  const tabs = [['req', 'Requisición por OP'], ['oc', 'Órdenes de compra'], ['cat', 'Catálogo y precios'], ['prov', 'Proveedores'], ['imp', 'Importar Excel']];
+  const tabs = [['req', 'Requisición por OP'], ['oc', 'Órdenes de compra' + ((CP.oc || []).filter(cpPend).length ? ` (${(CP.oc || []).filter(cpPend).length} por llegar)` : '')], ['cat', 'Catálogo y precios'], ['prov', 'Proveedores'], ['imp', 'Importar Excel']];
   let body;
   if(CP.err) body = `<div class="warn">${esc(CP.err)}</div>`;
   else if(!CP.oc) body = '<div class="loading"><div class="spin"></div>Cargando compras</div>';
@@ -2747,13 +2747,26 @@ function renderCompras(){
   const i = $('#cpQ'); if(i) i.oninput = () => { CP.q = i.value; const p = i.selectionStart; renderCompras(); const j = $('#cpQ'); if(j){ j.focus(); j.setSelectionRange(p, p); } };
 }
 const cpMatch = (...v) => { const q = normH(CP.q || '').replace(/\s/g, ''); return !q || v.some(x => x && normH(String(x)).replace(/\s/g, '').includes(q)); };
+// Vista de órdenes: pendientes por llegar (enviadas o recibidas en parte), borradores o todas
+const cpPend = o => ['enviada', 'parcial'].includes(o.estado);
+function cpOcSem(o){ // semáforo de la OC pendiente: 0 vencida, 1 sin fecha, 2 con fecha
+  if(!cpPend(o)) return null;
+  if(o.fecha_despacho && o.fecha_despacho < today()) return {n: 0, t: 'Vencida: debía despacharse el ' + fmtD(o.fecha_despacho), c: 'var(--danger)'};
+  if(!o.fecha_despacho) return {n: 1, t: o.enviada_en ? 'Sin fecha de despacho (enviada hace ' + fmtN(Math.floor((Date.now() - new Date(o.enviada_en)) / 864e5)) + ' d)' : 'Sin enviar al proveedor', c: '#b7791f'};
+  return {n: 2, t: (o.fecha_despacho === today() ? 'Despacha hoy' : 'Despacha el ' + fmtD(o.fecha_despacho)), c: 'var(--ok, #2f855a)'};
+}
 function cpOcHTML(){
-  const l = CP.oc.filter(o => (!CP.cat || o.categoria === CP.cat) && cpMatch(o.num, o.proveedor, o.obra, ...(o.lineas || []).map(x => (x.ref || '') + ' ' + (x.desc || ''))));
+  const vista = CP.vista || 'pend', base = CP.oc.filter(o => o.estado !== 'historica' || vista === 'todas');
+  const nP = CP.oc.filter(cpPend).length, nB = CP.oc.filter(o => o.estado === 'borrador').length;
+  const chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${[['pend', `Pendientes por llegar (${fmtN(nP)})`], ['borr', `Borradores (${fmtN(nB)})`], ['todas', 'Todas']].map(([k, n]) => `<button class="btn sm ${vista === k ? 'primary' : 'ghost'}" onclick="CP.vista='${k}';renderCompras()">${n}</button>`).join('')}</div>`;
+  let l = base.filter(o => (vista === 'pend' ? cpPend(o) : vista === 'borr' ? o.estado === 'borrador' : true) && (!CP.cat || o.categoria === CP.cat) && cpMatch(o.num, o.proveedor, o.obra, ...(o.lineas || []).map(x => (x.ref || '') + ' ' + (x.desc || ''))));
+  if(vista === 'pend') l = l.sort((a, b) => cpOcSem(a).n - cpOcSem(b).n || String(a.fecha_despacho || '').localeCompare(String(b.fecha_despacho || '')) || nat(a.num, b.num));
   const tot = l.reduce((a, o) => a + (+o.total || 0), 0);
-  return `<div style="margin-bottom:8px"><button class="btn primary" onclick="cpOcEditar()">+ Nueva orden de compra</button></div><div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} órdenes · ${cpCOP(tot)} con IVA</div>
+  return `<div style="margin-bottom:8px"><button class="btn primary" onclick="cpOcEditar()">+ Nueva orden de compra</button></div>${chips}<div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} órdenes · ${cpCOP(tot)} con IVA${vista === 'pend' ? ' · primero las vencidas y las que no tienen fecha de despacho' : ''}</div>
+    ${!l.length ? `<div class="empty">${vista === 'pend' ? 'No hay órdenes enviadas pendientes por llegar.' : vista === 'borr' ? 'No hay borradores.' : 'No hay órdenes.'}</div>` : ''}
     <div class="art-ops">${l.slice(0, 300).map(o => { const ab = CP.abierta === o.num;
       return `<div class="art-op"><button class="art-lote" style="width:100%;text-align:left;cursor:pointer" onclick="CP.abierta=${ab ? 'null' : `'${o.num}'`};renderCompras()">
-        <div><b>${esc(o.num)} · ${esc(o.proveedor || '')}</b><span>${o.estado !== 'historica' ? `<b>${esc(CP_EST[o.estado] || o.estado)}</b> · ` : ''}${o.fecha ? fmtD(o.fecha) : 'sin fecha'} · ${CP_CAT[o.categoria]} · ${fmtN((o.lineas || []).length)} línea${(o.lineas || []).length === 1 ? '' : 's'}${o.obra ? ' · ' + esc(o.obra) : ''}</span></div><b>${cpCOP(o.total)}</b></button>
+        <div><b>${esc(o.num)} · ${esc(o.proveedor || '')}</b><span>${o.estado !== 'historica' ? `<b>${esc(CP_EST[o.estado] || o.estado)}</b> · ` : ''}${o.fecha ? fmtD(o.fecha) : 'sin fecha'} · ${CP_CAT[o.categoria]} · ${fmtN((o.lineas || []).length)} línea${(o.lineas || []).length === 1 ? '' : 's'}${o.obra ? ' · ' + esc(o.obra) : ''}</span>${cpOcSem(o) ? `<span style="color:${cpOcSem(o).c};font-weight:700">${esc(cpOcSem(o).t)}</span>` : ''}</div><b>${cpCOP(o.total)}</b></button>
         ${ab ? `<div style="padding:6px 12px 10px;font-size:13px">${(o.lineas || []).map(x => `<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:4px 0"><span>${esc([x.ref, x.desc].filter(Boolean).join(' · '))}${x.acab ? ' · ' + esc(x.acab) : ''}${x.ancho ? ` · lámina ${x.ancho} × ${x.alto}` : ''}${x.obra ? ' · ' + esc(x.obra) : ''}</span><span style="white-space:nowrap">${fmtN(x.cant || 0)}${x.m2 ? ' (' + fmtN(x.m2, 1) + ' m²)' : ''} × ${cpCOP(x.unit)}${o.categoria === 'vidrio' ? '/m²' : ''} = <b>${cpCOP(x.total)}</b></span></div>`).join('') || '<div class="empty">Sin líneas</div>'}
           ${o.notas ? `<div class="sc-note">${esc(o.notas)}</div>` : ''}${o.origen === 'app' ? cpOcSeguimiento(o) : ''}
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm" onclick="cpOcPDF('${o.num}')">${ICON.down} PDF</button>
