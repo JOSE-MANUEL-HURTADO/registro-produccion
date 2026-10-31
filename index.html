@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.02';
+const APP_VERSION = '8.03';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2647,7 +2647,7 @@ function moMuertoHTML(R){
 //  COMPRAS (SQL 108 · solo el director por ahora): órdenes de compra, proveedores y catálogo con último precio
 //  El historial se importa de los Excel de compras (ALUMINIO / VIDRIO / ACCESORIOS 2026: una hoja por OC).
 // ════════════════════════════════════════════════════════════════
-const CP = {tab: 'oc', oc: null, prov: null, err: null, cat: '', q: '', abierta: null};
+const CP = {tab: 'req', oc: null, prov: null, err: null, cat: '', q: '', abierta: null};
 const CP_CAT = {aluminio: 'Aluminio', vidrio: 'Vidrio', accesorios: 'Accesorios'};
 function goCompras(){ if(!isGerente()) return; if(S.view !== 'compras') history.pushState({v: 'compras'}, ''); S.view = 'compras'; aplicarEmpresa(); window.scrollTo(0, 0); cpCargar(); }
 async function cpCargar(){
@@ -2666,22 +2666,22 @@ function cpCatalogo(){
     for(const l of o.lineas || []){ const k = o.categoria + '|' + cpRefK(l); if(!cpRefK(l)) continue;
       const x = m.get(k) || {cat: o.categoria, ref: l.ref || '', desc: l.desc || '', n: 0, cant: 0, provs: new Set()};
       x.n++; x.cant += +l.cant || 0; x.provs.add(o.proveedor);
-      if(l.unit > 0){ x.unit = l.unit; x.prov = o.proveedor; x.fecha = o.fecha; x.num = o.num; x.acab = l.acab || x.acab; if(o.categoria === 'vidrio') x.lam = l.ancho && l.alto ? `${l.ancho} × ${l.alto}` : x.lam; }
+      if(l.unit > 0 || !x.prov){ if(l.unit > 0) x.unit = l.unit; x.prov = o.proveedor; x.fecha = o.fecha; x.num = o.num; x.acab = l.acab || x.acab; if(o.categoria === 'vidrio') x.lam = l.ancho && l.alto ? `${l.ancho} × ${l.alto}` : x.lam; }
       if(l.desc && !x.desc) x.desc = l.desc;
       m.set(k, x); } }
   return [...m.values()];
 }
 function renderCompras(){
-  const tabs = [['oc', 'Órdenes de compra'], ['cat', 'Catálogo y precios'], ['prov', 'Proveedores'], ['imp', 'Importar Excel']];
+  const tabs = [['req', 'Requisición por OP'], ['oc', 'Órdenes de compra'], ['cat', 'Catálogo y precios'], ['prov', 'Proveedores'], ['imp', 'Importar Excel']];
   let body;
   if(CP.err) body = `<div class="warn">${esc(CP.err)}</div>`;
   else if(!CP.oc) body = '<div class="loading"><div class="spin"></div>Cargando compras</div>';
-  else body = CP.tab === 'cat' ? cpCatHTML() : CP.tab === 'prov' ? cpProvHTML() : CP.tab === 'imp' ? cpImpHTML() : cpOcHTML();
+  else body = CP.tab === 'req' ? cpReqHTML() : CP.tab === 'cat' ? cpCatHTML() : CP.tab === 'prov' ? cpProvHTML() : CP.tab === 'imp' ? cpImpHTML() : cpOcHTML();
   const q = `<div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><div class="search">${ICON.search}<input id="cpQ" placeholder="Buscar referencia, proveedor, obra, número…" value="${esc(CP.q)}"></div>
     <select onchange="CP.cat=this.value;renderCompras()"><option value="">Todo</option>${Object.entries(CP_CAT).map(([k, n]) => `<option value="${k}" ${CP.cat === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>`;
   $('#app').innerHTML = shell(`<div class="tabs">${tabs.map(([k, n]) => `<button class="tab ${CP.tab === k ? 'on' : ''}" onclick="CP.tab='${k}';renderCompras()">${n}</button>`).join('')}</div>
     <div class="art-head"><div><div class="h1">Compras</div><div class="h1-sub">Aluminio, vidrio y accesorios · solo usted ve precios y proveedores</div></div></div>
-    ${CP.tab !== 'imp' ? q : ''}${body}`);
+    ${!['imp', 'req'].includes(CP.tab) ? q : ''}${body}`);
   const i = $('#cpQ'); if(i) i.oninput = () => { CP.q = i.value; const p = i.selectionStart; renderCompras(); const j = $('#cpQ'); if(j){ j.focus(); j.setSelectionRange(p, p); } };
 }
 const cpMatch = (...v) => { const q = normH(CP.q || '').replace(/\s/g, ''); return !q || v.some(x => x && normH(String(x)).replace(/\s/g, '').includes(q)); };
@@ -2798,6 +2798,81 @@ async function cpImportar(files){
     for(let i = 0; i < filas.length; i += 100){ const {error} = await API.sb.from('compras_oc').upsert(filas.slice(i, i + 100), {onConflict: 'num'}); if(error) throw error; }
     say('✓ Listo'); toast(`✓ ${filas.length} órdenes de compra importadas`); setTimeout(() => { CP.tab = 'oc'; cpCargar(); }, 600);
   }catch(e){ say('Error: ' + errMsg(e)); toast(/compras_|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar compras en la base (SQL 108)' : errMsg(e), true); }
+}
+// ── Requisición de materiales por OP (accesorios HSA y vidrio en láminas; el aluminio se pide con la cotización) ──
+//  Lee el PDF de la OP (todas sus sub-OP), suma los accesorios y el vidrio, y sugiere proveedor y precio con el catálogo de compras.
+const RQ = {num: '', cargando: false, data: null, err: null, desp: 10};
+const cpRefNorm = r => { const s = String(r || '').toUpperCase(); const m = s.match(/\b(HS[A-Z]{1,2})[\s\-_.]*0*(\d+)/); return m ? m[1] + m[2].padStart(3, '0') : s.replace(/[\s\-_.]/g, ''); };
+// Vidrio: rasgos para emparejar el tipo de la OP con lo que se compra (espesor, color, laminado, espejo)
+function cpVidRasgos(t){
+  const s = String(t || '').toUpperCase().replace(/INCOL\.?\b/g, 'INCOLORO').replace(/\s+/g, ' ');
+  const lam = s.match(/(\d+)\s*\+\s*(\d+)/), mm = s.match(/(\d+(?:[.,]\d+)?)\s*MM/);
+  const color = ['ESPEJO', 'BRONCE', 'GRIS', 'AZUL', 'VERDE', 'REFLEC', 'INCOLORO'].find(c => s.includes(c)) || 'INCOLORO';
+  return {lam: lam ? lam[1] + '+' + lam[2] : null, mm: lam ? null : (mm ? mm[1].replace(',', '.') : null), color};
+}
+function cpVidMatch(tipo, cat){
+  const a = cpVidRasgos(tipo); let best = null, bs = -1;
+  for(const x of cat.filter(x => x.cat === 'vidrio' && x.unit > 0)){ const b = cpVidRasgos(x.desc); let sc = 0;
+    if(a.lam ? a.lam === b.lam : (b.lam == null && a.mm && a.mm === b.mm)) sc += 10; else continue;
+    if(a.color === b.color) sc += 5; else if(a.color === 'INCOLORO' || b.color === 'INCOLORO') continue;
+    sc += Math.min(x.n, 5) / 10 + (String(x.fecha || '') > '2026-07' ? .5 : 0);
+    if(sc > bs){ bs = sc; best = x; } }
+  return best;
+}
+const cpLamM2 = lam => { const m = String(lam || '').match(/([\d.]+)\s*×\s*([\d.]+)/); return m ? +m[1] * +m[2] : 3.66 * 2.4; };
+async function rqCargar(){
+  const num = String(($('#rqN') || {}).value || RQ.num || '').trim().replace(/-.*$/, ''); if(!num) return toast('Escribe el número de la OP', true);
+  RQ.num = num; RQ.cargando = true; RQ.err = null; RQ.data = null; renderCompras();
+  try{ await qrLibsPDF(); const b = await API.ordenBajar(num); const r = await leerOPsPDF(new Uint8Array(await b.arrayBuffer()), num + '.pdf');
+    const ops = r.ops.filter(o => !o.tercero); if(!ops.length) throw new Error('El PDF de la OP ' + num + ' no tiene sub-OP de Elíptica');
+    const cat = cpCatalogo(), byRef = new Map(cat.filter(x => x.cat === 'accesorios' && x.ref).map(x => [cpRefNorm(x.ref), x]));
+    // Accesorios: suma por referencia (si traen medida en mm, también los metros)
+    const acc = new Map();
+    for(const o of ops) for(const x of o.accesorios || []){ const k = x.ref; const a = acc.get(k) || {ref: x.ref, desc: x.desc, cant: 0, metros: 0, ops: new Set()};
+      a.cant += +x.cant || 0; if(x.medida) a.metros += (+x.cant || 0) * x.medida / 1000; a.ops.add(o.op); acc.set(k, a); }
+    const accL = [...acc.values()].map(a => { const c = byRef.get(cpRefNorm(a.ref)); const porMetro = c && /METRO/i.test(c.acab || '') && a.metros > 0;
+      const q = porMetro ? Math.ceil(a.metros) : a.cant;
+      return {...a, ops: [...a.ops].sort(nat), unidad: porMetro ? 'm' : 'und', q, prov: c ? c.prov : null, unit: c ? c.unit : null, num: c ? c.num : null, cdesc: c ? c.desc : null, pres: c ? c.acab : null, costo: c && c.unit ? q * c.unit : null}; })
+      .sort((a, b) => nat(a.ref, b.ref));
+    // Vidrio: m² por tipo → láminas con desperdicio
+    const vid = new Map();
+    for(const o of ops) for(const v of o.vidrios || []){ const k = String(v.tipo || '').toUpperCase().trim(); const x = vid.get(k) || {tipo: v.tipo, piezas: 0, m2: 0, ops: new Set()};
+      x.piezas += +v.cant || 0; x.m2 += (+v.cant || 0) * (+v.ancho || 0) * (+v.alto || 0) / 1e6; x.ops.add(o.op); vid.set(k, x); }
+    const vidL = [...vid.values()].map(v => { const c = cpVidMatch(v.tipo, cat), lm2 = cpLamM2(c && c.lam), m2c = v.m2 * (1 + RQ.desp / 100), lam = Math.ceil(m2c / lm2);
+      return {...v, ops: [...v.ops].sort(nat), lamina: (c && c.lam) || '3.66 × 2.4', laminas: lam, m2Compra: lam * lm2, prov: c ? c.prov : null, unit: c ? c.unit : null, cdesc: c ? c.desc : null, num: c ? c.num : null, costo: c ? lam * lm2 * c.unit : null}; });
+    RQ.data = {num, ops: ops.map(o => o.op).sort(nat), obra: ops[0].obra || ops[0].cliente || '', acc: accL, vid: vidL, perfiles: ops.reduce((a, o) => a + (o.perfiles || []).length, 0)};
+  }catch(e){ RQ.err = /not found|Object not found|404/i.test(errMsg(e)) ? 'No encontré el PDF de la OP ' + num + ' (cárgalo en Cargar datos → Órdenes PDF)' : errMsg(e); }
+  RQ.cargando = false; renderCompras();
+}
+function cpReqHTML(){
+  const d = RQ.data;
+  let h = `<div class="cot-box"><div class="cot-h">Requisición de materiales por OP</div><div class="cot-d">Lee el PDF de la OP (todas sus sub-OP) y arma lo que hay que pedir: accesorios y vidrio en láminas. El aluminio no entra: se pide con la cotización. Proveedor y precio sugeridos = la última compra de esa referencia.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px"><div class="field" style="margin:0"><span class="lbl">OP</span><input id="rqN" value="${esc(RQ.num)}" placeholder="Ej. 6291" inputmode="numeric" style="max-width:140px" onkeydown="if(event.key==='Enter')rqCargar()"></div>
+      <div class="field" style="margin:0"><span class="lbl">Desperdicio vidrio %</span><input type="number" value="${RQ.desp}" min="0" max="50" style="max-width:100px" onchange="RQ.desp=+this.value||0;if(RQ.data)rqCargar()"></div>
+      <button class="btn primary" onclick="rqCargar()">Armar requisición</button>${d ? `<button class="btn" onclick="rqPDF()">${ICON.down} PDF</button>` : ''}</div></div>`;
+  if(RQ.cargando) return h + '<div class="loading"><div class="spin"></div>Leyendo la OP…</div>';
+  if(RQ.err) return h + `<div class="warn">${esc(RQ.err)}</div>`;
+  if(!d) return h;
+  const prov = new Map(); for(const x of [...d.acc, ...d.vid]){ const k = x.prov || 'Sin proveedor sugerido'; const p = prov.get(k) || {n: 0, c: 0}; p.n++; p.c += x.costo || 0; prov.set(k, p); }
+  const tot = [...prov.values()].reduce((a, p) => a + p.c, 0), sinP = [...d.acc, ...d.vid].filter(x => !x.prov).length;
+  h += `<div class="summary" style="margin:6px 0 10px"><b>OP ${esc(d.num)}</b> · ${esc(d.obra)} · ${fmtN(d.ops.length)} sub-OP · ${fmtN(d.acc.length)} accesorios · ${fmtN(d.vid.length)} tipo${d.vid.length === 1 ? '' : 's'} de vidrio · estimado <b>${cpCOP(tot)}</b> + IVA${sinP ? ` · <b>${fmtN(sinP)} sin compra anterior</b>` : ''}</div>
+    <div class="cot-box"><div class="cot-h">Por proveedor sugerido</div>${[...prov.entries()].sort((a, b) => b[1].c - a[1].c).map(([k, p]) => `<div class="as-row"><div class="as-n"><b>${esc(k)}</b><span class="cot-d" style="margin:0">${fmtN(p.n)} referencia${p.n === 1 ? '' : 's'}</span></div><b>${cpCOP(p.c)}</b></div>`).join('')}</div>
+    ${d.vid.length ? `<div class="cot-box"><div class="cot-h">Vidrio</div><table class="cp-tbl"><thead><tr><th style="text-align:left">Tipo en la OP</th><th>Piezas</th><th>m² OP</th><th>Láminas</th><th style="text-align:left">Compra sugerida</th><th>Costo</th></tr></thead><tbody>
+      ${d.vid.map(v => `<tr><td><b>${esc(v.tipo)}</b><br><small>${esc(v.ops.length > 4 ? v.ops.length + ' sub-OP' : v.ops.join(', '))}</small></td><td style="text-align:center">${fmtN(v.piezas)}</td><td style="text-align:center">${fmtN(v.m2, 1)}</td><td style="text-align:center"><b>${fmtN(v.laminas)}</b><br><small>${esc(v.lamina)} m</small></td>
+        <td>${v.prov ? `${esc(v.cdesc)}<br><small>${esc(v.prov)} · ${cpCOP(v.unit)}/m² (${esc(v.num)})</small>` : '<small>Sin compra anterior de este vidrio</small>'}</td><td style="text-align:right">${cpCOP(v.costo)}</td></tr>`).join('')}</tbody></table>
+      <div class="cot-d">Láminas = m² de la OP + ${RQ.desp} % de desperdicio ÷ m² de la lámina que se ha comprado de ese vidrio.</div></div>` : ''}
+    <div class="cot-box"><div class="cot-h">Accesorios</div><table class="cp-tbl"><thead><tr><th style="text-align:left">Referencia</th><th>Cantidad</th><th style="text-align:left">Proveedor sugerido</th><th>Precio</th><th>Costo</th></tr></thead><tbody>
+      ${d.acc.map(a => `<tr><td><b>${esc(a.ref)}</b> · ${esc(a.desc || a.cdesc || '')}<br><small>${esc(a.ops.length > 4 ? a.ops.length + ' sub-OP' : a.ops.join(', '))}${a.pres ? ' · se compra en ' + esc(a.pres) : ''}</small></td>
+        <td style="text-align:center"><b>${fmtN(a.q)}</b> ${a.unidad}${a.unidad === 'm' ? `<br><small>${fmtN(a.cant)} piezas</small>` : ''}</td><td>${a.prov ? esc(a.prov) + `<br><small>${esc(a.num)}</small>` : '<small>Sin compra anterior</small>'}</td><td style="text-align:right">${cpCOP(a.unit)}</td><td style="text-align:right">${cpCOP(a.costo)}</td></tr>`).join('') || '<tr><td colspan="5">La OP no trae accesorios HSA.</td></tr>'}</tbody></table></div>`;
+  return h;
+}
+function rqPDF(){
+  const d = RQ.data; if(!d) return;
+  const filas = [...d.vid.map(v => ({g: v.prov || 'SIN PROVEEDOR SUGERIDO', v: ['VIDRIO', v.tipo, fmtN(v.laminas) + ' lám. ' + v.lamina, fmtN(v.m2, 1) + ' m2', v.unit ? cpCOP(v.unit) + '/m2' : '—', cpCOP(v.costo)], c: v.costo || 0})),
+    ...d.acc.map(a => ({g: a.prov || 'SIN PROVEEDOR SUGERIDO', v: [a.ref, a.desc || a.cdesc || '', fmtN(a.q) + ' ' + a.unidad, a.unidad === 'm' ? fmtN(a.cant) + ' pz' : '', a.unit ? cpCOP(a.unit) : '—', cpCOP(a.costo)], c: a.costo || 0}))];
+  const out = []; for(const [g, l] of [...grp(filas, f => f.g).entries()].sort((a, b) => nat(a[0], b[0]))){ out.push({grupo: g + '   ·   ' + cpCOP(l.reduce((s, f) => s + f.c, 0))}); for(const f of l) out.push({v: f.v}); }
+  pdfTabla({titulo: 'REQUISICIÓN DE MATERIALES', sub: 'OP ' + d.num + ' · ' + d.obra + ' · ' + fmtD(today()), info: `${d.ops.length} sub-OP (${d.ops.join(', ')}). Accesorios y vidrio; el aluminio se pide con la cotización. Proveedor y precio sugeridos según la última compra. Vidrio con ${RQ.desp} % de desperdicio.`,
+    cols: [['Ref.', 26, 'l'], ['Descripción', 70, 'l'], ['Pedir', 30, 'r'], ['Detalle', 22, 'r'], ['Precio', 16, 'r'], ['Costo', 22.4, 'r']], filas: out, nombre: 'Requisicion_OP' + d.num + '.pdf', firmas: ['Elaboró', 'Revisó']});
 }
 // ── Informe de productividad de planta (para junta directiva) ──
 function prodDocHTML(){
