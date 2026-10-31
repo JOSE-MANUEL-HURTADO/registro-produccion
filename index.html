@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Registro">
 <meta name="theme-color" content="#181818">
-<title>Registro de Producción</title>
+<title>Elíptica · Sistema de gestión</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/ios-180.png">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/ios-180.png">
@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.15';
+const APP_VERSION = '8.16';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1066,7 +1066,7 @@ function renderLogin(err){
   S.view = 'login';
   $('#app').innerHTML = `
     <div class="login"><div class="login-box">
-      ${brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
+      ${brandHTML('Ártica · Sistema de gestión · v' + APP_VERSION)}
       <form id="loginForm" autocomplete="on">
         <div class="field"><span class="lbl">Correo</span><input id="lgEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="off" required></div>
         <div class="field"><span class="lbl">Contraseña</span><input id="lgPw" type="password" autocomplete="current-password" required></div>
@@ -1168,7 +1168,7 @@ const liveHTML = () => `<span class="live ${S.live?'':'off'}" id="live"><i></i>$
 function shell(inner){
   return `${window.__DEMO__ ? DEMO.bar() : ''}
   <header class="top">
-    ${S.view === 'artica' ? artBrandHTML('Vidrio arquitectónico · v' + APP_VERSION) : brandHTML('Ártica · Registro de producción · v' + APP_VERSION)}
+    ${S.view === 'artica' ? artBrandHTML('Vidrio arquitectónico · v' + APP_VERSION) : brandHTML('Ártica · Sistema de gestión · v' + APP_VERSION)}
     <div class="top-r">
       ${veArtica() ? `<button class="btn sm" title="Cambiar de empresa" onclick="cambiarEmpresa()">${S.view === 'artica' ? 'Elíptica' : 'Ártica'} ⇄</button>` : ''}
       ${S.view === 'artica' && artEscaneaTodo() ? `<button class="btn sm primary" title="Escanear piezas de vidrio en una estación" onclick="goArticaOperario(true)">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
@@ -1426,7 +1426,7 @@ function informeHTML(l, o){
       <h2 class="i-h2t">DETALLE POR ÍTEM</h2>
       <table><thead><tr><th>ÍTEM</th><th>SISTEMA</th><th class="i-c">MEDIDA (MM)</th><th class="i-c">PISOS</th><th class="i-r">UND</th><th class="i-r">M²</th><th>ESTADO DE LAS UNIDADES</th><th class="i-r">${colU}</th></tr></thead><tbody>${itHTML}</tbody></table>
       ${infLey(usadas)}${varias ? '<div class="i-nota">* El ítem tiene varias medidas; se muestra la primera.</div>' : ''}
-      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información tomada del sistema de registro de producción de Elíptica al ${infF(hoy)}.</p></div>
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información tomada del sistema de gestión de Elíptica al ${infF(hoy)}.</p></div>
     </div>
     <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>${esc(S.obra)} · Informe de avance · ${infF(hoy)}</span></div></div>`;
 }
@@ -1750,7 +1750,7 @@ async function cotPDF(){
 async function cotExcelBlob(c){
   await cargarExcelJS();
   const GRAF = 'FF272727', AC = 'FF324549', BLANCO = 'FFFFFFFF', GRIS = 'FFE9EAEA', GRIS2 = 'FFF4F4F4', TXT2 = 'FF8A8A8A', DIN = 'DIN Condensed', FUT = 'Futura';
-  const wb = new ExcelJS.Workbook(); wb.creator = 'Ártica · Registro de producción';
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Elíptica · Sistema de gestión';
   const ws = wb.addWorksheet('COTIZACIÓN', {views: [{showGridLines: false}], pageSetup: {paperSize: 1, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
     margins: {left: .3, right: .3, top: .3, bottom: .4, header: .1, footer: .2}, horizontalCentered: true}});
   ws.columns = [5, 9, 7, 9, 9, 9, 28, 13, 24].map(w => ({width: w}));
@@ -3307,7 +3307,7 @@ function prodDocHTML(){
       <h2>NOVEDADES DEL PERIODO</h2>${tabla([['TIPO'], ['CANTIDAD', 'i-r']], novF, 'Sin novedades en el periodo.')}
       ${(() => { const x = prodAsis(); return `<h2>ASISTENCIA Y PERSONAL</h2><div class="i-nota" style="margin:0 0 2mm">${x.dias ? `Asistencia registrada ${x.dias} de ${dias.length} día(s) · promedio ${fmtN(x.prom, 1)} ensambladores en planta por día.` : 'No se registró asistencia en el periodo.'}</div>
         ${tabla([['FECHA'], ['PERSONA / PROCESO'], ['NOVEDAD'], ['MOTIVO']], x.nov.map(n => `<tr><td>${fmtD(n.d)}</td><td class="i-ref">${esc(n.q)}</td><td>${n.e}</td><td>${esc(n.m)}</td></tr>`).join(''), 'Sin ausencias, salidas a obra ni procesos sin operario.')}`; })()}
-      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información del sistema de registro de producción de Elíptica y Ártica. Comparaciones contra el periodo anterior del mismo número de días.</p></div>
+      <div class="i-firma"><div><b>DIRECCIÓN DE OPERACIONES</b>Elíptica Cerramientos Translúcidos</div><p>Información del sistema de gestión de Elíptica y Ártica. Comparaciones contra el periodo anterior del mismo número de días.</p></div>
     </div></div>`;
 }
 function prodPDF(){
@@ -4110,7 +4110,7 @@ async function artOrdenCortePDF(ps, cantDe, meta){
 async function artExcelPro(ps, cantDe, meta){
   await cargarExcelJS();
   const GRAF = 'FF272727', BLANCO = 'FFFFFFFF', GRIS = 'FFE6E6E6', GRIS2 = 'FFF4F4F4', TXT2 = 'FF6B6B6B', DIN = 'DIN Condensed', FUT = 'Futura';
-  const wb = new ExcelJS.Workbook(); wb.creator = 'Ártica · Registro de producción';
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Elíptica · Sistema de gestión';
   const ws = wb.addWorksheet('OPTIMA', {views: [{showGridLines: false}], pageSetup: {paperSize: 1, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
     margins: {left: .3, right: .3, top: .35, bottom: .45, header: .15, footer: .2}, horizontalCentered: true, printTitlesRow: '10:10'}});
   ws.headerFooter.oddFooter = '&L&"DIN Condensed,Bold"&8ÁRTICA · VIDRIO ARQUITECTÓNICO&C&"Futura"&8Orden de corte · ' + (meta.nombre || '').replace(/&/g, '&&') + '&R&"Futura"&8Hoja &P de &N';
