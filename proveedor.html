@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orden de compra · Elíptica</title>
+<style>
+@font-face{font-family:'DINC';font-weight:400;src:url(fonts/barlow-condensed-latin-400-normal.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:600;src:url(fonts/barlow-condensed-latin-600-normal.woff2) format('woff2')}
+@font-face{font-family:'DINC';font-weight:700;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format('woff2')}
+:root{--g:#272727;--l:#d9d9d9;--m:#8a8a8a}
+*{box-sizing:border-box}body{margin:0;background:#f2f2f2;color:var(--g);font-family:'DINC',Arial,sans-serif;font-size:16px}
+header{background:var(--g);color:#fff;padding:18px 16px}header img{height:28px}header h1{margin:10px 0 0;font-size:24px;letter-spacing:.12em}
+main{max-width:760px;margin:0 auto;padding:16px}.box{background:#fff;border:1px solid var(--l);padding:16px;margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:15px}th{background:var(--g);color:#fff;text-align:left;padding:6px;font-weight:600;letter-spacing:.06em}td{padding:6px;border-bottom:1px solid var(--l);vertical-align:top}.r{text-align:right}
+label{display:block;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--m);margin:10px 0 4px}input,textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--l)}
+button{background:var(--g);color:#fff;border:0;padding:14px 18px;font:inherit;font-weight:700;letter-spacing:.12em;width:100%;margin-top:14px;cursor:pointer}.ok{background:#e6f4ea;border-color:#9ccc9f}.err{color:#b3261e}
+</style></head><body>
+<header><img src="icons/logo_blanco.png" alt="Elíptica"><h1 id="t">ORDEN DE COMPRA</h1></header>
+<main id="m"><div class="box">Cargando…</div></main>
+<script>
+const URL_='https://fnwndrdebndlirmejlgb.supabase.co', KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges', T=new URLSearchParams(location.search).get('t');
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const cop=v=>'$ '+Math.round(+v||0).toLocaleString('es-CO'), fd=d=>d?new Date(d+'T12:00:00').toLocaleDateString('es-CO'):'', esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function rpc(f,b){const r=await fetch(URL_+'/rest/v1/rpc/'+f,{method:'POST',headers:H,body:JSON.stringify(b)});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.message)||r.status);return j;}
+async function ver(){
+  const m=document.getElementById('m');
+  if(!T){m.innerHTML='<div class="box err">Enlace incompleto.</div>';return;}
+  let o; try{o=await rpc('oc_publica',{p_token:T});}catch(e){m.innerHTML='<div class="box err">No se pudo cargar la orden: '+esc(e.message)+'</div>';return;}
+  if(!o){m.innerHTML='<div class="box err">Esta orden de compra no existe o ya fue cerrada.</div>';return;}
+  document.getElementById('t').textContent='ORDEN DE COMPRA '+o.num;
+  const vid=o.categoria==='vidrio';
+  m.innerHTML=`<div class="box"><b>${esc(o.proveedor)}</b><br>Fecha de la orden: ${fd(o.fecha)}${o.obra?'<br>Obra / OP: <b>'+esc(o.obra)+'</b>':''}</div>
+  <div class="box">${o.recibida_en?'<b>Esta orden ya fue recibida. ¡Gracias!</b>':o.fecha_despacho?`<div class="box ok" style="margin:0 0 10px">Fecha de despacho confirmada: <b>${fd(o.fecha_despacho)}</b>${o.despacho_nota?'<br>'+esc(o.despacho_nota):''}<br>Si cambió, actualícela aquí.</div>`:''}
+   ${o.recibida_en?'':`<label>Fecha de despacho</label><input type="date" id="f" value="${o.fecha_despacho||''}" min="${new Date().toLocaleDateString('en-CA')}">
+   <label>Observaciones (opcional)</label><textarea id="n" rows="2" placeholder="Ej. sale por TCC, guía…">${esc(o.despacho_nota||'')}</textarea>
+   <button id="b">CONFIRMAR FECHA DE DESPACHO</button><div id="msg"></div>`}</div>
+  <div class="box"><table><tr><th>Artículo</th><th class="r">Cant.</th><th class="r">${vid?'Valor m²':'V/unit.'}</th><th class="r">V/total</th></tr>
+   ${(o.lineas||[]).map(l=>`<tr><td><b>${esc(l.ref||'')}</b> ${esc(l.desc||'')}${l.acab?' · '+esc(l.acab):''}${vid&&l.ancho?' · lámina '+l.ancho+' × '+l.alto:''}</td><td class="r">${l.cant??''}${vid&&l.m2?' ('+(+l.m2).toFixed(2)+' m²)':''}</td><td class="r">${cop(l.unit)}</td><td class="r">${cop(l.total)}</td></tr>`).join('')}
+   <tr><td colspan="3" class="r">Subtotal</td><td class="r">${cop(o.subtotal)}</td></tr><tr><td colspan="3" class="r">IVA 19 %</td><td class="r">${cop(o.iva)}</td></tr><tr><td colspan="3" class="r"><b>TOTAL</b></td><td class="r"><b>${cop(o.total)}</b></td></tr></table>
+   ${o.notas?'<p><b>Observaciones:</b> '+esc(o.notas)+'</p>':''}
+   <p style="font-size:14px;color:#555">Entregar en Cra 16 Sur No. 67-406 Bodega 6, Zona Industrial El Papayo, Ibagué. Material remisionado. Facturas antes del 25 de cada mes.<br>Compras Elíptica · Cel. 313 387 1747</p></div>`;
+  const b=document.getElementById('b'); if(b) b.onclick=async()=>{const f=document.getElementById('f').value, msg=document.getElementById('msg');
+    if(!f){msg.innerHTML='<p class="err">Elija la fecha de despacho.</p>';return;} b.disabled=true;
+    try{await rpc('oc_confirmar',{p_token:T,p_fecha:f,p_nota:document.getElementById('n').value});msg.innerHTML='<p><b>✓ Gracias. Fecha registrada en la orden de compra.</b></p>';setTimeout(ver,1500);}
+    catch(e){msg.innerHTML='<p class="err">No se pudo registrar: '+esc(e.message)+'</p>';b.disabled=false;}};
+}
+ver();
+</script></body></html>

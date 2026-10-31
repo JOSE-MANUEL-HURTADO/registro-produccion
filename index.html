@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.06';
+const APP_VERSION = '8.07';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2718,12 +2718,13 @@ function cpProvEditar(id, desdeArt){
     <div class="field"><span class="lbl">Nombre / razón social</span><input id="pvN" value="${esc(p.nombre || '')}" ${id ? 'disabled' : ''}></div>
     <div class="fgrid"><div class="field"><span class="lbl">NIT</span><input id="pvT" value="${esc(p.nit || '')}"></div><div class="field"><span class="lbl">Ciudad</span><input id="pvC" value="${esc(p.ciudad || '')}"></div></div>
     <div class="fgrid"><div class="field"><span class="lbl">Teléfono</span><input id="pvF" value="${esc(p.telefono || '')}"></div><div class="field"><span class="lbl">Correo</span><input id="pvE" value="${esc(p.email || '')}" inputmode="email"></div></div>
+    <div class="field"><span class="lbl">WhatsApp de pedidos (celular)</span><input id="pvW" value="${esc(p.whatsapp || '')}" placeholder="Ej. 3101234567" inputmode="tel"></div>
     <div class="fgrid"><div class="field"><span class="lbl">Contacto</span><input id="pvK" value="${esc(p.contacto || '')}"></div><div class="field"><span class="lbl">Dirección</span><input id="pvD" value="${esc(p.direccion || '')}"></div></div>
     <div class="field"><span class="lbl">Qué se le compra</span><div style="display:flex;gap:14px;flex-wrap:wrap">${Object.entries(CP_CAT).map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="pvCat" value="${k}" ${(p.categorias || []).includes(k) ? 'checked' : ''} style="width:18px;height:18px;min-height:0;-webkit-appearance:checkbox;appearance:auto">${n}</label>`).join('')}</div></div>`,
     'Guardar', async () => {
       const nombre = id ? p.nombre : String($('#pvN').value || '').trim().toUpperCase(); if(!nombre){ toast('Escribe el nombre', true); return false; }
       const v = sel => String($(sel).value || '').trim() || null;
-      const fila = {nombre, nit: v('#pvT'), ciudad: v('#pvC'), telefono: v('#pvF'), email: v('#pvE'), contacto: v('#pvK'), direccion: v('#pvD'), categorias: [...document.querySelectorAll('.pvCat:checked')].map(c => c.value), actualizado: new Date().toISOString()};
+      const fila = {nombre, nit: v('#pvT'), ciudad: v('#pvC'), telefono: v('#pvF'), email: v('#pvE'), whatsapp: v('#pvW'), contacto: v('#pvK'), direccion: v('#pvD'), categorias: [...document.querySelectorAll('.pvCat:checked')].map(c => c.value), actualizado: new Date().toISOString()};
       const {data, error} = await API.sb.from('compras_proveedores').upsert(fila, {onConflict: 'nombre'}).select('*'); if(error){ toast(errMsg(error), true); return false; }
       CP.prov = (CP.prov || []).filter(x => x.nombre !== nombre).concat(data || []).sort((a, b) => nat(a.nombre, b.nombre));
       toast('✓ Proveedor ' + nombre + ' guardado');
@@ -2752,8 +2753,9 @@ function cpOcHTML(){
       return `<div class="art-op"><button class="art-lote" style="width:100%;text-align:left;cursor:pointer" onclick="CP.abierta=${ab ? 'null' : `'${o.num}'`};renderCompras()">
         <div><b>${esc(o.num)} · ${esc(o.proveedor || '')}</b><span>${o.estado !== 'historica' ? `<b>${esc(CP_EST[o.estado] || o.estado)}</b> · ` : ''}${o.fecha ? fmtD(o.fecha) : 'sin fecha'} · ${CP_CAT[o.categoria]} · ${fmtN((o.lineas || []).length)} línea${(o.lineas || []).length === 1 ? '' : 's'}${o.obra ? ' · ' + esc(o.obra) : ''}</span></div><b>${cpCOP(o.total)}</b></button>
         ${ab ? `<div style="padding:6px 12px 10px;font-size:13px">${(o.lineas || []).map(x => `<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:4px 0"><span>${esc([x.ref, x.desc].filter(Boolean).join(' · '))}${x.acab ? ' · ' + esc(x.acab) : ''}${x.ancho ? ` · lámina ${x.ancho} × ${x.alto}` : ''}${x.obra ? ' · ' + esc(x.obra) : ''}</span><span style="white-space:nowrap">${fmtN(x.cant || 0)}${x.m2 ? ' (' + fmtN(x.m2, 1) + ' m²)' : ''} × ${cpCOP(x.unit)}${o.categoria === 'vidrio' ? '/m²' : ''} = <b>${cpCOP(x.total)}</b></span></div>`).join('') || '<div class="empty">Sin líneas</div>'}
-          ${o.notas ? `<div class="sc-note">${esc(o.notas)}</div>` : ''}
+          ${o.notas ? `<div class="sc-note">${esc(o.notas)}</div>` : ''}${o.origen === 'app' ? cpOcSeguimiento(o) : ''}
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm" onclick="cpOcPDF('${o.num}')">${ICON.down} PDF</button>
+            ${o.origen === 'app' && ['borrador', 'enviada', 'parcial'].includes(o.estado) ? `<button class="btn sm primary" onclick="cpOcEnviar('${o.num}')">${o.enviada_en ? 'Reenviar' : 'Enviar'} al proveedor</button><button class="btn sm ghost" onclick="cpOcWa('${o.num}')">WhatsApp manual</button>` : ''}
             ${o.origen === 'app' && ['borrador', 'enviada'].includes(o.estado) ? `<button class="btn sm" onclick="cpOcEditar(CP.oc.find(x=>x.num==='${o.num}'))">Editar</button>` : ''}
             <button class="btn sm ghost" onclick="cpOcEditar({...CP.oc.find(x=>x.num==='${o.num}'), id: null, num: null, estado: null, fecha: today(), origen: 'app'})">Duplicar</button>
             ${o.estado !== 'historica' && o.estado !== 'anulada' ? ['enviada', 'parcial', 'recibida'].filter(e => e !== o.estado).map(e => `<button class="btn sm ghost" onclick="cpOcEstado('${o.num}', '${e}')">${CP_EST[e]}</button>`).join('') + `<button class="btn sm ghost" style="color:var(--danger)" onclick="cpOcEstado('${o.num}', 'anulada')">Anular</button>` : ''}</div></div>` : ''}</div>`; }).join('') || '<div class="empty">No hay órdenes de compra. Impórtelas desde los Excel en la pestaña "Importar Excel".</div>'}</div>`;
@@ -2989,7 +2991,7 @@ function cpOcEditHTML(){
         <div style="text-align:right">Subtotal <b>${cpCOP(sub)}</b> · IVA 19 % ${cpCOP(sub * .19)} · <b>Total ${cpCOP(sub * 1.19)}</b></div></div>
       <div class="sc-note">Si un accesorio especial no está en el catálogo, escríbalo igual: queda en esta OC y, si quiere, agréguelo después al catálogo.</div>
       <div class="field" style="margin-top:8px"><span class="lbl">Observaciones para el proveedor</span><input value="${esc(o.notas || '')}" placeholder="Ej. entregar antes del viernes, despacho por TCC…" oninput="OE.o.notas=this.value"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" onclick="oeGuardar('borrador')">Guardar borrador</button><button class="btn primary" onclick="oeGuardar('enviada', true)">Guardar y generar PDF</button></div></div>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" onclick="oeGuardar('borrador')">Guardar borrador</button><button class="btn" onclick="oeGuardar('enviada', true)">Guardar y generar PDF</button><button class="btn primary" onclick="oeGuardar('enviada', false, true)">Guardar y enviar al proveedor</button></div></div>`;
 }
 const oeTot = l => { const o = OE.o; return o.categoria === 'vidrio' ? (+l.m2 || 0) * (+l.unit || 0) : (+l.cant || 0) * (+l.unit || 0); };
 function oeRecalc(k){ const o = OE.o, l = o.lineas[k]; if(o.categoria === 'vidrio' && l.ancho && l.alto) l.m2 = Math.round(l.ancho * l.alto * (+l.cant || 0) * 1000) / 1000; renderCompras(); }
@@ -3001,7 +3003,7 @@ function oeRef(k, v){
     l.acab = l.acab || c.acab || ''; if(!l.unit && c.unit) l.unit = c.unit; if(!o.proveedor && c.prov) o.proveedor = c.prov; }
   oeRecalc(k);
 }
-async function oeGuardar(estado, pdf){
+async function oeGuardar(estado, pdf, enviar){
   const o = OE.o;
   if(!o.proveedor) return toast('Elija el proveedor', true);
   const lineas = o.lineas.filter(l => (l.ref || l.desc) && +l.cant > 0).map(l => ({...l, total: oeTot(l)}));
@@ -3016,12 +3018,39 @@ async function oeGuardar(estado, pdf){
   const g = r.data[0]; CP.oc = [g, ...(CP.oc || []).filter(x => x.id !== g.id)];
   toast(`✓ ${g.num} guardada (${CP_EST[g.estado]})`); OE.o = null; CP.tab = 'oc'; CP.abierta = g.num; renderCompras();
   if(pdf) setTimeout(() => cpOcPDF(g.num), 100);
+  if(enviar) setTimeout(() => cpOcEnviar(g.num), 100);
 }
 async function cpOcEstado(num, est){
   const o = (CP.oc || []).find(x => x.num === num); if(!o) return;
   if(est === 'anulada' && !confirm(`¿Anular la orden de compra ${num}?`)) return;
-  const {error} = await API.sb.from('compras_oc').update({estado: est}).eq('id', o.id); if(error) return toast(errMsg(error), true);
-  o.estado = est; toast(`✓ ${num}: ${CP_EST[est]}`); renderCompras();
+  const patch = {estado: est}; if(est === 'recibida') patch.recibida_en = new Date().toISOString();
+  const {error} = await API.sb.from('compras_oc').update(patch).eq('id', o.id); if(error) return toast(errMsg(error), true);
+  Object.assign(o, patch); toast(`✓ ${num}: ${CP_EST[est]}`); renderCompras();
+}
+// ── Envío al proveedor (correo de compras + WhatsApp) y seguimiento de la fecha de despacho (SQL 111 + función oc_enviar) ──
+const cpLinkProv = o => location.origin + location.pathname.replace(/[^/]*$/, '') + 'proveedor.html?t=' + o.token;
+function cpOcSeguimiento(o){
+  const av = (o.avisos || []).slice(-6).reverse();
+  const tipo = {enviar: 'OC enviada', fecha: 'Pidió fecha de despacho', llegada: 'Preguntó por la llegada', confirmacion: 'Proveedor confirmó'};
+  return `<div class="sc-note" style="margin-top:6px">${o.enviada_en ? `Enviada ${new Date(o.enviada_en).toLocaleString('es-CO', {dateStyle: 'short', timeStyle: 'short'})}` : 'Aún no se ha enviado al proveedor'}
+    ${o.fecha_despacho ? ` · <b>Despacho confirmado: ${fmtD(o.fecha_despacho)}</b>${o.despacho_nota ? ' (' + esc(o.despacho_nota) + ')' : ''}` : o.enviada_en ? ' · <b style="color:var(--danger)">Sin fecha de despacho</b>' : ''}
+    ${o.fecha_despacho && !o.recibida_en && o.fecha_despacho < today() ? ' · <b style="color:var(--danger)">Vencida sin llegada</b>' : ''}${o.recibida_en ? ' · Recibida ' + fmtD(String(o.recibida_en).slice(0, 10)) : ''}
+    ${av.length ? '<br>' + av.map(a => `${new Date(a.t).toLocaleString('es-CO', {dateStyle: 'short', timeStyle: 'short'})} · ${tipo[a.tipo] || a.tipo}${a.correo ? ' · correo ✓' : a.correo_error ? ' · correo ✕ ' + esc(a.correo_error) : ''}${a.whatsapp ? ' · WhatsApp ✓' : a.whatsapp_error ? ' · WhatsApp ✕ ' + esc(a.whatsapp_error) : ''}${a.fecha ? ' · ' + fmtD(a.fecha) : ''}`).join('<br>') : ''}</div>`;
+}
+async function cpOcEnviar(num){
+  const o = (CP.oc || []).find(x => x.num === num); if(!o) return;
+  const p = (CP.prov || []).find(x => x.nombre === o.proveedor) || {};
+  if(!p.email && !p.whatsapp && !p.telefono) return toast('El proveedor no tiene correo ni celular: complételo en Proveedores', true);
+  if(!confirm(`¿Enviar la orden ${num} a ${o.proveedor}?\n\nCorreo: ${p.email || '—'}\nWhatsApp: ${p.whatsapp || p.telefono || '—'}`)) return;
+  const {error} = await API.sb.rpc('oc_enviar', {p_id: o.id});
+  if(error) return toast(/oc_enviar|PGRST202/.test(errMsg(error) + (error.code || '')) ? 'Falta activar el envío en la base (SQL 111)' : errMsg(error), true);
+  toast('Enviando… en unos segundos aparece el resultado'); setTimeout(cpCargar, 6000);
+}
+function cpOcWa(num){
+  const o = (CP.oc || []).find(x => x.num === num); if(!o) return; const p = (CP.prov || []).find(x => x.nombre === o.proveedor) || {};
+  const m = String(p.whatsapp || p.telefono || '').replace(/[^\d]/g, ' ').match(/\b(57)?(3\d{9})\b/);
+  const txt = `Buen día, ${o.proveedor}. Le enviamos la orden de compra ${o.num} de Elíptica. Por favor confírmenos la fecha de despacho aquí: ${cpLinkProv(o)}`;
+  window.open('https://wa.me/' + (m ? '57' + m[2] : '') + '?text=' + encodeURIComponent(txt), '_blank');
 }
 // PDF de la orden de compra (formato SGC de Elíptica)
 function cpOcPDF(num){
