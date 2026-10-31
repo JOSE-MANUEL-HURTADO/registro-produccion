@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.94';
+const APP_VERSION = '7.95';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1911,7 +1911,7 @@ const PROC_NOM = k => (PROCS.find(x => x[0] === k) || [k, k])[1];
 function prodAsis(){
   const l = P.asis || [], dias = new Set(l.filter(x => x.tipo === 'ensamble').map(x => x.fecha));
   const nov = l.filter(x => ['obra', 'ausente', 'sin_operario', 'cargue'].includes(x.estado)).map(x => ({d: x.fecha, q: x.tipo === 'proceso' ? PROC_NOM(x.clave) + (x.operario ? ' · ' + x.operario : '') : x.clave.split('|')[0],
-    e: x.estado === 'obra' ? 'En obra' : x.estado === 'ausente' ? 'Ausente' : x.estado === 'cargue' ? 'Cargue de camión' : 'Proceso sin operario', m: (x.motivo || '') + (x.estado === 'cargue' && x.horas ? ' · ' + fmtN(+x.horas, 1) + ' h' : '')}));
+    e: x.estado === 'obra' ? 'En obra' : x.estado === 'ausente' ? 'Ausente' : x.estado === 'cargue' ? (x.operario === 'INSTALACION' ? 'Salida a instalar' : 'Cargue de camión') : 'Proceso sin operario', m: (x.motivo || '') + (x.estado === 'cargue' && x.horas ? ' · ' + fmtN(+x.horas, 1) + ' h' : '')}));
   const planta = [...grp(l.filter(x => x.tipo === 'ensamble' && x.estado === 'planta'), x => x.fecha).values()].map(v => v.length);
   return {dias: dias.size, prom: planta.length ? planta.reduce((a, b) => a + b, 0) / planta.length : 0, nov};
 }
@@ -2169,8 +2169,8 @@ function moCalcular(D, obra){
   const dias = {};   // persona → día → {ens:[], inst:[], proc:[], cargue:[]}
   const planta = {}; // día → obra → costo de planta (ensamble + procesos), para repartir el apoyo de planta
   const claim = (nom, d, rol, ob, w, extra) => { if(!d || !nom || !(w > 0)) return; const per = moPersona(nom); if(per.tipo === 'ignorar') return;
-    if(per.tipo === 'contratista'){ if(ob === obra && extra){ const c = R.contr[per.k] = R.contr[per.k] || {u: 0, m2: 0, rol}; c.u += 1; c.m2 += +extra.m2 || 0; } return; }
-    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: [], cargue: [], art: []}; x[rol].push({ob, w}); };
+    if(per.tipo === 'contratista'){ if(ob === obra && extra && extra.m2 !== undefined){ const c = R.contr[per.k] = R.contr[per.k] || {u: 0, m2: 0, rol}; c.u += 1; c.m2 += +extra.m2 || 0; } return; }
+    const P = dias[per.k] = dias[per.k] || {per, d: {}}; const x = P.d[d] = P.d[d] || {ens: [], inst: [], proc: [], cargue: [], art: []}; x[rol].push({ob, w, comp: extra && extra.comp}); };
   const directo = {}; // día → obra → costo directo de todo (para repartir la dirección de operaciones)
   const artKey = pz => pz.tercero ? 'Cliente Ártica · ' + (pz.cliente || '—') : pz.obra;
   const asisDia = {}; for(const a of D.asis) asisDia[a.fecha + '|' + a.tipo + '|' + normNom(a.clave)] = a;
@@ -2203,7 +2203,7 @@ function moCalcular(D, obra){
     if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
       if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
     // Cargue de camión: horas fijas para la obra del camión
-    if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas);
+    if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas, {comp: a.operario === 'INSTALACION' ? 'inst' : 'cargue'});
   }
   const fila = per => R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
   const sum = (per, rol, c, h, ym) => { const r = fila(per); r.roles[rol] = (r.roles[rol] || 0) + c; r.h += h; r.c += c; R.comp[rol] += c; R.mes[ym] = (R.mes[ym] || 0) + c; };
@@ -2212,7 +2212,7 @@ function moCalcular(D, obra){
     const ym = d.slice(0, 7), ch = moCostoHora(P.per, ym).hora;
     const hc = Math.min(H, x.cargue.reduce((a, c) => a + c.w, 0));
     const dd = directo[d] = directo[d] || {};
-    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); dd[c.ob] = (dd[c.ob] || 0) + h * ch; if(c.ob === obra) sum(P.per, 'cargue', h * ch, h, ym); }
+    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); dd[c.ob] = (dd[c.ob] || 0) + h * ch; if(c.ob === obra) sum(P.per, c.comp || 'cargue', h * ch, h, ym); }
     const roles = ['ens', 'inst', 'proc', 'art'].filter(r => x[r].length), Hr = H - hc;
     for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0);
       const porOb = {}; for(const c of x[r]) porOb[c.ob] = (porOb[c.ob] || 0) + c.w;
@@ -2715,21 +2715,22 @@ async function asObras(){
 const asObraSel = (val, on) => `<select class="as-mot" style="max-width:260px" onchange="${on}"><option value="">¿En qué obra?</option>${(AS.obras || []).map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}${val && !(AS.obras || []).includes(val) ? `<option selected>${esc(val)}</option>` : ''}</select>`;
 // Cargue de camión: la persona está en planta pero cargando (no cuenta como "sin OP en mesa"; su tiempo va a la obra del camión)
 const asCargues = per => Object.values(AS.filas).filter(f => f.tipo === 'cargue' && normNom(f.clave.split('|')[0]) === normNom(per));
-const asCargueHTML = per => { const l = asCargues(per); return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${l.map(f => `<span class="as-ok" style="background:var(--surface3);padding:2px 8px">🚚 ${esc(f.motivo || '')} · ${fmtN(+f.horas || 0, 1)} h <a href="javascript:void 0" onclick="asCargueQuitar(decodeURIComponent('${encodeURIComponent(f.clave)}'))" style="margin-left:4px">✕</a></span>`).join('')}
-  <button class="btn sm ghost" onclick="asCargueSheet(decodeURIComponent('${encodeURIComponent(per)}'))">+ Cargue de camión</button></div>`; };
+const asCargueHTML = per => { const l = asCargues(per); return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${l.map(f => `<span class="as-ok" style="background:var(--surface3);padding:2px 8px">${f.operario === 'INSTALACION' ? '🔧 Instalando en' : '🚚'} ${esc(f.motivo || '')} · ${fmtN(+f.horas || 0, 1)} h <a href="javascript:void 0" onclick="asCargueQuitar(decodeURIComponent('${encodeURIComponent(f.clave)}'))" style="margin-left:4px">✕</a></span>`).join('')}
+  <button class="btn sm ghost" onclick="asCargueSheet(decodeURIComponent('${encodeURIComponent(per)}'))">+ Cargue o salida a obra</button></div>`; };
 function asCargueSheet(per){
-  openSheet('Cargue de camión', esc(per) + ' · ' + fmtD(AS.fecha), `<div class="field"><span class="lbl">Obra del camión</span>${asObraSel('', "window._acOb=this.value")}</div>
-    <div class="field"><span class="lbl">Horas de cargue</span><input type="number" id="acH" min="0.25" step="0.25" value="2" inputmode="decimal"></div>
-    <div class="sc-note">Mientras dure el cargue no se avisa que no tiene OP en mesa, y esas horas se cargan al costo de mano de obra de la obra.</div>`, 'Registrar', async () => {
-      const ob = window._acOb, h = +$('#acH').value; if(!ob){ toast('Elige la obra', true); return false; } if(!(h > 0)){ toast('Escribe las horas', true); return false; }
-      const fila = {fecha: AS.fecha, tipo: 'cargue', clave: normNom(per) + '|' + ob, estado: 'cargue', motivo: ob, horas: h, operario: null};
+  openSheet('Cargue o salida a obra', esc(per) + ' · ' + fmtD(AS.fecha) + ' · parte del día', `<div class="seg" style="margin-bottom:10px"><button id="acT1" class="on" onclick="window._acT='CARGUE';this.classList.add('on');$('#acT2').classList.remove('on');$('#acL').textContent='Obra del camión'">🚚 Cargue de camión</button><button id="acT2" onclick="window._acT='INSTALACION';this.classList.add('on');$('#acT1').classList.remove('on');$('#acL').textContent='Obra donde va a instalar'">🔧 Salida a instalar</button></div>
+    <div class="field"><span class="lbl" id="acL">Obra del camión</span>${asObraSel('', "window._acOb=this.value")}</div>
+    <div class="field"><span class="lbl">Horas (de la jornada de hoy)</span><input type="number" id="acH" min="0.25" step="0.25" value="2" inputmode="decimal"></div>
+    <div class="sc-note">Para cuando sale de planta solo una parte del día. Esas horas se cargan a la obra y el resto del día sigue en su trabajo normal. Mientras dure no se avisa que no tiene OP en mesa. Si sale todo el día, márquelo "En obra".</div>`, 'Registrar', async () => {
+      const ob = window._acOb, h = +$('#acH').value, t = window._acT || 'CARGUE'; if(!ob){ toast('Elige la obra', true); return false; } if(!(h > 0)){ toast('Escribe las horas', true); return false; }
+      const fila = {fecha: AS.fecha, tipo: 'cargue', clave: normNom(per) + '|' + ob + (t === 'INSTALACION' ? '|INST' : ''), estado: 'cargue', motivo: ob, horas: h, operario: t === 'INSTALACION' ? 'INSTALACION' : null};
       const {error} = await API.sb.from('asistencia').upsert([fila], {onConflict: 'fecha,tipo,clave'});
       if(error){ toast(/horas|cargue|check/.test(errMsg(error)) ? 'Falta activar el cargue de camión en la base (SQL 95)' : errMsg(error), true); return false; }
-      AS.filas[asKey('cargue', fila.clave)] = fila; window._acOb = null; toast(`✓ Cargue de ${per} para ${ob}`); setTimeout(renderAsis, 30); });
-  window._acOb = null;
+      AS.filas[asKey('cargue', fila.clave)] = fila; window._acOb = null; toast(`✓ ${t === 'INSTALACION' ? 'Salida a instalar' : 'Cargue'} de ${per} · ${ob} · ${h} h`); setTimeout(renderAsis, 30); });
+  window._acOb = null; window._acT = 'CARGUE';
 }
 async function asCargueQuitar(clave){
-  if(!confirm('¿Quitar este cargue de camión?')) return;
+  if(!confirm('¿Quitar este registro?')) return;
   const {error} = await API.sb.from('asistencia').delete().eq('fecha', AS.fecha).eq('tipo', 'cargue').eq('clave', clave); if(error) return toast(errMsg(error), true);
   delete AS.filas[asKey('cargue', clave)]; renderAsis();
 }
@@ -2816,7 +2817,7 @@ function renderAsis(){
     const enP = Object.values(AS.filas).filter(f => f.tipo === 'ensamble' && f.estado === 'planta').map(f => f.clave);
     const sinMesa = AS.mesaHoy ? enP.filter(n => !(AS.mesa[n] || []).some(i => !i.ens_novedad_id) && !asCargues(n).length) : [];
     const ensF = AS.ens.filter(n => !OPS.has(n)).map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
-      const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : asCargues(n).length ? '<span class="as-ok">🚚 Cargando camión</span>' : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
+      const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : asCargues(n).length ? `<span class="as-ok">${asCargues(n).some(f => f.operario === 'INSTALACION') ? '🔧 Salió a instalar' : '🚚 Cargando camión'}</span>` : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${encodeURIComponent(n)}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
@@ -2828,7 +2829,7 @@ function renderAsis(){
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
     const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {}, o = asOperDe(k);
       if(o){ const act = asOperAct(k), fe = AS.filas[asKey('ensamble', o)] || {}, m = AS.mesa[o] || [], am = m.filter(i => !i.ens_novedad_id);
-        const mesa = act === 'ensamble' && AS.mesaHoy ? (am.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(am.map(i => i.op))].join(', '))}</span>` : asCargues(o).length ? '<span class="as-ok">🚚 Cargando camión</span>' : '<span class="as-mal">⚠ Sin OP en mesa</span>') : '';
+        const mesa = act === 'ensamble' && AS.mesaHoy ? (am.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(am.map(i => i.op))].join(', '))}</span>` : asCargues(o).length ? `<span class="as-ok">${asCargues(o).some(f => f.operario === 'INSTALACION') ? '🔧 Salió a instalar' : '🚚 Cargando camión'}</span>` : '<span class="as-mal">⚠ Sin OP en mesa</span>') : '';
         return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b><span class="cot-d" style="margin:0">${esc(o)}</span>${mesa}</div>
           <div class="seg as-seg">${[['proceso', ({cortado: 'En corte', troquelado: 'En troquelado', mecanizado: 'En mecanizado', vidrio_proc: 'En vidrio'})[k] || 'En ' + n.toLowerCase()], ['ensamble', 'Ensamblando'], ['obra', 'En obra'], ['ausente', 'Ausente']].map(([v, t]) => `<button class="${act === v ? 'on' : ''}" onclick="asOperSet('${k}', '${v}')">${t}</button>`).join('')}</div>
           <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" onchange="asSet('proceso', '${k}', 'operario', this.value); renderAsis()" style="max-width:180px">
