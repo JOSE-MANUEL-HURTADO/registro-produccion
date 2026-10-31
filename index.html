@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.95';
+const APP_VERSION = '7.96';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2165,7 +2165,7 @@ function moCalcular(D, obra){
   const p = moPar(), hoy = today(), ahora = (() => { const n = new Date(); return n.getHours() + n.getMinutes() / 60; })();
   const aj = (p.ajustes || []).filter(a => a.obra === obra);
   const ajArt = aj.filter(a => a.comp === 'art'), enAjArt = (ob, d) => ob === obra && ajArt.some(a => d >= a.desde && d <= a.hasta);
-  const R = {obra, aj, comp: {ens: 0, inst: 0, proc: 0, est: 0, cargue: 0, art: 0, artEst: 0, artMan: 0, ind: 0, dir: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
+  const R = {obra, aj, comp: {ens: 0, inst: 0, ayud: 0, proc: 0, est: 0, cargue: 0, art: 0, artEst: 0, artMan: 0, ind: 0, dir: 0}, per: {}, mes: {}, contr: {}, sinEst: {}, desde: D.desde, hasta: D.hasta};
   const dias = {};   // persona → día → {ens:[], inst:[], proc:[], cargue:[]}
   const planta = {}; // día → obra → costo de planta (ensamble + procesos), para repartir el apoyo de planta
   const claim = (nom, d, rol, ob, w, extra) => { if(!d || !nom || !(w > 0)) return; const per = moPersona(nom); if(per.tipo === 'ignorar') return;
@@ -2205,6 +2205,11 @@ function moCalcular(D, obra){
     // Cargue de camión: horas fijas para la obra del camión
     if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas, {comp: a.operario === 'INSTALACION' ? 'inst' : 'cargue'});
   }
+  // Ayudante de instalación: todo instalador trabaja con uno. Si la asistencia dice quién fue, se usa su salario; si no, el mínimo.
+  const ayudDe = {}; for(const a of D.asis) if(a.ayudante) ayudDe[a.fecha + '|' + normNom(String(a.clave).split('|')[0])] = a.ayudante;
+  const ayud = (inst, d, h, ym) => { if(p.ayudante === false) return; const n = ayudDe[d + '|' + inst.k];
+    const per = n ? moPersona(n) : {tipo: 'minimo', k: 'AYUDANTE SIN NOMBRE'}; if(!['nomina', 'minimo'].includes(per.tipo)) return;
+    const c = h * moCostoHora(per, ym).hora; sum(per, 'ayud', c, h, ym); };
   const fila = per => R.per[per.k] = R.per[per.k] || {nombre: per.k, nomina: per.n ? per.n.nombre : null, fuente: per.fuente || per.tipo, roles: {}, h: 0, c: 0};
   const sum = (per, rol, c, h, ym) => { const r = fila(per); r.roles[rol] = (r.roles[rol] || 0) + c; r.h += h; r.c += c; R.comp[rol] += c; R.mes[ym] = (R.mes[ym] || 0) + c; };
   for(const P of Object.values(dias)) for(const [d, x] of Object.entries(P.d)){
@@ -2212,14 +2217,14 @@ function moCalcular(D, obra){
     const ym = d.slice(0, 7), ch = moCostoHora(P.per, ym).hora;
     const hc = Math.min(H, x.cargue.reduce((a, c) => a + c.w, 0));
     const dd = directo[d] = directo[d] || {};
-    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); dd[c.ob] = (dd[c.ob] || 0) + h * ch; if(c.ob === obra) sum(P.per, c.comp || 'cargue', h * ch, h, ym); }
+    for(const c of x.cargue){ const h = hc * c.w / x.cargue.reduce((a, z) => a + z.w, 0); dd[c.ob] = (dd[c.ob] || 0) + h * ch; if(c.ob === obra){ sum(P.per, c.comp || 'cargue', h * ch, h, ym); if(c.comp === 'inst') ayud(P.per, d, h, ym); } }
     const roles = ['ens', 'inst', 'proc', 'art'].filter(r => x[r].length), Hr = H - hc;
     for(const r of roles){ const tot = x[r].reduce((a, c) => a + c.w, 0);
       const porOb = {}; for(const c of x[r]) porOb[c.ob] = (porOb[c.ob] || 0) + c.w;
       for(const [ob, w] of Object.entries(porOb)){ const h = Hr / roles.length * w / tot;
         if(r === 'ens' || r === 'proc'){ const pd = planta[d] = planta[d] || {}; pd[ob] = (pd[ob] || 0) + h * ch; }
         dd[ob] = (dd[ob] || 0) + h * ch;
-        if(ob === obra) sum(P.per, r, h * ch, h, ym); } }
+        if(ob === obra){ sum(P.per, r, h * ch, h, ym); if(r === 'inst') ayud(P.per, d, h, ym); } } }
   }
   // Apoyo de planta (asistente que escanea): su día se reparte según el costo de planta de cada obra ese día
   for(const nom of (p.indirectos || [])){ const per = moPersona(nom); if(!['nomina', 'minimo'].includes(per.tipo)) continue;
@@ -2259,12 +2264,13 @@ function moCalcular(D, obra){
   return R;
 }
 const moCOP = v => '$ ' + fmtN(Math.round(v || 0));
-const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', art: 'Vidrio Ártica', ind: 'Apoyo de planta', dir: 'Dirección de operaciones'};
+const MO_ROL = {ens: 'Ensamble', inst: 'Instalación', ayud: 'Ayudante de instalación', proc: 'Procesos (escáner)', est: 'Procesos (estimado)', cargue: 'Cargue de camión', art: 'Vidrio Ártica', ind: 'Apoyo de planta', dir: 'Dirección de operaciones'};
 function moHTML(R){
   const p = moPar(), carga = moCarga(p), hoy = today();
   const pers = Object.values(R.per).sort((a, b) => b.c - a.c);
   const comp = [['ens', 'Ensamble', 'Horas de cada ensamblador repartidas según el tiempo que cada unidad estuvo en su mesa (hora de inicio a hora de fin, dentro de la jornada). Incluye el prealistado.'],
     ['inst', 'Instalación (nómina)', 'Días de cada instalador repartidos entre lo que instaló ese día (por m²) y días "en obra" de la asistencia.'],
+    ['ayud', 'Ayudantes de instalación', 'Cada instalador trabaja con un ayudante: las mismas horas de instalación, al salario del ayudante registrado en la asistencia o, si no se registró, al salario mínimo.'],
     ['proc', 'Procesos con escáner', 'Días del operario de cada proceso repartidos por los m² procesados ese día.'],
     ['est', 'Procesos antes del escáner', `Tiempo estimado${p.estItem ? ' (' + fmtN(p.estItem) + ' min por ítem entre corte, troquelado y mecanizado)' : ''} × costo hora del operario habitual de cada proceso.`],
     ['cargue', 'Cargue de camión', 'Horas de cargue registradas en la asistencia para esta obra.'],
@@ -2352,6 +2358,7 @@ function renderMO(){
       <div class="field"><span class="lbl">Promedio por ítem (corte + troquelado + mecanizado, se reparte en partes iguales)</span><input type="number" step="1" min="0" id="moEstItem" value="${p.estItem ?? ''}" placeholder="Ej. 20"></div>
       <div class="cot-d">Si escribe un tiempo propio para un proceso, ese reemplaza el promedio en ese proceso.</div>
       <div class="fgrid">${MO_PROC.map(([k, n]) => `<div class="field"><span class="lbl">${n}${AS_OPER[k] ? ' · ' + esc(AS_OPER[k]) : ''}</span><input type="number" step="0.1" min="0" class="moEst" data-k="${k}" value="${p.est[k] ?? ''}" placeholder="Sin estimado"></div>`).join('')}</div>
+      <div class="field" style="margin-top:8px"><span class="lbl">Ayudante de instalación</span><select id="moAy"><option value="1" ${p.ayudante !== false ? 'selected' : ''}>Cada instalador lleva un ayudante (mínimo si no se registra quién)</option><option value="0" ${p.ayudante === false ? 'selected' : ''}>No sumar ayudantes</option></select></div>
       <div class="field" style="margin-top:8px"><span class="lbl">Dirección de operaciones (separados por coma) · su costo se reparte entre todas las obras según el costo directo del día</span><input id="moDir" value="${esc((p.direccion || []).join(', '))}"></div>
       <div class="cot-h" style="margin-top:12px">Ártica · clientes</div>
       <div class="fgrid"><div class="field"><span class="lbl">Comercial de Ártica (separados por coma)</span><input id="moCom" value="${esc((p.comercial || []).join(', '))}"></div>
@@ -2376,7 +2383,7 @@ function renderMO(){
 async function moGuardarPar(){
   const est = {}; document.querySelectorAll('.moEst').forEach(i => est[i.dataset.k] = i.value === '' ? null : +i.value);
   const par = {...(MO.par || {}), arl: +$('#moArl').value || 0, exonerado: $('#moExo').value === '1', est, estItem: $('#moEstItem').value === '' ? null : +$('#moEstItem').value, indirectos: $('#moInd').value.split(',').map(normNom).filter(Boolean), direccion: $('#moDir').value.split(',').map(normNom).filter(Boolean),
-    comercial: $('#moCom').value.split(',').map(normNom).filter(Boolean), comercialDed: +$('#moComD').value || 0, dirArtCli: +$('#moDirA').value || 0,
+    ayudante: $('#moAy').value === '1', comercial: $('#moCom').value.split(',').map(normNom).filter(Boolean), comercialDed: +$('#moComD').value || 0, dirArtCli: +$('#moDirA').value || 0,
     artCrew: Object.fromEntries([...document.querySelectorAll('.moCrew')].map(i => [i.dataset.k, i.value.split(',').map(normNom).filter(Boolean)]))};
   const {error} = await API.sb.from('mo_param').upsert({id: 1, p: par, actualizado: new Date().toISOString()}); if(error) return toast(errMsg(error), true);
   MO.par = par; toast('✓ Parámetros guardados'); renderMO();
@@ -2721,9 +2728,10 @@ function asCargueSheet(per){
   openSheet('Cargue o salida a obra', esc(per) + ' · ' + fmtD(AS.fecha) + ' · parte del día', `<div class="seg" style="margin-bottom:10px"><button id="acT1" class="on" onclick="window._acT='CARGUE';this.classList.add('on');$('#acT2').classList.remove('on');$('#acL').textContent='Obra del camión'">🚚 Cargue de camión</button><button id="acT2" onclick="window._acT='INSTALACION';this.classList.add('on');$('#acT1').classList.remove('on');$('#acL').textContent='Obra donde va a instalar'">🔧 Salida a instalar</button></div>
     <div class="field"><span class="lbl" id="acL">Obra del camión</span>${asObraSel('', "window._acOb=this.value")}</div>
     <div class="field"><span class="lbl">Horas (de la jornada de hoy)</span><input type="number" id="acH" min="0.25" step="0.25" value="2" inputmode="decimal"></div>
+    <div class="field"><span class="lbl">Ayudante (si sale a instalar)</span><input id="acA" list="asAyL" placeholder="Nombre del ayudante"></div>
     <div class="sc-note">Para cuando sale de planta solo una parte del día. Esas horas se cargan a la obra y el resto del día sigue en su trabajo normal. Mientras dure no se avisa que no tiene OP en mesa. Si sale todo el día, márquelo "En obra".</div>`, 'Registrar', async () => {
       const ob = window._acOb, h = +$('#acH').value, t = window._acT || 'CARGUE'; if(!ob){ toast('Elige la obra', true); return false; } if(!(h > 0)){ toast('Escribe las horas', true); return false; }
-      const fila = {fecha: AS.fecha, tipo: 'cargue', clave: normNom(per) + '|' + ob + (t === 'INSTALACION' ? '|INST' : ''), estado: 'cargue', motivo: ob, horas: h, operario: t === 'INSTALACION' ? 'INSTALACION' : null};
+      const fila = {fecha: AS.fecha, tipo: 'cargue', clave: normNom(per) + '|' + ob + (t === 'INSTALACION' ? '|INST' : ''), estado: 'cargue', motivo: ob, horas: h, operario: t === 'INSTALACION' ? 'INSTALACION' : null, ...(t === 'INSTALACION' && normNom($('#acA').value) ? {ayudante: normNom($('#acA').value)} : {})};
       const {error} = await API.sb.from('asistencia').upsert([fila], {onConflict: 'fecha,tipo,clave'});
       if(error){ toast(/horas|cargue|check/.test(errMsg(error)) ? 'Falta activar el cargue de camión en la base (SQL 95)' : errMsg(error), true); return false; }
       AS.filas[asKey('cargue', fila.clave)] = fila; window._acOb = null; toast(`✓ ${t === 'INSTALACION' ? 'Salida a instalar' : 'Cargue'} de ${per} · ${ob} · ${h} h`); setTimeout(renderAsis, 30); });
@@ -2761,6 +2769,7 @@ async function asCargar(){
     const inst = new Set(personas('inst').filter(n => !NOP.test(n) && !nombres.has(n) && !artica.has(n)));
     for(const f of filas) if(f.tipo === 'instalacion') inst.add(f.clave);
     AS.inst = [...inst].sort(nat);
+    AS.ayud = [...new Set(filas.map(f => f.ayudante).filter(Boolean))];
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
     AS.mesaHoy = !!mesa; AS.borrar = new Set();
     AS.obras = await asObras();
@@ -2796,7 +2805,8 @@ function asTodosPlanta(){ const ops = asOpers(); for(const n of AS.ens){ if(ops.
   for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]){ asSet('proceso', p, 'motivo', null); asSet('proceso', p, 'estado', 'activo'); } } renderAsis(); }
 async function asGuardar(){
   const rows = Object.values(AS.filas).filter(f => f._cambio).map(f => ({fecha: AS.fecha, tipo: f.tipo, clave: f.clave, estado: f.estado,
-    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : null}));
+    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : null,
+    ayudante: f.estado === 'obra' ? (normNom(f.ayudante) || null) : null}));
   const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
   const sinOb = rows.find(r => r.estado === 'obra' && !r.motivo); if(sinOb) return toast('Elige la obra de ' + sinOb.clave, true);
   const borrar = [...(AS.borrar || [])];
@@ -2819,12 +2829,13 @@ function renderAsis(){
     const ensF = AS.ens.filter(n => !OPS.has(n)).map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
       const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : asCargues(n).length ? `<span class="as-ok">${asCargues(n).some(f => f.operario === 'INSTALACION') ? '🔧 Salió a instalar' : '🚚 Cargando camión'}</span>` : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${encodeURIComponent(n)}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
-        ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`)
+        ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`) + ayIn('ensamble', n, f)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
+    const ayIn = (tipo, n, f) => `<input class="as-mot" list="asAyL" value="${esc(f.ayudante || '')}" placeholder="Ayudante" style="max-width:200px" oninput="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(n)}'), 'ayudante', this.value)">`;
     const instF = (AS.inst || []).filter(n => !OPS.has(n)).map(n => { const f = AS.filas[asKey('instalacion', n)] || {}, enc = encodeURIComponent(n);
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${enc}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('instalacion', n, [['obra', 'En obra'], ['planta', 'En planta'], ['ausente', 'Ausente']], f.estado)}
-        ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)`)
+        ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)`) + ayIn('instalacion', n, f)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
     const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {}, o = asOperDe(k);
@@ -2833,7 +2844,7 @@ function renderAsis(){
         return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b><span class="cot-d" style="margin:0">${esc(o)}</span>${mesa}</div>
           <div class="seg as-seg">${[['proceso', ({cortado: 'En corte', troquelado: 'En troquelado', mecanizado: 'En mecanizado', vidrio_proc: 'En vidrio'})[k] || 'En ' + n.toLowerCase()], ['ensamble', 'Ensamblando'], ['obra', 'En obra'], ['ausente', 'Ausente']].map(([v, t]) => `<button class="${act === v ? 'on' : ''}" onclick="asOperSet('${k}', '${v}')">${t}</button>`).join('')}</div>
           <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" onchange="asSet('proceso', '${k}', 'operario', this.value); renderAsis()" style="max-width:180px">
-          ${act === 'obra' ? asObraSel(fe.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(o)}'), 'motivo', this.value)`)
+          ${act === 'obra' ? asObraSel(fe.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(o)}'), 'motivo', this.value)`) + ayIn('ensamble', o, fe)
             : act === 'ausente' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>`
             : act ? asCargueHTML(o) : ''}</div>`; }
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b></div>${seg('proceso', k, [['activo', 'Con operario'], ['sin_operario', 'Sin operario']], f.estado)}
@@ -2841,6 +2852,7 @@ function renderAsis(){
         ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : (() => { const o = f.operario != null && f.operario !== '' ? f.operario : AS_OPER[k]; return o ? asCargueHTML(o) : ''; })()}</div>`; }).join('');
     body = `${AS.mesaHoy && sinMesa.length ? `<div class="warn" style="margin-bottom:12px"><b>${sinMesa.length === 1 ? sinMesa[0] + ' está' : sinMesa.join(', ') + ' están'} en planta sin una OP en mesa.</b> Asígnales trabajo o registra su inicio de ensamble.</div>` : ''}
       <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
+      <datalist id="asAyL">${[...new Set([...(AS.ens || []), ...(AS.inst || []), ...(AS.ayud || [])])].sort(nat).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
       <div class="cot-box"><div class="cot-h">Instaladores</div><div class="cot-d">En qué obra está cada uno hoy (Bogotá o Ibagué). Ese día se carga al costo de mano de obra de esa obra, aunque no se registren unidades instaladas.</div>${instF || '<div class="empty">No hay instaladores en la lista.</div>'}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="asInsN" class="as-mot" placeholder="Agregar a alguien que hoy instala (nombre y apellido)" style="max-width:320px"><button class="btn sm" onclick="asInsAgregar()">Agregar</button></div></div>
       <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Qué hace hoy el operario de cada proceso. Si ensambla, sale a obra o falta, el proceso queda sin operario con ese motivo (justifica que ese día no se produjo). Cuando ensambla se le pueden asignar OP como a cualquier ensamblador.</div>${procF}</div>
