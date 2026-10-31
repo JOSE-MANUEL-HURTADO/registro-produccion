@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.03';
+const APP_VERSION = '8.05';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2652,24 +2652,83 @@ const CP_CAT = {aluminio: 'Aluminio', vidrio: 'Vidrio', accesorios: 'Accesorios'
 function goCompras(){ if(!isGerente()) return; if(S.view !== 'compras') history.pushState({v: 'compras'}, ''); S.view = 'compras'; aplicarEmpresa(); window.scrollTo(0, 0); cpCargar(); }
 async function cpCargar(){
   CP.err = null; renderCompras();
-  try{ const [o, p] = await Promise.all([API.all(x => API.sb.from('compras_oc').select('*', x).order('fecha', {ascending: false, nullsFirst: false}).order('num', {ascending: false})), API.sb.from('compras_proveedores').select('*').order('nombre').then(r => { if(r.error) throw r.error; return r.data || []; })]);
-    CP.oc = o; CP.prov = p; }
+  try{ const [o, p, c] = await Promise.all([API.all(x => API.sb.from('compras_oc').select('*', x).order('fecha', {ascending: false, nullsFirst: false}).order('num', {ascending: false})), API.sb.from('compras_proveedores').select('*').order('nombre').then(r => { if(r.error) throw r.error; return r.data || []; }),
+      API.all(x => API.sb.from('compras_catalogo').select('*', x).order('id')).catch(() => [])]);
+    CP.oc = o; CP.prov = p; CP.man = c; }
   catch(e){ CP.err = /compras_|PGRST205|42P01/.test(errMsg(e) + (e.code || '')) ? 'Falta activar compras en la base (SQL 108)' : errMsg(e); CP.oc = []; CP.prov = []; }
   if(S.view === 'compras') renderCompras();
 }
 const cpCOP = v => v == null ? '—' : '$ ' + fmtN(Math.round(v));
 const cpRefK = l => String(l.ref || l.desc || '').toUpperCase().replace(/\s+/g, ' ').trim();
 // Catálogo: cada referencia (o tipo de vidrio) con su último precio, proveedor y veces que se ha pedido
+// Clave del catálogo: referencia normalizada (HSA 005 = HSA005 = HSA-5) o, sin referencia (vidrio), la descripción
+const cpClave = (cat, ref, desc) => cat === 'vidrio' || !String(ref || '').trim() ? String(desc || '').toUpperCase().replace(/\s+/g, ' ').trim() : cpRefNorm(ref);
 function cpCatalogo(){
   const m = new Map();
   for(const o of [...(CP.oc || [])].filter(o => o.estado !== 'anulada').sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')))){
-    for(const l of o.lineas || []){ const k = o.categoria + '|' + cpRefK(l); if(!cpRefK(l)) continue;
+    for(const l of o.lineas || []){ const ck = cpClave(o.categoria, l.ref, l.desc); if(!ck) continue; const k = o.categoria + '|' + ck;
       const x = m.get(k) || {cat: o.categoria, ref: l.ref || '', desc: l.desc || '', n: 0, cant: 0, provs: new Set()};
       x.n++; x.cant += +l.cant || 0; x.provs.add(o.proveedor);
       if(l.unit > 0 || !x.prov){ if(l.unit > 0) x.unit = l.unit; x.prov = o.proveedor; x.fecha = o.fecha; x.num = o.num; x.acab = l.acab || x.acab; if(o.categoria === 'vidrio') x.lam = l.ancho && l.alto ? `${l.ancho} × ${l.alto}` : x.lam; }
       if(l.desc && !x.desc) x.desc = l.desc;
-      m.set(k, x); } }
+      x.clave = ck; m.set(k, x); } }
+  // Lo asignado a mano (proveedor y precio vigentes, o artículos que aún no se han pedido) manda sobre la última compra
+  for(const c of CP.man || []){ const k = c.categoria + '|' + c.clave; const x = m.get(k) || {cat: c.categoria, ref: c.ref || '', desc: c.descripcion || '', n: 0, cant: 0, provs: new Set(), clave: c.clave, nuevo: true};
+    x.man = c; if(c.descripcion) x.desc = c.descripcion; if(c.ref) x.ref = x.ref || c.ref;
+    if(c.proveedor){ x.compraProv = x.prov; x.prov = c.proveedor; x.provs.add(c.proveedor); }
+    if(c.precio != null){ x.compraUnit = x.unit; x.unit = +c.precio; }
+    if(c.presentacion) x.acab = c.presentacion; if(c.lamina) x.lam = c.lamina;
+    m.set(k, x); }
   return [...m.values()];
+}
+// ── Editar / agregar un artículo del catálogo ──
+function cpArtEditar(cat, clave, pre){
+  const x = cpCatalogo().find(y => y.cat === cat && y.clave === clave) || {cat: cat || 'accesorios', ref: (pre && pre.ref) || '', desc: (pre && pre.desc) || ''};
+  const m = x.man || {};
+  const provs = (CP.prov || []).map(p => p.nombre).sort(nat);
+  openSheet(clave ? 'Artículo del catálogo' : 'Nuevo artículo', clave ? esc([x.ref, x.desc].filter(Boolean).join(' · ')) : 'Accesorio, perfil o vidrio que se pueda pedir', `
+    <div class="fgrid"><div class="field"><span class="lbl">Categoría</span><select id="caC" ${clave ? 'disabled' : ''}>${Object.entries(CP_CAT).map(([k, n]) => `<option value="${k}" ${x.cat === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="field"><span class="lbl">Referencia (ej. HSA005)</span><input id="caR" value="${esc(m.ref || x.ref || '')}" ${clave && x.n ? 'disabled' : ''} autocapitalize="characters"></div></div>
+    <div class="field"><span class="lbl">Descripción</span><input id="caD" value="${esc(m.descripcion || x.desc || '')}"></div>
+    <div class="fgrid"><div class="field"><span class="lbl">Presentación / unidad de compra</span><input id="caP" list="caPL" value="${esc(m.presentacion || x.acab || '')}" placeholder="und, metros, bolsa x 8, rollo x 1000…"><datalist id="caPL">${['UND', 'METROS', 'BOLSA X 8', 'BOLSA X 100', 'CAJA X 100', 'ROLLO', 'JUEGO', 'GALÓN', 'KG'].map(v => `<option value="${v}">`).join('')}</datalist></div>
+      <div class="field"><span class="lbl">Precio unitario sin IVA${x.cat === 'vidrio' ? ' (por m²)' : ''}</span><input id="caV" type="number" min="0" value="${m.precio ?? (x.unit || '')}" inputmode="numeric"></div></div>
+    <div class="field"><span class="lbl">Proveedor</span><select id="caS"><option value="">— Sin proveedor —</option>${provs.map(n => `<option ${(m.proveedor || x.prov) === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <button type="button" class="btn sm ghost" style="margin-top:6px" onclick="cpProvEditar(null, true)">+ Proveedor nuevo</button></div>
+    ${x.cat === 'vidrio' ? `<div class="field"><span class="lbl">Medida de la lámina (m)</span><input id="caL" value="${esc(m.lamina || x.lam || '3.66 × 2.4')}"></div>` : ''}
+    <div class="field"><span class="lbl">Notas</span><input id="caN" value="${esc(m.notas || '')}" placeholder="Ej. mínimo 500 und, solo en negro…"></div>
+    ${x.compraProv || x.compraUnit || (x.n && !x.man) ? `<div class="sc-note">Última compra: ${esc(x.compraProv || x.prov || '—')} · ${cpCOP(x.compraUnit ?? x.unit)} · ${x.fecha ? fmtD(x.fecha) : ''} ${esc(x.num || '')}</div>` : ''}`,
+    'Guardar', async () => {
+      const cat2 = $('#caC').value, ref = String($('#caR').value || '').trim().toUpperCase(), desc = String($('#caD').value || '').trim().toUpperCase();
+      const k = clave || cpClave(cat2, ref, desc); if(!k){ toast('Escribe la referencia o la descripción', true); return false; }
+      const prov = $('#caS').value || null, pr = $('#caV').value === '' ? null : +$('#caV').value;
+      const fila = {categoria: cat2, clave: k, ref: ref || null, descripcion: desc || null, presentacion: String($('#caP').value || '').trim().toUpperCase() || null, proveedor: prov,
+        proveedor_id: prov ? ((CP.prov || []).find(p => p.nombre === prov) || {}).id || null : null, precio: pr, lamina: $('#caL') ? $('#caL').value.trim() || null : null, notas: String($('#caN').value || '').trim() || null, actualizado: new Date().toISOString()};
+      const {data, error} = await API.sb.from('compras_catalogo').upsert(fila, {onConflict: 'categoria,clave'}).select('*');
+      if(error){ toast(/compras_catalogo|PGRST205|42P01/.test(errMsg(error) + (error.code || '')) ? 'Falta activar el catálogo en la base (SQL 109)' : errMsg(error), true); return false; }
+      CP.man = (CP.man || []).filter(c => !(c.categoria === cat2 && c.clave === k)).concat(data || [fila]);
+      toast('✓ ' + (ref || desc) + ' guardado en el catálogo');
+      setTimeout(() => { if(CP.tab === 'req' && RQ.data) rqCargar(); else renderCompras(); }, 50);
+    });
+}
+// ── Proveedor nuevo o editar ──
+function cpProvEditar(id, desdeArt){
+  const p = (CP.prov || []).find(x => x.id === id) || {categorias: []};
+  const vuelve = desdeArt ? {cat: $('#caC') && $('#caC').value, ref: $('#caR') && $('#caR').value, desc: $('#caD') && $('#caD').value} : null;
+  openSheet(id ? 'Proveedor' : 'Proveedor nuevo', esc(p.nombre || ''), `
+    <div class="field"><span class="lbl">Nombre / razón social</span><input id="pvN" value="${esc(p.nombre || '')}" ${id ? 'disabled' : ''}></div>
+    <div class="fgrid"><div class="field"><span class="lbl">NIT</span><input id="pvT" value="${esc(p.nit || '')}"></div><div class="field"><span class="lbl">Ciudad</span><input id="pvC" value="${esc(p.ciudad || '')}"></div></div>
+    <div class="fgrid"><div class="field"><span class="lbl">Teléfono</span><input id="pvF" value="${esc(p.telefono || '')}"></div><div class="field"><span class="lbl">Correo</span><input id="pvE" value="${esc(p.email || '')}" inputmode="email"></div></div>
+    <div class="fgrid"><div class="field"><span class="lbl">Contacto</span><input id="pvK" value="${esc(p.contacto || '')}"></div><div class="field"><span class="lbl">Dirección</span><input id="pvD" value="${esc(p.direccion || '')}"></div></div>
+    <div class="field"><span class="lbl">Qué se le compra</span><div style="display:flex;gap:14px;flex-wrap:wrap">${Object.entries(CP_CAT).map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="pvCat" value="${k}" ${(p.categorias || []).includes(k) ? 'checked' : ''} style="width:18px;height:18px;min-height:0;-webkit-appearance:checkbox;appearance:auto">${n}</label>`).join('')}</div></div>`,
+    'Guardar', async () => {
+      const nombre = id ? p.nombre : String($('#pvN').value || '').trim().toUpperCase(); if(!nombre){ toast('Escribe el nombre', true); return false; }
+      const v = sel => String($(sel).value || '').trim() || null;
+      const fila = {nombre, nit: v('#pvT'), ciudad: v('#pvC'), telefono: v('#pvF'), email: v('#pvE'), contacto: v('#pvK'), direccion: v('#pvD'), categorias: [...document.querySelectorAll('.pvCat:checked')].map(c => c.value), actualizado: new Date().toISOString()};
+      const {data, error} = await API.sb.from('compras_proveedores').upsert(fila, {onConflict: 'nombre'}).select('*'); if(error){ toast(errMsg(error), true); return false; }
+      CP.prov = (CP.prov || []).filter(x => x.nombre !== nombre).concat(data || []).sort((a, b) => nat(a.nombre, b.nombre));
+      toast('✓ Proveedor ' + nombre + ' guardado');
+      if(vuelve) setTimeout(() => cpArtEditar(vuelve.cat, null, vuelve), 50); else setTimeout(renderCompras, 30);
+    });
 }
 function renderCompras(){
   const tabs = [['req', 'Requisición por OP'], ['oc', 'Órdenes de compra'], ['cat', 'Catálogo y precios'], ['prov', 'Proveedores'], ['imp', 'Importar Excel']];
@@ -2695,15 +2754,18 @@ function cpOcHTML(){
         ${ab ? `<div style="padding:6px 12px 10px;font-size:13px">${(o.lineas || []).map(x => `<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:4px 0"><span>${esc([x.ref, x.desc].filter(Boolean).join(' · '))}${x.acab ? ' · ' + esc(x.acab) : ''}${x.ancho ? ` · lámina ${x.ancho} × ${x.alto}` : ''}${x.obra ? ' · ' + esc(x.obra) : ''}</span><span style="white-space:nowrap">${fmtN(x.cant || 0)}${x.m2 ? ' (' + fmtN(x.m2, 1) + ' m²)' : ''} × ${cpCOP(x.unit)}${o.categoria === 'vidrio' ? '/m²' : ''} = <b>${cpCOP(x.total)}</b></span></div>`).join('') || '<div class="empty">Sin líneas</div>'}</div>` : ''}</div>`; }).join('') || '<div class="empty">No hay órdenes de compra. Impórtelas desde los Excel en la pestaña "Importar Excel".</div>'}</div>`;
 }
 function cpCatHTML(){
-  const l = cpCatalogo().filter(x => (!CP.cat || x.cat === CP.cat) && cpMatch(x.ref, x.desc, x.prov)).sort((a, b) => a.cat.localeCompare(b.cat) || b.n - a.n);
-  return `<div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} referencias. Último precio pagado (sin IVA), a quién y cuándo. Base para sugerir proveedor y precio en las requisiciones.</div>
-    <table class="cp-tbl"><thead><tr><th style="text-align:left">Referencia</th><th style="text-align:left">Descripción</th><th style="text-align:left">Último proveedor</th><th>Último precio</th><th>Fecha</th><th>Veces</th></tr></thead><tbody>
-    ${l.slice(0, 600).map(x => `<tr><td><b>${esc(x.ref || '—')}</b><br><small>${CP_CAT[x.cat]}</small></td><td>${esc(x.desc || '')}${x.acab ? `<br><small>${esc(x.acab)}</small>` : ''}${x.lam ? `<br><small>lámina ${esc(x.lam)}</small>` : ''}</td><td>${esc(x.prov || '—')}${x.provs.size > 1 ? `<br><small>+${x.provs.size - 1} proveedor${x.provs.size > 2 ? 'es' : ''} más</small>` : ''}</td><td style="text-align:right"><b>${cpCOP(x.unit)}</b>${x.cat === 'vidrio' ? '/m²' : ''}</td><td style="text-align:center">${x.fecha ? fmtD(x.fecha) : '—'}<br><small>${esc(x.num || '')}</small></td><td style="text-align:center">${fmtN(x.n)}</td></tr>`).join('')}</tbody></table>`;
+  const todos = cpCatalogo(), faltan = todos.filter(x => !x.prov || !(x.unit > 0)).length;
+  const l = todos.filter(x => (!CP.cat || x.cat === CP.cat) && (!CP.faltan || !x.prov || !(x.unit > 0)) && cpMatch(x.ref, x.desc, x.prov)).sort((a, b) => a.cat.localeCompare(b.cat) || b.n - a.n || nat(a.ref, b.ref));
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><button class="btn primary" onclick="cpArtEditar(CP.cat || 'accesorios', null)">+ Nuevo artículo</button>
+      <button class="btn ${CP.faltan ? 'primary' : 'ghost'}" onclick="CP.faltan=!CP.faltan;renderCompras()">Sin proveedor o sin precio (${fmtN(faltan)})</button></div>
+    <div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} referencias. Precio sin IVA: el asignado aquí o, si no, el de la última compra. Toque una fila para asignar proveedor y precio.</div>
+    <table class="cp-tbl"><thead><tr><th style="text-align:left">Referencia</th><th style="text-align:left">Descripción</th><th style="text-align:left">Proveedor</th><th>Precio</th><th>Fecha</th><th>Veces</th></tr></thead><tbody>
+    ${l.slice(0, 800).map(x => `<tr style="cursor:pointer" onclick="cpArtEditar('${x.cat}', decodeURIComponent('${encodeURIComponent(x.clave)}'))"><td><b>${esc(x.ref || '—')}</b><br><small>${CP_CAT[x.cat]}${x.man ? ' · asignado' : ''}${x.nuevo ? ' · sin pedidos' : ''}</small></td><td>${esc(x.desc || '')}${x.acab ? `<br><small>${esc(x.acab)}</small>` : ''}${x.lam ? `<br><small>lámina ${esc(x.lam)}</small>` : ''}</td><td>${x.prov ? esc(x.prov) : '<b style="color:var(--danger)">Sin proveedor</b>'}${x.provs.size > 1 ? `<br><small>+${x.provs.size - 1} proveedor${x.provs.size > 2 ? 'es' : ''} más</small>` : ''}</td><td style="text-align:right">${x.unit > 0 ? `<b>${cpCOP(x.unit)}</b>${x.cat === 'vidrio' ? '/m²' : ''}` : '<b style="color:var(--danger)">Sin precio</b>'}</td><td style="text-align:center">${x.fecha ? fmtD(x.fecha) : '—'}<br><small>${esc(x.num || '')}</small></td><td style="text-align:center">${fmtN(x.n)}</td></tr>`).join('')}</tbody></table>`;
 }
 function cpProvHTML(){
   const n = {}; for(const o of CP.oc) n[o.proveedor] = (n[o.proveedor] || 0) + 1;
   const l = CP.prov.filter(p => (!CP.cat || (p.categorias || []).includes(CP.cat)) && cpMatch(p.nombre, p.nit, p.ciudad, p.email)).sort((a, b) => (n[b.nombre] || 0) - (n[a.nombre] || 0) || nat(a.nombre, b.nombre));
-  return `<div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} proveedores</div><div class="art-ops">${l.map(p => `<div class="art-lote"><div><b>${esc(p.nombre)}</b><span>${(p.categorias || []).map(c => CP_CAT[c] || c).join(' · ')}${p.nit ? ' · NIT ' + esc(p.nit) : ''}${n[p.nombre] ? ' · ' + fmtN(n[p.nombre]) + ' OC en 2026' : ''}</span>
+  return `<div style="margin-bottom:8px"><button class="btn primary" onclick="cpProvEditar(null)">+ Proveedor nuevo</button></div><div class="sc-note" style="margin-bottom:8px">${fmtN(l.length)} proveedores · toque uno para editarlo</div><div class="art-ops">${l.map(p => `<div class="art-lote" style="cursor:pointer" onclick="cpProvEditar(${p.id})"><div><b>${esc(p.nombre)}</b><span>${(p.categorias || []).map(c => CP_CAT[c] || c).join(' · ')}${p.nit ? ' · NIT ' + esc(p.nit) : ''}${n[p.nombre] ? ' · ' + fmtN(n[p.nombre]) + ' OC en 2026' : ''}</span>
     <span>${[p.ciudad, p.direccion, p.telefono, p.email, p.contacto].filter(Boolean).map(esc).join(' · ')}</span></div></div>`).join('')}</div>`;
 }
 function cpImpHTML(){
@@ -2753,18 +2815,19 @@ function cpLeerLibro(wb){
     const col = (...n) => h.findIndex(x => n.some(k => x.startsWith(k)));
     for(const r0 of rows.slice(hi + 1)){
       const r = r0 || []; const txt = r.filter(x => x != null).join(' ').toUpperCase();
-      if(/SUBTOTAL|TOTAL VIDRIOS/.test(txt)) break;
+      if(/SUBTOTAL|TOTAL VIDRIOS|^IVA\b|^TOTAL\b|ELABOR[OÓ]|RECIBO DE ESTA MERCANC/.test(txt)) break;
       const g = i => i >= 0 ? r[i] : null;
       if(categoria === 'vidrio'){
         const a = g(col('ANCHO')); if(typeof a !== 'number') continue;
         const vid = g(col('VIDRIO')) || r.find(x => typeof x === 'string' && /MM|VIDRIO|ESPEJO|LAM/i.test(x));
         o.lineas.push({desc: cpTxt(vid), ancho: a, alto: cpNum(g(col('ALTO'))), cant: cpNum(g(col('CANT'))), m2: cpNum(g(col('AREA'))), unit: cpNum(g(col('VR /M2', 'VALOR M2', 'VR/M2'))), total: cpNum(g(col('VR/ TOTAL', 'VR/TOTAL')))});
       } else if(categoria === 'aluminio'){
-        const ref = cpTxt(g(col('REF', 'REFERENCIA'))); if(!ref) continue;
+        const ref = cpTxt(g(col('REF', 'REFERENCIA'))); if(!ref || (cpNum(g(col('CANTIDAD', 'UNIDAD'))) == null && cpNum(g(col('VALOR UNIT'))) == null)) continue;
         o.lineas.push({ref, acab: cpTxt(g(col('ACABADO'))), long: cpNum(g(col('LONG'))), cant: cpNum(g(col('CANTIDAD', 'UNIDAD'))), unit: cpNum(g(col('VALOR UNIT'))), total: cpNum(g(col('VALOR TOTAL'))), obra: cpTxt(g(col('OBRA')))});
       } else {
         const ref = cpTxt(g(col('REF'))), desc = cpTxt(g(col('DESCRIPCION'))), unit = cpNum(g(col('V/UNIT')));
         if(!ref && !(desc && unit != null)) continue;
+        if(cpNum(g(col('CANTIDAD'))) == null && unit == null && cpNum(g(col('V/TOTAL'))) == null) continue;   // pie de la hoja (firmas, observaciones)
         o.lineas.push({ref, desc, acab: cpTxt(g(col('ACABADO'))), cant: cpNum(g(col('CANTIDAD'))), unit, total: cpNum(g(col('V/TOTAL')))});
       }
     }
@@ -2801,6 +2864,7 @@ async function cpImportar(files){
 }
 // ── Requisición de materiales por OP (accesorios HSA y vidrio en láminas; el aluminio se pide con la cotización) ──
 //  Lee el PDF de la OP (todas sus sub-OP), suma los accesorios y el vidrio, y sugiere proveedor y precio con el catálogo de compras.
+const byRefHas = ref => cpCatalogo().some(x => x.cat === 'accesorios' && x.clave === cpRefNorm(ref));
 const RQ = {num: '', cargando: false, data: null, err: null, desp: 10};
 const cpRefNorm = r => { const s = String(r || '').toUpperCase(); const m = s.match(/\b(HS[A-Z]{1,2})[\s\-_.]*0*(\d+)/); return m ? m[1] + m[2].padStart(3, '0') : s.replace(/[\s\-_.]/g, ''); };
 // Vidrio: rasgos para emparejar el tipo de la OP con lo que se compra (espesor, color, laminado, espejo)
@@ -2825,7 +2889,7 @@ async function rqCargar(){
   RQ.num = num; RQ.cargando = true; RQ.err = null; RQ.data = null; renderCompras();
   try{ await qrLibsPDF(); const b = await API.ordenBajar(num); const r = await leerOPsPDF(new Uint8Array(await b.arrayBuffer()), num + '.pdf');
     const ops = r.ops.filter(o => !o.tercero); if(!ops.length) throw new Error('El PDF de la OP ' + num + ' no tiene sub-OP de Elíptica');
-    const cat = cpCatalogo(), byRef = new Map(cat.filter(x => x.cat === 'accesorios' && x.ref).map(x => [cpRefNorm(x.ref), x]));
+    const cat = cpCatalogo(), byRef = new Map(cat.filter(x => x.cat === 'accesorios' && x.clave).map(x => [x.clave, x]));
     // Accesorios: suma por referencia (si traen medida en mm, también los metros)
     const acc = new Map();
     for(const o of ops) for(const x of o.accesorios || []){ const k = x.ref; const a = acc.get(k) || {ref: x.ref, desc: x.desc, cant: 0, metros: 0, ops: new Set()};
@@ -2863,7 +2927,7 @@ function cpReqHTML(){
       <div class="cot-d">Láminas = m² de la OP + ${RQ.desp} % de desperdicio ÷ m² de la lámina que se ha comprado de ese vidrio.</div></div>` : ''}
     <div class="cot-box"><div class="cot-h">Accesorios</div><table class="cp-tbl"><thead><tr><th style="text-align:left">Referencia</th><th>Cantidad</th><th style="text-align:left">Proveedor sugerido</th><th>Precio</th><th>Costo</th></tr></thead><tbody>
       ${d.acc.map(a => `<tr><td><b>${esc(a.ref)}</b> · ${esc(a.desc || a.cdesc || '')}<br><small>${esc(a.ops.length > 4 ? a.ops.length + ' sub-OP' : a.ops.join(', '))}${a.pres ? ' · se compra en ' + esc(a.pres) : ''}</small></td>
-        <td style="text-align:center"><b>${fmtN(a.q)}</b> ${a.unidad}${a.unidad === 'm' ? `<br><small>${fmtN(a.cant)} piezas</small>` : ''}</td><td>${a.prov ? esc(a.prov) + `<br><small>${esc(a.num)}</small>` : '<small>Sin compra anterior</small>'}</td><td style="text-align:right">${cpCOP(a.unit)}</td><td style="text-align:right">${cpCOP(a.costo)}</td></tr>`).join('') || '<tr><td colspan="5">La OP no trae accesorios HSA.</td></tr>'}</tbody></table></div>`;
+        <td style="text-align:center"><b>${fmtN(a.q)}</b> ${a.unidad}${a.unidad === 'm' ? `<br><small>${fmtN(a.cant)} piezas</small>` : ''}</td><td>${a.prov ? esc(a.prov) + `<br><small>${esc(a.num || 'asignado')}</small>` : ''}<button class="btn sm ${a.prov ? 'ghost' : ''}" style="margin-top:2px" onclick="cpArtEditar('accesorios', ${byRefHas(a.ref) ? `decodeURIComponent('${encodeURIComponent(cpRefNorm(a.ref))}')` : 'null'}, {ref: decodeURIComponent('${encodeURIComponent(a.ref)}'), desc: decodeURIComponent('${encodeURIComponent(a.desc || '')}')})">${a.prov ? 'Cambiar' : 'Asignar'}</button></td><td style="text-align:right">${cpCOP(a.unit)}</td><td style="text-align:right">${cpCOP(a.costo)}</td></tr>`).join('') || '<tr><td colspan="5">La OP no trae accesorios HSA.</td></tr>'}</tbody></table></div>`;
   return h;
 }
 function rqPDF(){
