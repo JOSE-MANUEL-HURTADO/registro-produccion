@@ -342,7 +342,7 @@ main{padding:18px calc(var(--sr) + 18px) calc(var(--sb) + 110px) calc(var(--sl) 
 .resp.warn{border:1px solid var(--cola);background:rgba(200,168,75,.08);padding:12px 14px;color:var(--text2);}
 .resp.warn b{color:var(--cola);font-weight:500;}
 .u-list{display:flex;flex-direction:column;gap:8px;max-width:980px;}
-.u-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) auto;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);padding:10px 12px;}
+.u-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) auto auto;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);padding:10px 12px;}
 .u-mail{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;}
 .u-mail span{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
 .u-mail span.nuevo{color:var(--cola);}
@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.00';
+const APP_VERSION = '8.01';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -687,7 +687,7 @@ const API = {
     try{ for(const k of Object.keys(localStorage)) if(/^sb-|supabase|eliptica-registro/i.test(k)) localStorage.removeItem(k); }catch(e){}
     try{ for(const k of Object.keys(sessionStorage)) if(/^sb-|supabase|eliptica-registro/i.test(k)) sessionStorage.removeItem(k); }catch(e){}
   },
-  async perfil(uid){ const {data,error} = await this.sb.from('perfiles').select('nombre,rol').eq('id',uid).maybeSingle(); if(error) throw error; return data; },
+  async perfil(uid){ const {data,error} = await this.sb.from('perfiles').select('*').eq('id',uid).maybeSingle(); if(error) throw error; return data; },
   // Trae todas las filas de una consulta, de a 1000 (límite de Supabase), en paralelo
   async all(mk){
     const first = await mk({count:'exact'}).range(0,999);
@@ -1092,6 +1092,7 @@ async function afterLogin(ses){
     await API.logout();
     return renderLogin('Tu usuario no tiene un rol asignado. Pídele al director de operaciones que lo active.');
   }
+  if(S.perfil.cambiar_clave && !S._claveOk) return claveCambiar(true, ses);
   if(esOperarioArtica()) return goArticaOperario();
   if(esArticaOps()){ window.addEventListener('popstate', onPop); A.tab = 'etq'; return goArtica(); }
   if(esArticaGer()){ window.addEventListener('popstate', onPop); A.tab = 'avance'; return goArtica(); }
@@ -1119,9 +1120,40 @@ async function afterLogin(ses){
   goHome(true);
 }
 
+// ── Contraseñas: cada usuario cambia la suya desde la app (no depende del correo: varios correos no existen) ──
+function claveCambiar(forzado, ses){
+  const body = `${forzado ? '<div class="warn" style="margin-bottom:10px">El director te asignó una contraseña temporal. Escribe una nueva para seguir.</div>' : ''}
+    <div class="field"><span class="lbl">Nueva contraseña (mínimo 6 caracteres)</span><input type="password" id="ckN" autocomplete="new-password"></div>
+    <div class="field"><span class="lbl">Repite la nueva contraseña</span><input type="password" id="ckR" autocomplete="new-password"></div>`;
+  const guardar = async () => {
+    const n = $('#ckN').value, r = $('#ckR').value;
+    if(n.length < 6){ toast('Mínimo 6 caracteres', true); return false; } if(n !== r){ toast('Las dos contraseñas no coinciden', true); return false; }
+    const {error} = await API.sb.auth.updateUser({password: n});
+    if(error){ toast(/reauth|recent/i.test(error.message) ? 'Por seguridad, cierra sesión, vuelve a entrar y cámbiala enseguida' : /same|different/i.test(error.message) ? 'La nueva contraseña debe ser distinta a la actual' : errMsg(error), true); return false; }
+    try{ await API.sb.rpc('mi_clave_cambiada'); }catch(e){}
+    if(S.perfil) S.perfil.cambiar_clave = false; S._claveOk = true;
+    toast('✓ Contraseña cambiada');
+    if(forzado && ses) setTimeout(() => afterLogin(ses), 50);
+  };
+  if(forzado){ $('#app').innerHTML = `<div style="max-width:420px;margin:60px auto;padding:0 16px"><div class="h1">Nueva contraseña</div><div class="h1-sub">${esc((S.perfil && S.perfil.nombre) || (S.user && S.user.email) || '')}</div>${body}
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="btn primary" style="flex:1" id="ckG">Guardar y entrar</button><button class="btn ghost" onclick="API.logout().then(() => location.replace(location.pathname))">Salir</button></div></div>`;
+    $('#ckG').onclick = guardar; return; }
+  openSheet('Cambiar mi contraseña', esc((S.perfil && S.perfil.nombre) || (S.user && S.user.email) || ''), body, 'Guardar', guardar);
+}
+// El director asigna una contraseña temporal a un usuario (que la cambia al entrar)
+function claveTemporal(id, email){
+  const sug = 'Elp' + Math.floor(1000 + Math.random() * 9000);
+  openSheet('Contraseña temporal', esc(email), `<div class="summary">El usuario entra con esta contraseña y la app le pide cambiarla de inmediato. Díctasela o envíasela por WhatsApp.</div>
+    <div class="field"><span class="lbl">Contraseña temporal</span><input id="ctN" value="${sug}" autocomplete="off"></div>`, 'Asignar', async () => {
+      const c = $('#ctN').value.trim(); if(c.length < 6){ toast('Mínimo 6 caracteres', true); return false; }
+      const {error} = await API.sb.rpc('admin_cambiar_clave', {p_id: id, p_clave: c});
+      if(error){ toast(/admin_cambiar_clave|PGRST202/.test(errMsg(error) + (error.code || '')) ? 'Falta activar el cambio de contraseña en la base (SQL 107)' : errMsg(error), true); return false; }
+      toast('✓ Contraseña temporal asignada: ' + c);
+    });
+}
 // Cerrar sesión: sin ventanas del sistema (en algunos Mac/Safari no aparecen) y borrando la sesión guardada aunque no haya internet
 function logout(){
-  openSheet('Cerrar sesión', esc((S.perfil && S.perfil.nombre) || (S.user && S.user.email) || ''), '<div class="summary">¿Cerrar la sesión en este equipo? Para volver a entrar necesitas tu correo y contraseña.</div>', 'Cerrar sesión', async () => {
+  openSheet('Cerrar sesión', esc((S.perfil && S.perfil.nombre) || (S.user && S.user.email) || ''), '<div class="summary">¿Cerrar la sesión en este equipo? Para volver a entrar necesitas tu correo y contraseña.</div><button class="btn" style="margin-top:10px;width:100%" onclick="closeSheet();claveCambiar(false)">Cambiar mi contraseña</button>', 'Cerrar sesión', async () => {
     await API.logout();
     location.replace(location.pathname + '?salir=' + Date.now());
     return false;
@@ -8131,6 +8163,7 @@ function usuariosHTML(){
       <input placeholder="Nombre" value="${esc(u.nombre||'')}" ${u.id===yo?'disabled':''}>
       <select ${u.id===yo?'disabled':''}>${ROLES.map(([v,t]) => `<option value="${v}" ${(u.rol||'')===v?'selected':''}>${t}</option>`).join('')}</select>
       <button class="btn sm primary" ${u.id===yo?'disabled':''} onclick="guardarRol('${u.id}')">Guardar</button>
+      ${u.id===yo ? `<button class="btn sm ghost" onclick="claveCambiar(false)">Mi contraseña</button>` : `<button class="btn sm ghost" title="Asignar una contraseña temporal (la cambia al entrar)" onclick="claveTemporal('${u.id}', decodeURIComponent('${encodeURIComponent(u.email || '')}'))">Contraseña</button>`}
     </div>`).join('')}</div>`;
 }
 async function guardarRol(id){
