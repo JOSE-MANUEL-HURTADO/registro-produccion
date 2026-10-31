@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.93';
+const APP_VERSION = '7.94';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2670,7 +2670,7 @@ function prodPDF(){
 //  ASISTENCIA DIARIA DE PLANTA (SQL 93): quién está en planta / en obra / ausente, y procesos sin operario
 // ════════════════════════════════════════════════════════════════
 const AS = {fecha: null, ens: [], filas: {}, mesa: {}, err: null, cargando: false, hoyOk: null};
-const AS_PROC = () => PROCS.filter(([k]) => !['programado', 'prealistado'].includes(k));   // el prealistado lo hace cada ensamblador
+const AS_PROC = () => PROCS.filter(([k]) => !['programado', 'prealistado', 'vidrio_proc'].includes(k));   // el prealistado lo hace cada ensamblador; el vidrio es de Ártica (pendiente)
 const AS_MOT = ['Ausencia del operario', 'Incapacidad', 'Permiso', 'Vacaciones', 'Daño de máquina', 'Sin material', 'Otro'];
 const asKey = (t, c) => t + '|' + c;
 // Operario habitual de cada proceso (se precarga; se puede cambiar el día que lo cubra otro)
@@ -2756,7 +2756,8 @@ async function asCargar(){
     AS.ens = [...nombres].sort(nat);
     // Instaladores: quienes han instalado desde julio y no son ensambladores (los ensambladores usan "En obra" arriba), más los registrados ese día
     const NOP = /^(ELIPTICA|ELÍPTICA|OBRA|TODOS|NO IDENTIFICADO|ARTICA|ÁRTICA|SIN NOMBRE)$|[\/-]| Y /;
-    const inst = new Set(personas('inst').filter(n => !NOP.test(n) && !nombres.has(n)));
+    const artica = new Set(Object.values(MO_DEF.artCrew).flat().concat(['ADRIAN']));   // operarios de Ártica: fuera de la asistencia por ahora
+    const inst = new Set(personas('inst').filter(n => !NOP.test(n) && !nombres.has(n) && !artica.has(n)));
     for(const f of filas) if(f.tipo === 'instalacion') inst.add(f.clave);
     AS.inst = [...inst].sort(nat);
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
