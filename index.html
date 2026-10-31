@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.92';
+const APP_VERSION = '7.93';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2552,7 +2552,7 @@ async function moMuertoVer(desde, hasta){
     for(const g of art){ const d = moDiaEn(g.creado); for(const q of p.artCrew[g.estacion] || []){ const x = dia(q, d); if(x) x.todo = true; } }
     for(const a of asis){ if(a.tipo === 'cargue'){ const x = dia(String(a.clave).split('|')[0], a.fecha); if(x) x.extra += +a.horas || 0; }
       if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado !== 'planta'){ const x = dia(a.clave, a.fecha); if(x){ if(a.estado === 'obra') x.todo = true; else { x.aus = true; x.motivo = a.motivo; } } }
-      if(a.tipo === 'proceso' && a.estado === 'sin_operario'){ const op = a.operario || AS_OPER[a.clave]; const x = op && dia(op, a.fecha); if(x){ x.aus = true; x.motivo = a.motivo; } } }
+      if(a.tipo === 'proceso' && a.estado === 'sin_operario' && !['Operario ensamblando', 'Operario en obra'].includes(a.motivo)){ const op = a.operario || AS_OPER[a.clave]; const x = op && dia(op, a.fecha); if(x){ x.aus = true; x.motivo = a.motivo; } } }
     // Por persona: días laborables del periodo
     const filas = [], porDia = {};
     for(const x of Object.values(P)){
@@ -2760,7 +2760,7 @@ async function asCargar(){
     for(const f of filas) if(f.tipo === 'instalacion') inst.add(f.clave);
     AS.inst = [...inst].sort(nat);
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
-    AS.mesaHoy = !!mesa;
+    AS.mesaHoy = !!mesa; AS.borrar = new Set();
     AS.obras = await asObras();
   }catch(e){ AS.err = /asistencia|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la asistencia en la base (SQL 93)' : errMsg(e); }
   AS.cargando = false; AS.sucio = false; if(S.view === 'asis') renderAsis();
@@ -2772,15 +2772,36 @@ function asSet(tipo, clave, campo, v){
 }
 function asInsAgregar(){ const n = normNom($('#asInsN').value); if(!n) return; if(AS.ens.includes(n)) return toast(n + ' es ensamblador: márcalo "En obra" en Ensambladores', true);
   if(!AS.inst.includes(n)) AS.inst.push(n); asSet('instalacion', n, 'estado', 'obra'); }
-function asTodosPlanta(){ for(const n of AS.ens){ const k = asKey('ensamble', n); if(!AS.filas[k]) asSet('ensamble', n, 'estado', 'planta'); }
-  for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]) asSet('proceso', p, 'estado', 'activo'); } renderAsis(); }
+// Operarios de proceso (corte, troquelado, mecanizado…): una sola fila con lo que hacen hoy. Si ensamblan o salen a obra,
+// el proceso queda "sin operario" con ese motivo (justifica que no se produjo) y se crea su fila de ensamble (planta u obra).
+const AS_M_ENS = 'Operario ensamblando', AS_M_OBRA = 'Operario en obra';
+const asOperDe = k => { const f = AS.filas[asKey('proceso', k)] || {}; return normNom(f.operario != null && f.operario !== '' ? f.operario : (AS_OPER[k] || '')); };
+const asOpers = () => new Set(AS_PROC().map(([k]) => asOperDe(k)).filter(Boolean));
+function asOperAct(k){ const f = AS.filas[asKey('proceso', k)] || {}; if(!f.estado) return null; if(f.estado === 'activo') return 'proceso';
+  if(f.motivo === AS_M_ENS) return 'ensamble'; if(f.motivo === AS_M_OBRA) return 'obra'; return 'ausente'; }
+function asOperSet(k, act){
+  const o = asOperDe(k); if(!o) return toast('Escribe el nombre del operario', true);
+  const ke = asKey('ensamble', o);
+  if(act === 'proceso'){ asSet('proceso', k, 'motivo', null); asSet('proceso', k, 'estado', 'activo'); }
+  else { const m = act === 'ensamble' ? AS_M_ENS : act === 'obra' ? AS_M_OBRA : ((AS.filas[asKey('proceso', k)] || {}).motivo && ![AS_M_ENS, AS_M_OBRA].includes(AS.filas[asKey('proceso', k)].motivo) ? AS.filas[asKey('proceso', k)].motivo : '');
+    asSet('proceso', k, 'motivo', m); asSet('proceso', k, 'estado', 'sin_operario'); }
+  // fila de ensamble del operario: planta si ensambla, obra si sale a obra; si no, se borra
+  if(act === 'ensamble' || act === 'obra'){ (AS.borrar || (AS.borrar = new Set())).delete(o); asSet('ensamble', o, 'estado', act === 'ensamble' ? 'planta' : 'obra'); }
+  else if(AS.filas[ke]){ delete AS.filas[ke]; (AS.borrar || (AS.borrar = new Set())).add(o); AS.sucio = true; }
+  renderAsis();
+}
+function asTodosPlanta(){ const ops = asOpers(); for(const n of AS.ens){ if(ops.has(n)) continue; const k = asKey('ensamble', n); if(!AS.filas[k]) asSet('ensamble', n, 'estado', 'planta'); }
+  for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]){ asSet('proceso', p, 'motivo', null); asSet('proceso', p, 'estado', 'activo'); } } renderAsis(); }
 async function asGuardar(){
   const rows = Object.values(AS.filas).filter(f => f._cambio).map(f => ({fecha: AS.fecha, tipo: f.tipo, clave: f.clave, estado: f.estado,
     motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : null}));
   const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
   const sinOb = rows.find(r => r.estado === 'obra' && !r.motivo); if(sinOb) return toast('Elige la obra de ' + sinOb.clave, true);
-  if(!rows.length) return toast('No hay cambios');
-  try{ const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'}); if(error) throw error;
+  const borrar = [...(AS.borrar || [])];
+  if(!rows.length && !borrar.length) return toast('No hay cambios');
+  try{ if(rows.length){ const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'}); if(error) throw error; }
+    if(borrar.length){ const {error} = await API.sb.from('asistencia').delete().eq('fecha', AS.fecha).eq('tipo', 'ensamble').in('clave', borrar); if(error) throw error; }
+    AS.borrar = new Set();
     AS._hoy = null; toast(`✓ Asistencia del ${fmtD(AS.fecha)} guardada`); if(AS.fecha === today()) AS.hoyOk = rows.some(r => r.tipo === 'ensamble') || AS.hoyOk; asCargar(); }
   catch(e){ toast(/asistencia|42P01|PGRST205/.test(errMsg(e) + (e.code || '')) ? 'Falta activar la asistencia en la base (SQL 93)' : errMsg(e), true); }
 }
@@ -2790,20 +2811,29 @@ function renderAsis(){
   if(AS.err) body = `<div class="warn">${esc(AS.err)}</div>`;
   else if(AS.cargando && !AS.ens.length) body = '<div class="loading"><div class="spin"></div>Cargando</div>';
   else {
-    const enP = AS.ens.filter(n => (AS.filas[asKey('ensamble', n)] || {}).estado === 'planta');
+    const OPS = asOpers();
+    const enP = Object.values(AS.filas).filter(f => f.tipo === 'ensamble' && f.estado === 'planta').map(f => f.clave);
     const sinMesa = AS.mesaHoy ? enP.filter(n => !(AS.mesa[n] || []).some(i => !i.ens_novedad_id) && !asCargues(n).length) : [];
-    const ensF = AS.ens.map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
+    const ensF = AS.ens.filter(n => !OPS.has(n)).map(n => { const f = AS.filas[asKey('ensamble', n)] || {}, m = AS.mesa[n] || [], act = m.filter(i => !i.ens_novedad_id), esp = m.filter(i => i.ens_novedad_id);
       const mesa = AS.mesaHoy && f.estado === 'planta' ? (act.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(act.map(i => i.op))].join(', '))}</span>` : asCargues(n).length ? '<span class="as-ok">🚚 Cargando camión</span>' : `<span class="as-mal">⚠ Sin OP en mesa${esp.length ? ' (en espera: ' + esc([...new Set(esp.map(i => i.op))].join(', ')) + ')' : ''}</span>`) : '';
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${mesa}${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${encodeURIComponent(n)}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('ensamble', n, [['planta', 'En planta'], ['obra', 'En obra'], ['ausente', 'Ausente']], f.estado)}
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
-    const instF = (AS.inst || []).map(n => { const f = AS.filas[asKey('instalacion', n)] || {}, enc = encodeURIComponent(n);
+    const instF = (AS.inst || []).filter(n => !OPS.has(n)).map(n => { const f = AS.filas[asKey('instalacion', n)] || {}, enc = encodeURIComponent(n);
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${enc}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('instalacion', n, [['obra', 'En obra'], ['planta', 'En planta'], ['ausente', 'Ausente']], f.estado)}
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)`)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
-    const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {};
+    const procF = AS_PROC().map(([k, n]) => { const f = AS.filas[asKey('proceso', k)] || {}, o = asOperDe(k);
+      if(o){ const act = asOperAct(k), fe = AS.filas[asKey('ensamble', o)] || {}, m = AS.mesa[o] || [], am = m.filter(i => !i.ens_novedad_id);
+        const mesa = act === 'ensamble' && AS.mesaHoy ? (am.length ? `<span class="as-ok">En mesa: OP ${esc([...new Set(am.map(i => i.op))].join(', '))}</span>` : asCargues(o).length ? '<span class="as-ok">🚚 Cargando camión</span>' : '<span class="as-mal">⚠ Sin OP en mesa</span>') : '';
+        return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b><span class="cot-d" style="margin:0">${esc(o)}</span>${mesa}</div>
+          <div class="seg as-seg">${[['proceso', ({cortado: 'En corte', troquelado: 'En troquelado', mecanizado: 'En mecanizado', vidrio_proc: 'En vidrio'})[k] || 'En ' + n.toLowerCase()], ['ensamble', 'Ensamblando'], ['obra', 'En obra'], ['ausente', 'Ausente']].map(([v, t]) => `<button class="${act === v ? 'on' : ''}" onclick="asOperSet('${k}', '${v}')">${t}</button>`).join('')}</div>
+          <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" onchange="asSet('proceso', '${k}', 'operario', this.value); renderAsis()" style="max-width:180px">
+          ${act === 'obra' ? asObraSel(fe.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(o)}'), 'motivo', this.value)`)
+            : act === 'ausente' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>`
+            : act ? asCargueHTML(o) : ''}</div>`; }
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b></div>${seg('proceso', k, [['activo', 'Con operario'], ['sin_operario', 'Sin operario']], f.estado)}
         <input class="as-mot" value="${esc(f.operario != null ? f.operario : (AS_OPER[k] || ''))}" placeholder="Operario" oninput="asSet('proceso', '${k}', 'operario', this.value)" style="max-width:180px">
         ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : (() => { const o = f.operario != null && f.operario !== '' ? f.operario : AS_OPER[k]; return o ? asCargueHTML(o) : ''; })()}</div>`; }).join('');
@@ -2811,7 +2841,7 @@ function renderAsis(){
       <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
       <div class="cot-box"><div class="cot-h">Instaladores</div><div class="cot-d">En qué obra está cada uno hoy (Bogotá o Ibagué). Ese día se carga al costo de mano de obra de esa obra, aunque no se registren unidades instaladas.</div>${instF || '<div class="empty">No hay instaladores en la lista.</div>'}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="asInsN" class="as-mot" placeholder="Agregar a alguien que hoy instala (nombre y apellido)" style="max-width:320px"><button class="btn sm" onclick="asInsAgregar()">Agregar</button></div></div>
-      <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Si un proceso no tiene operario hoy, márcalo con su motivo: queda como novedad que justifica que ese día no se produjo.</div>${procF}</div>
+      <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Qué hace hoy el operario de cada proceso. Si ensambla, sale a obra o falta, el proceso queda sin operario con ese motivo (justifica que ese día no se produjo). Cuando ensambla se le pueden asignar OP como a cualquier ensamblador.</div>${procF}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="asGuardar()">Guardar asistencia</button><button class="btn ghost" onclick="asTodosPlanta()">Marcar los que faltan como en planta / con operario</button></div>`;
   }
   $('#app').innerHTML = shell(`<button class="back" onclick="history.back()">${ICON.back} Volver</button>
