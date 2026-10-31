@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.12';
+const APP_VERSION = '8.13';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -3016,13 +3016,60 @@ function cpReqHTML(){
         <td style="text-align:center"><b>${fmtN(a.q)}</b> ${a.unidad}${a.unidad === 'm' ? `<br><small>${fmtN(a.cant)} piezas</small>` : ''}</td><td>${a.prov ? esc(a.prov) + `<br><small>${esc(a.num || 'asignado')}</small>` : ''}<button class="btn sm ${a.prov ? 'ghost' : ''}" style="margin-top:2px" onclick="cpArtEditar('accesorios', ${byRefHas(a.ref) ? `decodeURIComponent('${encodeURIComponent(cpRefNorm(a.ref))}')` : 'null'}, {ref: decodeURIComponent('${encodeURIComponent(a.ref)}'), desc: decodeURIComponent('${encodeURIComponent(a.desc || '')}')})">${a.prov ? 'Cambiar' : 'Asignar'}</button></td><td style="text-align:right">${cpCOP(a.unit)}</td><td style="text-align:right">${cpCOP(a.costo)}</td></tr>`).join('') || '<tr><td colspan="5">La OP no trae accesorios HSA.</td></tr>'}</tbody></table></div>`;
   return h;
 }
+// PDF de la requisición (formato Elíptica): resumen de la OP, avance de compra y detalle por proveedor, sin precios
 function rqPDF(){
   const d = RQ.data; if(!d) return;
-  const filas = [...d.vid.map(v => ({g: v.prov || 'SIN PROVEEDOR SUGERIDO', v: ['VIDRIO', v.tipo, fmtN(v.laminas) + ' lám. ' + v.lamina, fmtN(v.m2, 1) + ' m2', v.unit ? cpCOP(v.unit) + '/m2' : '—', cpCOP(v.costo)], c: v.costo || 0})),
-    ...d.acc.map(a => ({g: a.prov || 'SIN PROVEEDOR SUGERIDO', v: [a.ref, a.desc || a.cdesc || '', fmtN(a.q) + ' ' + a.unidad, a.unidad === 'm' ? fmtN(a.cant) + ' pz' : '', a.unit ? cpCOP(a.unit) : '—', cpCOP(a.costo)], c: a.costo || 0}))];
-  const out = []; for(const [g, l] of [...grp(filas, f => f.g).entries()].sort((a, b) => nat(a[0], b[0]))){ out.push({grupo: g + '   ·   ' + cpCOP(l.reduce((s, f) => s + f.c, 0))}); for(const f of l) out.push({v: f.v}); }
-  pdfTabla({titulo: 'REQUISICIÓN DE MATERIALES', sub: 'OP ' + d.num + ' · ' + d.obra + ' · ' + fmtD(today()), info: `${d.ops.length} sub-OP (${d.ops.join(', ')}). Accesorios y vidrio; el aluminio se pide con la cotización. Proveedor y precio sugeridos según la última compra. Vidrio con ${RQ.desp} % de desperdicio.`,
-    cols: [['Ref.', 26, 'l'], ['Descripción', 70, 'l'], ['Pedir', 30, 'r'], ['Detalle', 22, 'r'], ['Precio', 16, 'r'], ['Costo', 22.4, 'r']], filas: out, nombre: 'Requisicion_OP' + d.num + '.pdf', firmas: ['Elaboró', 'Revisó']});
+  const ocs = (rqOcsPorOP().get(String(d.num)) || []).filter(o => o.estado !== 'anulada');
+  const und = (S.activos || []).filter(i => opNum(i.op) === String(d.num)).length;
+  const lineas = [...d.vid.map(v => ({prov: v.prov, cat: 'vidrio', ref: v.tipo, desc: (v.cdesc ? v.cdesc + ' · ' : '') + 'lámina ' + v.lamina + ' m · ' + fmtN(v.m2, 1) + ' m² en la OP', und: 'lám.', q: v.laminas})),
+    ...d.acc.map(a => ({prov: a.prov, cat: 'accesorios', ref: a.ref, desc: a.desc || a.cdesc || '', und: a.unidad, q: a.q, pzs: a.unidad === 'm' ? a.cant : null}))];
+  const est = (prov, cat) => { const l = ocs.filter(o => o.proveedor === prov && (!cat || o.categoria === cat)); if(!prov) return {t: 'SIN PROVEEDOR', k: 'no', ocs: []};
+    if(!l.length) return {t: 'SIN PEDIR', k: 'no', ocs: l};
+    const o = l[0];
+    if(l.every(x => x.estado === 'recibida')) return {t: 'RECIBIDO', k: 'rec', ocs: l};
+    if(l.some(x => ['recibida', 'parcial'].includes(x.estado))) return {t: 'RECIBIDO PARCIAL', k: 'par', ocs: l};
+    if(l.every(x => x.estado === 'borrador')) return {t: 'BORRADOR', k: 'no', ocs: l};
+    const fd = l.map(x => x.fecha_despacho).filter(Boolean).sort()[0];
+    return fd ? {t: 'CONFIRMADO · LLEGA ' + fmtD(fd).slice(0, 5), k: 'conf', ocs: l} : {t: 'PEDIDO' + (o.enviada_en ? ' · ENVIADO ' + fmtD(String(o.enviada_en).slice(0, 10)).slice(0, 5) : ''), k: 'ped', ocs: l};
+  };
+  const grupos = [...grp(lineas, x => (x.prov || '') + '|' + x.cat).entries()].map(([k, l]) => ({prov: l[0].prov, cat: l[0].cat, l, e: est(l[0].prov, l[0].cat)}))
+    .sort((a, b) => !a.prov - !b.prov || b.l.length - a.l.length || nat(a.prov, b.prov));
+  const nL = lineas.length, pct = f => nL ? Math.round(grupos.filter(f).reduce((a, g) => a + g.l.length, 0) / nL * 100) : 0;
+  const pPed = pct(g => ['ped', 'conf', 'par', 'rec'].includes(g.e.k)), pConf = pct(g => ['conf', 'par', 'rec'].includes(g.e.k)), pRec = pct(g => g.e.k === 'rec') + Math.round(pct(g => g.e.k === 'par') / 2);
+  const provs = new Set(grupos.filter(g => g.prov).map(g => g.prov + '|' + g.cat)).size, emit = grupos.filter(g => g.prov && g.e.ocs.some(o => o.estado !== 'borrador')).length;
+  const chip = e => `<span class="rq-chip rq-${e.k}">${esc(e.t)}</span>`;
+  const barra = (n, v) => `<div class="rq-av"><span>${n}</span><i><b style="width:${v}%"></b></i><em>${v} %</em></div>`;
+  const kv = (k, v) => `<div class="rq-kv"><span>${k}</span><b>${v}</b></div>`;
+  const css = `<style>.rq3{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8mm;margin-top:7mm}.rq3>div{border-top:2.4pt solid var(--g);padding-top:3mm}
+    .rq3 h3{font-family:'DINC';font-weight:700;font-size:10.5pt;letter-spacing:.2em;margin:0 0 2.5mm;text-transform:uppercase}
+    .rq-num{font-weight:700;font-size:26pt;line-height:1;margin-bottom:2.5mm}.rq-kv{display:grid;grid-template-columns:24mm 1fr;font-size:10pt;margin:1mm 0}.rq-kv span{font-size:8.4pt;letter-spacing:.14em;color:var(--g3);text-transform:uppercase}.rq-kv b{font-weight:400}
+    .rq-av{display:grid;grid-template-columns:24mm 1fr 11mm;align-items:center;gap:2mm;font-size:9pt;letter-spacing:.06em;text-transform:uppercase;margin:1.4mm 0}.rq-av i{height:3.2mm;background:var(--l2);border:.4pt solid var(--l);display:block}.rq-av i b{display:block;height:100%;background:var(--g)}.rq-av em{font-style:normal;text-align:right;color:var(--g2)}
+    .rq-chip{display:inline-block;font-size:7.6pt;letter-spacing:.1em;padding:.5mm 1.8mm;border:.6pt solid var(--g);white-space:nowrap}.rq-ped{background:#e6e6e6}.rq-conf{background:var(--g3);color:#fff;border-color:var(--g3)}.rq-par{background:repeating-linear-gradient(45deg,#272727 0 2px,#4a4a4a 2px 4px);color:#fff}.rq-rec{background:var(--g);color:#fff}
+    .inf-pag tr.rq-g td{background:var(--g2) !important;color:#fff;font-weight:600;letter-spacing:.1em;font-size:9pt}.inf-pag tr.rq-g td span{font-weight:300;letter-spacing:.04em;color:#ddd;margin-left:3mm}
+    .inf-pag td.rq-n{color:var(--g3);width:7mm}</style>`;
+  const html = `${css}<div class="inf-pag">
+    <div class="i-band" style="flex-direction:row;align-items:center;justify-content:space-between">${`<svg class="i-diag" viewBox="0 0 300 120" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="1.2"><path d="M40 120 L130 0 L300 0"/><path d="M70 120 L160 0"/><path d="M100 120 L190 0 L300 0"/><path d="M0 95 L210 95 L280 0"/></g></svg>`}
+      <img src="icons/logo_blanco.png" alt="Elíptica" style="margin:0;height:12mm">
+      <div style="text-align:right;position:relative;z-index:1"><h1 style="font-size:22pt">REQUISICIÓN DE MATERIALES</h1><div class="i-ob" style="font-size:13pt;color:#fff">N.º RQ-${esc(d.num)}</div><div style="font-size:9pt;letter-spacing:.14em;color:#cfcfcf;margin-top:1mm">GENERADA ${infF(today())} DESDE LA OP · USO INTERNO</div></div></div>
+    <div class="i-sub"><span>Accesorios y vidrio · <b>OP ${esc(d.num)} completa</b></span><span>Perfiles no incluidos</span></div>
+    <div class="i-hoja">
+      <div class="rq3">
+        <div><h3>Orden de producción</h3><div class="rq-num">${esc(d.num)}</div>${kv('Obra', esc(d.obra || '—'))}${kv('Alcance', fmtN(d.ops.length) + ' sub-OP' + (und ? ' · ' + fmtN(und) + ' unidades' : ''))}</div>
+        <div><h3>Requisición</h3>${kv('Líneas', fmtN(nL) + ' referencia' + (nL === 1 ? '' : 's'))}${kv('Proveedores', fmtN(provs))}${kv('OC emitidas', fmtN(emit) + ' de ' + fmtN(provs))}${kv('Desperdicio', RQ.desp + ' % en vidrio')}${kv('Responsable', 'Compras e inventario')}</div>
+        <div><h3>Avance</h3>${barra('Pedido', pPed)}${barra('Confirmado', pConf)}${barra('Recibido', pRec)}</div>
+      </div>
+      <h2>PROVEEDORES</h2>
+      <table><thead><tr><th>PROVEEDOR</th><th class="i-c">LÍNEAS</th><th>ORDEN DE COMPRA</th><th>ESTADO</th></tr></thead><tbody>
+        ${grupos.map(g => `<tr><td>${esc(g.prov || 'Sin proveedor asignado')}${g.prov ? ' · ' + (g.cat === 'vidrio' ? 'Vidrio' : 'Accesorios') : ''}</td><td class="i-c">${fmtN(g.l.length)}</td><td>${g.e.ocs.map(o => esc(o.num)).join(', ') || '—'}</td><td>${chip(g.e)}</td></tr>`).join('')}</tbody></table>
+      <h2>DETALLE POR PROVEEDOR</h2>
+      <table><thead><tr><th class="i-c">#</th><th>REFERENCIA</th><th>DESCRIPCIÓN</th><th class="i-c">UND</th><th class="i-r">REQUERIDO</th><th class="i-r">INVENT.</th><th class="i-r">A PEDIR</th><th class="i-r">RECIBIDO</th><th class="i-c">ESTADO</th></tr></thead><tbody>
+        ${grupos.map(g => `<tr class="rq-g"><td colspan="9">${esc((g.prov || 'Sin proveedor asignado').toUpperCase())}${g.prov ? ' · ' + (g.cat === 'vidrio' ? 'VIDRIO' : 'ACCESORIOS') : ''}<span>${fmtN(g.l.length)} línea${g.l.length === 1 ? '' : 's'}${g.e.ocs.length ? ' · ' + g.e.ocs.map(o => esc(o.num)).join(', ') : ''} · ${esc(g.e.t.toLowerCase())}</span></td></tr>`
+          + g.l.map((x, k) => `<tr><td class="i-c rq-n">${k + 1}</td><td class="i-ref">${esc(x.ref)}</td><td>${esc(x.desc)}${x.pzs ? ` <span style="color:#8a8a8a">(${fmtN(x.pzs)} piezas)</span>` : ''}</td><td class="i-c">${esc(x.und)}</td><td class="i-r">${fmtN(x.q)}</td><td class="i-r" style="color:#8a8a8a">—</td><td class="i-r i-b">${fmtN(x.q)}</td><td class="i-r">${g.e.k === 'rec' ? fmtN(x.q) : '<span style="color:#8a8a8a">—</span>'}</td><td class="i-c">${chip({k: g.e.k, t: g.e.k === 'conf' ? 'CONFIRMADO' : g.e.k === 'ped' ? 'PEDIDO' : g.e.t})}</td></tr>`).join('')).join('')}</tbody></table>
+      <div class="i-glos" style="margin-top:5mm">Requerido según el PDF de la OP (todas sus sub-OP). Vidrio en láminas con ${RQ.desp} % de desperdicio sobre los m² de la OP. Proveedor sugerido según el catálogo de compras o la última compra de cada referencia. El aluminio se pide con la cotización y no hace parte de esta requisición.</div>
+      <div class="i-firma"><div><b>ELABORÓ</b>${esc((S.perfil && S.perfil.nombre) || '')}</div><div><b>REVISÓ</b>Dirección de operaciones</div></div>
+    </div>
+    <div class="inf-pie"><span>ELÍPTICA · CERRAMIENTOS TRANSLÚCIDOS</span><span>RQ-${esc(d.num)} · ${esc(d.obra || '')}</span></div></div>`;
+  docMostrar(html, 'Requisicion_OP' + d.num, 'Requisición RQ-' + d.num);
 }
 // ── Orden de compra: crear (manual o desde la requisición), editar, cambiar estado y PDF con el formato de Elíptica ──
 const CP_PRE = {aluminio: 'AL', vidrio: 'V', accesorios: 'AC'};
