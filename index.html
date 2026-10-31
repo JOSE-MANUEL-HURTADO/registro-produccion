@@ -578,7 +578,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '8.17';
+const APP_VERSION = '8.18';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -1175,8 +1175,8 @@ function shell(inner){
       <div class="who">${esc(S.perfil.nombre||S.user.email)}<span class="rol">${esc(rolTxt(S.perfil.rol))}</span></div>
       ${S.view === 'artica' ? '' : puedeRegistrar() ? `<button class="btn sm ${S.view==='scan'?'primary':''}" title="Escanear el código QR de una OP" onclick="goScan()">${ICON.scan}<span class="hide-sm">Escanear</span></button>` : ''}
       ${isGerente() ? `<button class="btn sm ${S.view === 'prod' ? 'primary' : ''}" title="Productividad de planta: procesos, ensambles y Ártica por día" onclick="goProd()">${ICON.chart}<span class="hide-sm">Productividad</span></button>` : ''}
-      ${isGerente() ? `<button class="btn sm ${S.view === 'compras' ? 'primary' : ''}" title="Órdenes de compra, proveedores y precios" onclick="goCompras()">🛒<span class="hide-sm">Compras</span></button>` : ''}
-      ${isGerente() || rolEs('cotizaciones') ? `<button class="btn sm ${S.view === 'cot' ? 'primary' : ''}" title="Cotizador: diseños, despiece y precio" onclick="eliCotAbrir()">📐<span class="hide-sm">Cotizador</span></button>` : ''}
+      ${isGerente() && S.view !== 'artica' ? `<button class="btn sm ${S.view === 'compras' ? 'primary' : ''}" title="Órdenes de compra, proveedores y precios" onclick="goCompras()">🛒<span class="hide-sm">Compras</span></button>` : ''}
+      ${(isGerente() || rolEs('cotizaciones')) && S.view !== 'artica' ? `<button class="btn sm ${S.view === 'cot' ? 'primary' : ''}" title="Cotizador: diseños, despiece y precio" onclick="eliCotAbrir()">📐<span class="hide-sm">Cotizador</span></button>` : ''}
       ${veDash() && S.view !== 'artica' ? `<a class="btn sm" href="dashboard.html" title="Dashboard de producción en vivo" style="text-decoration:none">${ICON.chart}<span class="hide-sm">Dashboard</span></a>` : ''}
       ${isGerente() && S.view !== 'artica' ? `
         <button class="btn sm ${S.view==='carga'?'primary':''}" title="Cargar OPs nuevas o reemplazar la base" onclick="goCarga()">${ICON.up}<span class="hide-sm">Cargar datos</span></button>` : ''}
