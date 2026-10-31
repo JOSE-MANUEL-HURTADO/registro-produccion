@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.99';
+const APP_VERSION = '8.00';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2200,13 +2200,13 @@ function moCalcular(D, obra){
     for(const q of p.artCrew[g.estacion] || []) claim(q, d, 'art', artKey(pz), m2); }
   for(const a of D.asis){
     // Asistencia "en obra": si el motivo es una obra, ese día es de la obra
-    if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado === 'obra' && a.motivo){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
+    if(['ensamble', 'instalacion'].includes(a.tipo) && a.estado === 'obra' && a.motivo && a.operario !== 'AYUDANTE'){ const mm = moSinTilde(a.motivo); const ob = obras.find(o => mm === moSinTilde(o)) || obras.find(o => mm.includes(moSinTilde(o)));
       if(ob) claim(a.clave, a.fecha, 'inst', ob, 1e6); }
     // Cargue de camión: horas fijas para la obra del camión
     if(a.tipo === 'cargue' && +a.horas > 0) claim(String(a.clave).split('|')[0], a.fecha, 'cargue', a.motivo, +a.horas, {comp: a.operario === 'INSTALACION' ? 'inst' : 'cargue'});
   }
   // Ayudante de instalación: todo instalador trabaja con uno. Si la asistencia dice quién fue, se usa su salario; si no, el mínimo.
-  const ayudDe = {}; for(const a of D.asis) if(a.ayudante || +a.ayudantes > 0) ayudDe[a.fecha + '|' + normNom(String(a.clave).split('|')[0])] = {n: Math.max(+a.ayudantes || 0, String(a.ayudante || '').split(',').filter(x => x.trim()).length, 1), nom: String(a.ayudante || '').split(',').map(normNom).filter(Boolean)};
+  const ayudDe = {}; for(const a of D.asis) if(a.operario !== 'AYUDANTE' && (a.ayudante || +a.ayudantes > 0)) ayudDe[a.fecha + '|' + normNom(String(a.clave).split('|')[0])] = {n: Math.max(+a.ayudantes || 0, String(a.ayudante || '').split(',').filter(x => x.trim()).length, 1), nom: String(a.ayudante || '').split(',').map(normNom).filter(Boolean)};
   const ayud = (inst, d, h, ym) => { if(p.ayudante === false) return; const y = ayudDe[d + '|' + inst.k] || {n: 1, nom: []};
     for(let i = 0; i < y.n; i++){ const per = y.nom[i] ? moPersona(y.nom[i]) : {tipo: 'minimo', k: 'AYUDANTE SIN NOMBRE'}; if(!['nomina', 'minimo'].includes(per.tipo)) continue;
       sum(per, 'ayud', h * moCostoHora(per, ym).hora, h, ym); } };
@@ -2768,6 +2768,7 @@ async function asCargar(){
     const artica = new Set(Object.values(MO_DEF.artCrew).flat().concat(['ADRIAN']));   // operarios de Ártica: fuera de la asistencia por ahora
     const inst = new Set(personas('inst').filter(n => !NOP.test(n) && !nombres.has(n) && !artica.has(n)));
     for(const f of filas) if(f.tipo === 'instalacion') inst.add(f.clave);
+    for(const n of AS_AYUD['Bogotá']) inst.add(n);
     AS.inst = [...inst].sort(nat);
     AS.ayud = [...new Set(filas.map(f => f.ayudante).filter(Boolean))];
     AS.mesa = {}; if(mesa) for(const i of mesa){ const k = String(i.ensamblador || '').toUpperCase().trim(); if(!k) continue; (AS.mesa[k] = AS.mesa[k] || []).push(i); }
@@ -2786,6 +2787,11 @@ function asInsAgregar(){ const n = normNom($('#asInsN').value); if(!n) return; i
 // Operarios de proceso (corte, troquelado, mecanizado…): una sola fila con lo que hacen hoy. Si ensamblan o salen a obra,
 // el proceso queda "sin operario" con ese motivo (justifica que no se produjo) y se crea su fila de ensamble (planta u obra).
 const AS_M_ENS = 'Operario ensamblando', AS_M_OBRA = 'Operario en obra';
+// Ayudantes de instalación (se costean con el oficial al que acompañan; los de Ibagué ensamblan cuando no hay instalación)
+const AS_AYUD = {'Bogotá': ['JOHAN GONZALEZ', 'ELVIS GUERRA', 'JOHNNY SANABRIA'], 'Ibagué': ['EDINSON BRAVO', 'BRAYAN LOPEZ']};
+const asEsAyud = n => Object.values(AS_AYUD).flat().includes(normNom(n));
+// Oficiales en obra ese día (para elegir a quién acompaña un ayudante)
+const asOficialesObra = () => Object.values(AS.filas).filter(f => ['ensamble', 'instalacion'].includes(f.tipo) && f.estado === 'obra' && !asEsAyud(f.clave)).map(f => f.clave).sort(nat);
 const asOperDe = k => { const f = AS.filas[asKey('proceso', k)] || {}; return normNom(f.operario != null && f.operario !== '' ? f.operario : (AS_OPER[k] || '')); };
 const asOpers = () => new Set(AS_PROC().map(([k]) => asOperDe(k)).filter(Boolean));
 function asOperAct(k){ const f = AS.filas[asKey('proceso', k)] || {}; if(!f.estado) return null; if(f.estado === 'activo') return 'proceso';
@@ -2804,23 +2810,28 @@ function asOperSet(k, act){
 // Cuadrilla de instalación: quién va a qué obra, con cuántos ayudantes, por un rango de días (llena la asistencia de esos días)
 function asCuadrilla(){
   const ops = asOpers();
-  const inst = (AS.inst || []).filter(n => !ops.has(n)).sort(nat), ens = (AS.ens || []).filter(n => !ops.has(n) && !inst.includes(n)).sort(nat);
-  const fila = n => `<label class="as-row" style="cursor:pointer"><span style="display:flex;gap:8px;align-items:center;flex:1"><input type="checkbox" class="cqO" value="${esc(n)}" style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)" onchange="const a=this.closest('label').querySelector('.cqN');a.disabled=!this.checked"><b>${esc(n)}</b></span>
-    <span style="display:flex;gap:6px;align-items:center;font-size:12px">Ayudantes <input type="number" class="cqN as-mot" min="0" max="9" value="1" disabled style="max-width:64px"></span></label>`;
+  const inst = (AS.inst || []).filter(n => !ops.has(n) && !asEsAyud(n)).sort(nat), ens = (AS.ens || []).filter(n => !ops.has(n) && !inst.includes(n) && !asEsAyud(n)).sort(nat);
+  const ck = 'style="width:18px;height:18px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)"';
+  const fila = n => `<div class="cqF" style="border-bottom:1px solid var(--border);padding:8px 0"><label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" class="cqO" value="${esc(n)}" ${ck} onchange="this.closest('.cqF').querySelector('.cqA').style.display=this.checked?'':'none'"><b>${esc(n)}</b></label>
+    <div class="cqA" style="display:none;margin:6px 0 0 26px;font-size:12px">${Object.entries(AS_AYUD).map(([c, l]) => `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:3px 0"><span style="color:var(--text3);width:52px">${c}</span>${l.map(a => `<label style="display:flex;gap:4px;align-items:center;cursor:pointer"><input type="checkbox" class="cqY" value="${esc(a)}" ${ck}>${esc(a)}</label>`).join('')}</div>`).join('')}
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px">Ayudantes sin nombre <input type="number" class="cqN as-mot" min="0" max="9" value="0" style="max-width:60px"><span style="color:var(--text3)">(si no marca ninguno, se cuenta 1 al mínimo)</span></div></div></div>`;
   const grupo = (t, l) => l.length ? `<div class="cot-h" style="margin:10px 0 2px;font-size:12px">${t}</div>${l.map(fila).join('')}` : '';
   openSheet('Instalación · cuadrilla', 'Quiénes van, a qué obra y con cuántos ayudantes', `
     <div class="field"><span class="lbl">Obra</span>${asObraSel('', "window._cqOb=this.value")}</div>
     <div class="fgrid"><div class="field"><span class="lbl">Desde</span><input type="date" id="cqD" value="${AS.fecha}"></div><div class="field"><span class="lbl">Hasta</span><input type="date" id="cqH" value="${AS.fecha}"></div></div>
-    <div class="lbl" style="margin-top:6px">Oficiales (marca todos los que van)</div>
+    <div class="lbl" style="margin-top:6px">Oficiales (marca todos los que van y sus ayudantes)</div>
     <div style="max-height:42vh;overflow:auto">${grupo('Instaladores', inst)}${grupo('Ensambladores', ens)}${grupo('Operarios de proceso', [...ops].sort(nat))}</div>
     <div class="sc-note">Cada oficial marcado queda "En obra" en la asistencia de cada día hábil del rango, con sus ayudantes (se costean al salario mínimo si no se registra quiénes son). Reemplaza lo que tuvieran esos días. Sirve también para días pasados.</div>`, 'Guardar', async () => {
       const ob = window._cqOb, d1 = $('#cqD').value, d2 = $('#cqH').value;
-      const sel = [...document.querySelectorAll('.cqO:checked')].map(c => ({o: normNom(c.value), n: Math.max(0, Math.round(+c.closest('label').querySelector('.cqN').value || 0))}));
+      const sel = [...document.querySelectorAll('.cqO:checked')].map(c => { const b = c.closest('.cqF'), ay = [...b.querySelectorAll('.cqY:checked')].map(x => x.value), sn = Math.max(0, Math.round(+b.querySelector('.cqN').value || 0));
+        return {o: normNom(c.value), ay, n: Math.max(1, ay.length + sn)}; });
+      const rep = sel.flatMap(x => x.ay).filter((a, i, l) => l.indexOf(a) !== i); if(rep.length){ toast(rep[0] + ' está con dos oficiales', true); return false; }
       if(!ob){ toast('Elige la obra', true); return false; } if(!sel.length){ toast('Marca al menos un oficial', true); return false; } if(!d1 || !d2 || d2 < d1){ toast('Revisa las fechas', true); return false; }
       const rows = [];
       for(let d = d1; d <= d2; d = moSig(d)){ if(!moHorasDia(d)) continue;
-        for(const {o, n} of sel){ const tipo = (AS.ens || []).includes(o) || ops.has(o) ? 'ensamble' : 'instalacion';
-          rows.push({fecha: d, tipo, clave: o, estado: 'obra', motivo: ob, operario: null, ayudante: null, ayudantes: n});
+        for(const {o, n, ay} of sel){ const tipo = (AS.ens || []).includes(o) || ops.has(o) ? 'ensamble' : 'instalacion';
+          rows.push({fecha: d, tipo, clave: o, estado: 'obra', motivo: ob, operario: null, ayudante: ay.join(', ') || null, ayudantes: n});
+          for(const a of ay) rows.push({fecha: d, tipo: (AS.ens || []).includes(a) ? 'ensamble' : 'instalacion', clave: a, estado: 'obra', motivo: ob, operario: 'AYUDANTE', ayudante: o, ayudantes: null});
           for(const [k] of AS_PROC()) if(normNom(AS_OPER[k]) === o) rows.push({fecha: d, tipo: 'proceso', clave: k, estado: 'sin_operario', motivo: AS_M_OBRA, operario: o, ayudante: null, ayudantes: null}); } }
       const dias = new Set(rows.map(r => r.fecha)).size;
       if(!dias){ toast('No hay días hábiles en ese rango', true); return false; }
@@ -2834,10 +2845,16 @@ function asCuadrilla(){
 function asTodosPlanta(){ const ops = asOpers(); for(const n of AS.ens){ if(ops.has(n)) continue; const k = asKey('ensamble', n); if(!AS.filas[k]) asSet('ensamble', n, 'estado', 'planta'); }
   for(const [p] of AS_PROC()){ const k = asKey('proceso', p); if(!AS.filas[k]){ asSet('proceso', p, 'motivo', null); asSet('proceso', p, 'estado', 'activo'); } } renderAsis(); }
 async function asGuardar(){
+  for(const f of Object.values(AS.filas)){ if(!asEsAyud(f.clave) || !['ensamble', 'instalacion'].includes(f.tipo)) continue;
+    if(f.estado !== 'obra'){ if(f.operario === 'AYUDANTE'){ f.operario = null; f._cambio = true; } continue; }
+    const of = f.oficial || f.ayudante; if(!of){ if(f._cambio) return toast('Elige con qué oficial va ' + f.clave, true); continue; }
+    if(f._cambio || f.oficial){ f.operario = 'AYUDANTE'; f.ayudante = of; f._cambio = true;
+      const o = Object.values(AS.filas).find(x => ['ensamble', 'instalacion'].includes(x.tipo) && x.clave === of && x.estado === 'obra');
+      if(o){ const l = String(o.ayudante || '').split(',').map(normNom).filter(Boolean); if(!l.includes(f.clave)){ l.push(f.clave); o.ayudante = l.join(', '); o.ayudantes = Math.max(+(o.ayudantes ?? 1) || 0, l.length); o._cambio = true; } } } }
   const rows = Object.values(AS.filas).filter(f => f._cambio).map(f => ({fecha: AS.fecha, tipo: f.tipo, clave: f.clave, estado: f.estado,
-    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : null,
+    motivo: ['obra', 'ausente', 'sin_operario'].includes(f.estado) ? (f.motivo || null) : null, operario: f.tipo === 'proceso' ? (normNom(f.operario != null ? f.operario : (AS_OPER[f.clave] || '')) || null) : (f.operario === 'AYUDANTE' && f.estado === 'obra' ? 'AYUDANTE' : null),
     ayudante: f.estado === 'obra' ? (String(f.ayudante || '').split(',').map(normNom).filter(Boolean).join(', ') || null) : null,
-    ayudantes: f.estado === 'obra' ? Math.max(0, Math.round(+(f.ayudantes ?? 1) || 0)) : null}));
+    ayudantes: f.estado === 'obra' && f.operario !== 'AYUDANTE' ? Math.max(0, Math.round(+(f.ayudantes ?? 1) || 0)) : null}));
   const falta = rows.find(r => r.estado === 'sin_operario' && !r.motivo); if(falta) return toast('Escribe el motivo del proceso sin operario', true);
   const sinOb = rows.find(r => r.estado === 'obra' && !r.motivo); if(sinOb) return toast('Elige la obra de ' + sinOb.clave, true);
   const borrar = [...(AS.borrar || [])];
@@ -2863,7 +2880,7 @@ function renderAsis(){
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)`) + ayIn('ensamble', n, f)
           : f.estado === 'ausente' ? `<input class="as-mot" value="${esc(f.motivo || '')}" placeholder="Motivo (incapacidad, permiso…)" oninput="asSet('ensamble', decodeURIComponent('${encodeURIComponent(n)}'), 'motivo', this.value)">`
           : f.estado === 'planta' ? asCargueHTML(n) : ''}</div>`; }).join('');
-    const ayIn = (tipo, n, f) => `<input type="number" class="as-mot" min="0" max="9" value="${f.ayudantes ?? 1}" title="Número de ayudantes" style="max-width:70px" oninput="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(n)}'), 'ayudantes', this.value)"><input class="as-mot" list="asAyL" value="${esc(f.ayudante || '')}" placeholder="Ayudante(s) si se sabe" style="max-width:200px" oninput="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(n)}'), 'ayudante', this.value)">`;
+    const ayIn = (tipo, n, f) => asEsAyud(n) ? `<select class="as-mot" style="max-width:220px" onchange="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(n)}'), 'oficial', this.value)"><option value="">¿Con qué oficial?</option>${asOficialesObra().map(o => `<option ${f.oficial === o || (!f.oficial && f.ayudante === o) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>` : `<input type="number" class="as-mot" min="0" max="9" value="${f.ayudantes ?? 1}" title="Número de ayudantes" style="max-width:70px" oninput="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(n)}'), 'ayudantes', this.value)"><input class="as-mot" list="asAyL" value="${esc(f.ayudante || '')}" placeholder="Ayudante(s) si se sabe" style="max-width:200px" oninput="asSet('${tipo}', decodeURIComponent('${encodeURIComponent(n)}'), 'ayudante', this.value)">`;
     const instF = (AS.inst || []).filter(n => !OPS.has(n)).map(n => { const f = AS.filas[asKey('instalacion', n)] || {}, enc = encodeURIComponent(n);
       return `<div class="as-row"><div class="as-n"><b>${esc(n)}</b>${isGerente() ? `<a href="javascript:void 0" style="font-size:11px;color:var(--text3)" onclick="asRetirar(decodeURIComponent('${enc}'))">Ya no trabaja aquí</a>` : ''}</div>${seg('instalacion', n, [['obra', 'En obra'], ['planta', 'En planta'], ['ausente', 'Ausente']], f.estado)}
         ${f.estado === 'obra' ? asObraSel(f.motivo || '', `asSet('instalacion', decodeURIComponent('${enc}'), 'motivo', this.value)`) + ayIn('instalacion', n, f)
@@ -2883,7 +2900,7 @@ function renderAsis(){
         ${f.estado === 'sin_operario' ? `<select class="as-mot" style="max-width:220px" onchange="asSet('proceso', '${k}', 'motivo', this.value)"><option value="">Motivo…</option>${AS_MOT.map(x => `<option ${f.motivo === x ? 'selected' : ''}>${x}</option>`).join('')}${f.motivo && !AS_MOT.includes(f.motivo) ? `<option selected>${esc(f.motivo)}</option>` : ''}</select>` : (() => { const o = f.operario != null && f.operario !== '' ? f.operario : AS_OPER[k]; return o ? asCargueHTML(o) : ''; })()}</div>`; }).join('');
     body = `${AS.mesaHoy && sinMesa.length ? `<div class="warn" style="margin-bottom:12px"><b>${sinMesa.length === 1 ? sinMesa[0] + ' está' : sinMesa.join(', ') + ' están'} en planta sin una OP en mesa.</b> Asígnales trabajo o registra su inicio de ensamble.</div>` : ''}
       <div class="cot-box"><div class="cot-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">Ensambladores <span class="cot-d" style="margin:0">${enP.length} en planta</span></div>${ensF || '<div class="empty">No hay ensambladores activos.</div>'}</div>
-      <datalist id="asAyL">${[...new Set([...(AS.ens || []), ...(AS.inst || []), ...(AS.ayud || [])])].sort(nat).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      <datalist id="asAyL">${[...new Set([...Object.values(AS_AYUD).flat(), ...(AS.ens || []), ...(AS.inst || []), ...(AS.ayud || [])])].sort(nat).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
       <div class="cot-box"><div class="cot-h">Instaladores</div><div class="cot-d">En qué obra está cada uno hoy (Bogotá o Ibagué). Ese día se carga al costo de mano de obra de esa obra, aunque no se registren unidades instaladas.</div>${instF || '<div class="empty">No hay instaladores en la lista.</div>'}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="asInsN" class="as-mot" placeholder="Agregar a alguien que hoy instala (nombre y apellido)" style="max-width:320px"><button class="btn sm" onclick="asInsAgregar()">Agregar</button></div></div>
       <div class="cot-box"><div class="cot-h">Procesos</div><div class="cot-d">Qué hace hoy el operario de cada proceso. Si ensambla, sale a obra o falta, el proceso queda sin operario con ese motivo (justifica que ese día no se produjo). Cuando ensambla se le pueden asignar OP como a cualquier ensamblador.</div>${procF}</div>
