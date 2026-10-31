@@ -577,7 +577,7 @@ body.ro .ck{visibility:hidden;}
 // ════════════════════════════════════════════════════════════════
 //  ELÍPTICA · ÁRTICA — Registro de producción  v1.0
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '7.98';
+const APP_VERSION = '7.99';
 const CONFIG = {
   URL: 'https://fnwndrdebndlirmejlgb.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZud25kcmRlYm5kbGlybWVqbGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NDcxNzUsImV4cCI6MjEwNzUyMzE3NX0.zoTCGcjrsH3is2sQZEsGKkWpB_d_70dMEIJ1SySBges'
@@ -2803,24 +2803,31 @@ function asOperSet(k, act){
 }
 // Cuadrilla de instalación: quién va a qué obra, con cuántos ayudantes, por un rango de días (llena la asistencia de esos días)
 function asCuadrilla(){
-  const ops = asOpers(), grupo = (t, l) => l.length ? `<optgroup label="${t}">${l.map(n => `<option>${esc(n)}</option>`).join('')}</optgroup>` : '';
+  const ops = asOpers();
   const inst = (AS.inst || []).filter(n => !ops.has(n)).sort(nat), ens = (AS.ens || []).filter(n => !ops.has(n) && !inst.includes(n)).sort(nat);
-  openSheet('Instalación · cuadrilla', 'Quién va, a qué obra, con cuántos ayudantes', `
-    <div class="field"><span class="lbl">Oficial (instalador)</span><select id="cqO"><option value="">Elegir…</option>${grupo('Instaladores', inst)}${grupo('Ensambladores', ens)}${grupo('Operarios de proceso', [...ops].sort(nat))}</select></div>
+  const fila = n => `<label class="as-row" style="cursor:pointer"><span style="display:flex;gap:8px;align-items:center;flex:1"><input type="checkbox" class="cqO" value="${esc(n)}" style="width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--text)" onchange="const a=this.closest('label').querySelector('.cqN');a.disabled=!this.checked"><b>${esc(n)}</b></span>
+    <span style="display:flex;gap:6px;align-items:center;font-size:12px">Ayudantes <input type="number" class="cqN as-mot" min="0" max="9" value="1" disabled style="max-width:64px"></span></label>`;
+  const grupo = (t, l) => l.length ? `<div class="cot-h" style="margin:10px 0 2px;font-size:12px">${t}</div>${l.map(fila).join('')}` : '';
+  openSheet('Instalación · cuadrilla', 'Quiénes van, a qué obra y con cuántos ayudantes', `
     <div class="field"><span class="lbl">Obra</span>${asObraSel('', "window._cqOb=this.value")}</div>
     <div class="fgrid"><div class="field"><span class="lbl">Desde</span><input type="date" id="cqD" value="${AS.fecha}"></div><div class="field"><span class="lbl">Hasta</span><input type="date" id="cqH" value="${AS.fecha}"></div></div>
-    <div class="fgrid"><div class="field"><span class="lbl">Número de ayudantes</span><input type="number" id="cqN" min="0" max="9" value="1"></div><div class="field"><span class="lbl">Nombres de los ayudantes (opcional, separados por coma)</span><input id="cqA" placeholder="Si no se saben, se costean al mínimo"></div></div>
-    <div class="sc-note">Se marca al oficial "En obra" en la asistencia de cada día hábil del rango (reemplaza lo que tuviera esos días). Sirve también para días pasados.</div>`, 'Guardar', async () => {
-      const o = normNom($('#cqO').value), ob = window._cqOb, d1 = $('#cqD').value, d2 = $('#cqH').value, n = Math.max(0, Math.round(+$('#cqN').value || 0)), ay = $('#cqA').value.split(',').map(normNom).filter(Boolean).join(', ') || null;
-      if(!o){ toast('Escribe el oficial', true); return false; } if(!ob){ toast('Elige la obra', true); return false; } if(!d1 || !d2 || d2 < d1){ toast('Revisa las fechas', true); return false; }
-      const tipo = (AS.ens || []).includes(o) || ops.has(o) ? 'ensamble' : 'instalacion', rows = [], procs = [];
+    <div class="lbl" style="margin-top:6px">Oficiales (marca todos los que van)</div>
+    <div style="max-height:42vh;overflow:auto">${grupo('Instaladores', inst)}${grupo('Ensambladores', ens)}${grupo('Operarios de proceso', [...ops].sort(nat))}</div>
+    <div class="sc-note">Cada oficial marcado queda "En obra" en la asistencia de cada día hábil del rango, con sus ayudantes (se costean al salario mínimo si no se registra quiénes son). Reemplaza lo que tuvieran esos días. Sirve también para días pasados.</div>`, 'Guardar', async () => {
+      const ob = window._cqOb, d1 = $('#cqD').value, d2 = $('#cqH').value;
+      const sel = [...document.querySelectorAll('.cqO:checked')].map(c => ({o: normNom(c.value), n: Math.max(0, Math.round(+c.closest('label').querySelector('.cqN').value || 0))}));
+      if(!ob){ toast('Elige la obra', true); return false; } if(!sel.length){ toast('Marca al menos un oficial', true); return false; } if(!d1 || !d2 || d2 < d1){ toast('Revisa las fechas', true); return false; }
+      const rows = [];
       for(let d = d1; d <= d2; d = moSig(d)){ if(!moHorasDia(d)) continue;
-        rows.push({fecha: d, tipo, clave: o, estado: 'obra', motivo: ob, operario: null, ayudante: ay, ayudantes: n});
-        for(const [k] of AS_PROC()) if(normNom(AS_OPER[k]) === o) procs.push({fecha: d, tipo: 'proceso', clave: k, estado: 'sin_operario', motivo: AS_M_OBRA, operario: o, ayudante: null, ayudantes: null}); }
-      if(!rows.length){ toast('No hay días hábiles en ese rango', true); return false; }
-      const {error} = await API.sb.from('asistencia').upsert(rows.concat(procs), {onConflict: 'fecha,tipo,clave'});
+        for(const {o, n} of sel){ const tipo = (AS.ens || []).includes(o) || ops.has(o) ? 'ensamble' : 'instalacion';
+          rows.push({fecha: d, tipo, clave: o, estado: 'obra', motivo: ob, operario: null, ayudante: null, ayudantes: n});
+          for(const [k] of AS_PROC()) if(normNom(AS_OPER[k]) === o) rows.push({fecha: d, tipo: 'proceso', clave: k, estado: 'sin_operario', motivo: AS_M_OBRA, operario: o, ayudante: null, ayudantes: null}); } }
+      const dias = new Set(rows.map(r => r.fecha)).size;
+      if(!dias){ toast('No hay días hábiles en ese rango', true); return false; }
+      const {error} = await API.sb.from('asistencia').upsert(rows, {onConflict: 'fecha,tipo,clave'});
       if(error){ toast(/ayudantes/.test(errMsg(error)) ? 'Falta activar los ayudantes en la base (SQL 105)' : errMsg(error), true); return false; }
-      toast(`✓ ${o} en ${ob} · ${rows.length} día${rows.length === 1 ? '' : 's'} · ${n} ayudante${n === 1 ? '' : 's'}`); window._cqOb = null; asCargar();
+      const ay = sel.reduce((a, x) => a + x.n, 0);
+      toast(`✓ ${ob}: ${sel.length} oficial${sel.length === 1 ? '' : 'es'} y ${ay} ayudante${ay === 1 ? '' : 's'} · ${dias} día${dias === 1 ? '' : 's'}`); window._cqOb = null; asCargar();
     });
   window._cqOb = null;
 }
